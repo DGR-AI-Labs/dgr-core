@@ -13,8 +13,8 @@ import {
   verify as cryptoVerify,
   type KeyObject,
 } from "node:crypto";
-import type { ActionRequest, CapabilityToken, VerificationResult } from "../types.js";
-import { PROPOSED_DEFAULTS } from "../constants.js";
+import type { ActionRequest, CapabilityToken, VerificationResult } from "../types";
+import { PROPOSED_DEFAULTS } from "../constants";
 
 export interface SigningKeyPair {
   publicKey: KeyObject;

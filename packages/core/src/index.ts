@@ -14,28 +14,28 @@ import type {
   EvidencePacket,
   PolicyBundle,
   VerificationResult,
-} from "./types.js";
-import { compilePolicy, type CompiledPolicy } from "./policy/bundle.js";
-import { evaluateDecision } from "./decision/decision-point.js";
-import { failClosedBlock, guardFailClosed } from "./decision/fail-closed.js";
+} from "./types";
+import { compilePolicy, type CompiledPolicy } from "./policy/bundle";
+import { evaluateDecision } from "./decision/decision-point";
+import { failClosedBlock, guardFailClosed } from "./decision/fail-closed";
 import {
   verifyToken as verifyTokenInternal,
   type ReplayStore,
   type TokenSigner,
-} from "./token/capability-token.js";
+} from "./token/capability-token";
 
 // --- Re-exports: types, schemas, constants, policy, token utilities ---
-export * from "./types.js";
-export { PROPOSED_DEFAULTS } from "./constants.js";
-export type { ProposedDefaults } from "./constants.js";
-export { V0_POLICY } from "./policy/v0-policy.js";
+export * from "./types";
+export { PROPOSED_DEFAULTS } from "./constants";
+export type { ProposedDefaults } from "./constants";
+export { V0_POLICY } from "./policy/v0-policy";
 export {
   compilePolicy,
   parsePolicy,
   validateBundle,
   PolicyBundleError,
   type CompiledPolicy,
-} from "./policy/bundle.js";
+} from "./policy/bundle";
 export {
   generateSigningKeyPair,
   createSigner,
@@ -45,7 +45,7 @@ export {
   type TokenSigner,
   type ReplayStore,
   type MintInput,
-} from "./token/capability-token.js";
+} from "./token/capability-token";
 
 // --- Decision engine ---
 

@@ -4,7 +4,7 @@
 // action AND non-payment actions from the very first commit, so DGR can never be
 // mistaken for a payment-only spend cap. Cross-action is non-negotiable.
 
-import type { PolicyBundle } from "../types.js";
+import type { PolicyBundle } from "../types";
 
 export const V0_POLICY: PolicyBundle = {
   version: "v0",

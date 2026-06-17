@@ -2,42 +2,45 @@
 
 This suite is the executable form of Constitution Principle 7: **the enforcement proof is the
 one un-rushable thing.** Each test models an attack against the governed boundary and **asserts
-the secure outcome** (the action is blocked, or escalated where specified).
+the secure outcome** (blocked, or escalated where specified), exercising the real `@dgr/core`
+decision engine and tool-side token verification.
 
-## Read this first: red is correct here
+## Status (Phase 1)
 
-In **Phase 0** the decision core is not implemented (Constitution P9), so
-[`src/gate.mjs`](../../src/gate.mjs) is a deliberate failing stub. Every test below therefore
-**FAILS**. That is intentional and correct — it is fail-closed *by absence*: there is nothing
-implemented to prove these attacks are stopped, so the proof is honestly absent.
+The tests are now **real and runnable** (Vitest, against `@dgr/core`). They pass **only if the
+T0 enforcement core is correct.** The T0 core is currently a **DRAFT** (see the `T0 —
+enforcement-critical … Not validated` headers in `packages/core/src/token/`,
+`packages/core/src/decision/`).
 
-> **Green = enforcement proven.** A green bypass suite means real, human-led, reviewed
-> enforcement makes every one of these attacks end in the secure outcome. Green is **never** to
-> be reached by weakening these tests or the stub — only by building (and reviewing) a real gate.
+> **Green here means the suite passes — it does NOT by itself mean enforcement is *proven*.**
+> Proof requires the T0 human gate: human review + cross-model review + ≥3 SAST + adversarial
+> testing on the T0 files. Only after that gate should `bypass-suite` be made a required check.
+> Never make the suite green by weakening a test or the core.
 
 ## The attack set
 
-Each test calls `decide(request)` and asserts the secure outcome.
+Each test asserts the secure outcome.
 
 | # | File | Attack | Required secure outcome |
 |---|------|--------|-------------------------|
-| 1 | [`01-no-token.test.mjs`](01-no-token.test.mjs) | Direct effectful-tool call with **no token** | **Blocked** |
-| 2 | [`02-expired-replayed-token.test.mjs`](02-expired-replayed-token.test.mjs) | **Expired or replayed** token | **Blocked** |
-| 3 | [`03-missing-justification.test.mjs`](03-missing-justification.test.mjs) | **Missing justification** | **Blocked** |
-| 4 | [`04-ambiguous-evidence.test.mjs`](04-ambiguous-evidence.test.mjs) | **Ambiguous / insufficient evidence** | **Blocked or escalated** |
-| 5 | [`05-gate-throws.test.mjs`](05-gate-throws.test.mjs) | The **gate/hook itself throws** | **Fail closed (block)** |
+| 1 | [`01-no-token.test.ts`](01-no-token.test.ts) | Direct effectful-tool call with **no token** | **Blocked** |
+| 2 | [`02-expired-replayed-token.test.ts`](02-expired-replayed-token.test.ts) | **Expired or replayed** token | **Blocked** |
+| 3 | [`03-missing-justification.test.ts`](03-missing-justification.test.ts) | **Missing justification** | **Blocked** |
+| 4 | [`04-ambiguous-evidence.test.ts`](04-ambiguous-evidence.test.ts) | **Ambiguous / insufficient evidence** | **Blocked or escalated** |
+| 5 | [`05-gate-throws.test.ts`](05-gate-throws.test.ts) | The **gate/hook itself throws** | **Fail closed (block)** |
 
 ## Out of scope at this tier
 
 **"Operator disables the gate"** (a privileged insider/operator turning enforcement off) is
-**explicitly OUT of scope** for this suite. It is a real threat handled at a different tier
-(operational controls, key custody, segmentation), not something these runtime-bypass tests can
-or should assert. See [`specs/0001-enforcement-spec.md`](../../specs/0001-enforcement-spec.md) §5.
+**explicitly OUT of scope** for this suite. The Phase 1 deliverable is **agent-non-bypassable,
+operator-bypassable** (developer-grade). Operator-disable is Phase ≥2 work. See
+[`specs/0001-enforcement-spec.md`](../../specs/0001-enforcement-spec.md) §5.
 
 ## Running
 
 ```sh
-node --test tests/bypass        # expected: FAIL in Phase 0 (red CI by design)
+pnpm install
+pnpm test:bypass        # vitest run tests/bypass
 ```
 
-No third-party dependencies — these use Node's built-in `node:test` and `node:assert`.
+Tests run against TypeScript source via the workspace alias — no build step required.

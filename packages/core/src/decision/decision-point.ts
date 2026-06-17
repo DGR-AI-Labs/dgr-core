@@ -13,9 +13,9 @@ import type {
   DecisionOutcome,
   EvidencePacket,
   PolicyRule,
-} from "../types.js";
-import type { CompiledPolicy } from "../policy/bundle.js";
-import type { TokenSigner } from "../token/capability-token.js";
+} from "../types";
+import type { CompiledPolicy } from "../policy/bundle";
+import type { TokenSigner } from "../token/capability-token";
 
 export interface EvaluateContext {
   policy: CompiledPolicy;

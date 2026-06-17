@@ -2,9 +2,10 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "lib": ["ES2022"],
+    "verbatimModuleSyntax": true,
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,

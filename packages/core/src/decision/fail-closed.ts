@@ -7,7 +7,7 @@
 // timeout, or ambiguity resolves to a BLOCK — never an allow.
 
 import { randomUUID } from "node:crypto";
-import type { ActionRequest, DecisionObject, EvidencePacket } from "../types.js";
+import type { ActionRequest, DecisionObject, EvidencePacket } from "../types";
 
 /** Build a fail-closed BLOCK decision object. */
 export function failClosedBlock(

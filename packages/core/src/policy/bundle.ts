@@ -4,7 +4,7 @@
 // action→rule lookup. Shapes the enforcement contract, so human review is
 // required before trusted (Constitution P8).
 
-import type { PolicyBundle, PolicyRule } from "../types.js";
+import type { PolicyBundle, PolicyRule } from "../types";
 
 export class PolicyBundleError extends Error {
   constructor(message: string) {
