@@ -1,0 +1,26 @@
+{
+  "name": "@dgr/core",
+  "version": "0.0.0",
+  "description": "Framework-agnostic decision engine for DGR (Decision-Grade Reasoning). Experimental; not production-ready; developer-grade enforcement only.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

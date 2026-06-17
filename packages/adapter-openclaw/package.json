@@ -1,0 +1,29 @@
+{
+  "name": "@dgr/openclaw",
+  "version": "0.0.0",
+  "description": "Thin OpenClaw before_tool_call adapter for @dgr/core. Experimental; developer-grade enforcement (agent-non-bypassable, operator-bypassable).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@dgr/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

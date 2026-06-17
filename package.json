@@ -1,16 +1,28 @@
 {
-  "name": "@dgr/core",
+  "name": "@dgr/monorepo",
   "version": "0.0.0",
   "private": true,
-  "description": "An experiment in runtime decision governance for AI agents. Early work-in-progress; not production-ready.",
+  "description": "DGR (Decision-Grade Reasoning) — an experiment in runtime decision governance for AI agents. Early WIP; not production-ready.",
   "license": "Apache-2.0",
   "type": "module",
+  "packageManager": "pnpm@9.7.0",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:bypass": "vitest run tests/bypass",
     "check:structure": "node scripts/check-structure.mjs",
-    "test:bypass": "node --test tests/bypass"
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "changeset publish"
   },
-  "//": "Phase 0 — spine only. No product/enforcement dependencies. TypeScript tooling is deferred to a later phase; tests use Node's built-in node:test runner (zero deps)."
+  "devDependencies": {
+    "@changesets/cli": "^2.27.7",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
 }
