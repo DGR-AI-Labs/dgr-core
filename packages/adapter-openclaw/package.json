@@ -14,14 +14,16 @@
   },
   "files": ["dist", "README.md"],
   "scripts": {
-    "build": "tsc -b",
-    "test": "vitest run"
+    "build": "tsc -b"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
     "@dgr/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0"
   },
   "publishConfig": {
     "access": "public"

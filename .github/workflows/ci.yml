@@ -70,7 +70,9 @@ jobs:
           node-version: "20"
       - run: pnpm install
       - run: pnpm --filter @dgr/core build
-      - run: pnpm --filter @dgr/core test
+      # Tests run from the repo root so the root vitest config (which aliases
+      # @dgr/* to source) applies; the positional arg scopes to this package.
+      - run: pnpm exec vitest run packages/core
 
   adapter:
     name: "@dgr/openclaw — build + test"
@@ -85,7 +87,7 @@ jobs:
           node-version: "20"
       - run: pnpm install
       - run: pnpm --filter @dgr/openclaw build
-      - run: pnpm --filter @dgr/openclaw test
+      - run: pnpm exec vitest run packages/adapter-openclaw
 
   bypass-suite:
     name: Bypass suite (green only if T0 draft is correct; NOT a required check)
