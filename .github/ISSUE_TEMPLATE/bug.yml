@@ -1,0 +1,95 @@
+name: Bug report
+description: Report a bug, bypass, or other defect in dgr-core.
+title: "[BUG] <short summary>"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing. **Any confirmed Bypass is automatically S0-Critical and blocks
+        release** (Constitution P1/P7). Provide enough evidence to reproduce and triage.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing the issue.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: class
+    attributes:
+      label: Class
+      options:
+        - Bypass
+        - Security
+        - Correctness
+        - Regression
+        - UX
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: "Note: any confirmed Bypass = S0-Critical and blocks release."
+      options:
+        - S0-Critical
+        - S1
+        - S2
+        - S3
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component_tier
+    attributes:
+      label: Component / Tier
+      description: Consequence tier of the affected code (Constitution P8).
+      options:
+        - T0 — enforcement-critical
+        - T1 — adjacent to enforcement
+        - T2 — supporting / limited blast radius
+        - T3 — non-consequential (docs/tooling/scaffolding)
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal, deterministic steps.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: What the secure / correct outcome should have been.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+      description: What actually happened.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: >
+        Failing test name / log excerpt / SAST or threat-model finding /
+        which model flagged it (for cross-model review). Attach what you have.
+    validations:
+      required: true

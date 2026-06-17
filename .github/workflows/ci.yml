@@ -1,0 +1,70 @@
+name: CI
+
+# Phase 0 (spine only). This workflow is INTENTIONALLY RED.
+#
+#   - `structure` is expected to PASS (governance spine present, README disclaimers).
+#   - `bypass-suite` is expected to FAIL: nothing is implemented, so the bypass
+#     tests (which assert the secure outcome) cannot pass. That red state is the
+#     correct, fail-closed-by-absence signal for Phase 0.
+#
+# Do NOT mark `bypass-suite` as a required status check. Flipping it to required
+# is a deliberate, later, HUMAN step taken only once a real gate exists and the
+# suite legitimately goes green.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Expected: PASS. Validates the governance spine and README disclaimers.
+  structure:
+    name: Structural / governance check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Structural check
+        run: node scripts/check-structure.mjs
+
+  # Expected: FAIL (red by design) in Phase 0. See tests/bypass/README.md.
+  # green = enforcement proven. NOT a required status check (see header).
+  bypass-suite:
+    name: Bypass suite (red by design until enforcement exists)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run bypass suite
+        # No continue-on-error: this job SHOULD report failure in Phase 0.
+        run: node --test tests/bypass
+
+  # ---------------------------------------------------------------------------
+  # PHASE 1 PLACEHOLDER — DO NOT IMPLEMENT NOW.
+  #
+  # Per Constitution P8, T0 (enforcement-critical) code requires >=3 SAST tools.
+  # The matrix below is a commented-out TODO to be wired up in Phase 1 alongside
+  # real enforcement. It is intentionally NOT enabled here.
+  #
+  # sast:
+  #   name: SAST (>=3 tools) [Phase 1 — TODO]
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       tool:
+  #         - "[FILL: SAST tool #1, e.g., CodeQL]"
+  #         - "[FILL: SAST tool #2, e.g., Semgrep]"
+  #         - "[FILL: SAST tool #3, e.g., a third independent scanner]"
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Run ${{ matrix.tool }}
+  #       run: echo "TODO(Phase 1): wire up ${{ matrix.tool }} for T0 enforcement code"
+  # ---------------------------------------------------------------------------
