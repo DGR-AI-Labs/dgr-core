@@ -1,0 +1,16 @@
+{
+  "name": "@dgr/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "An experiment in runtime decision governance for AI agents. Early work-in-progress; not production-ready.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "check:structure": "node scripts/check-structure.mjs",
+    "test:bypass": "node --test tests/bypass"
+  },
+  "//": "Phase 0 — spine only. No product/enforcement dependencies. TypeScript tooling is deferred to a later phase; tests use Node's built-in node:test runner (zero deps)."
+}
