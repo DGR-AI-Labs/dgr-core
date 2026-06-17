@@ -10,13 +10,16 @@ truth.** It wins over anything here. Reference it; do not duplicate it.
 
 ## Current-phase guardrail
 
-> **Phase 0 — spine only.** Do **NOT** implement the decision core. Hold the **FS-wedge scope
-> fence** (financial-services risk, fraud, payments; reject scope creep — generation speed is
-> not a reason to broaden). **The enforcement proof is the one un-rushable thing.**
+> **Phase 1 — build + prove enforcement.** The enforcement core (token mint/verify, fail-closed/
+> degraded-mode, decision point) is **T0 — enforcement-critical, human-led, DRAFT and
+> unvalidated** until the human gate (review + cross-model review + ≥3 SAST + adversarial test).
+> Hold the **FS-wedge scope fence** (financial-services risk, fraud, payments; reject scope
+> creep — generation speed is not a reason to broaden). **The enforcement proof is the one
+> un-rushable thing.** Honest scoping: developer-grade — agent-non-bypassable, operator-bypassable.
 
-The repo holds **specs, governance, and red (failing) scaffolding only.** Red CI and the failing
-bypass suite are intentional (fail-closed by absence) — never make them green by weakening the
-tests or the [`src/gate.mjs`](src/gate.mjs) stub.
+The bypass suite ([`tests/bypass/`](tests/bypass/README.md)) is real and runnable; it passes only
+if the T0 draft is correct, and green still does not mean enforcement is proven until the T0 gate
+passes. Never make it green by weakening tests or the core.
 
 ## Consequence-tier rules (Constitution P8)
 

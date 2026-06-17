@@ -1,0 +1,54 @@
+name: Release
+
+# Publishes @dgr/core and @dgr/openclaw to npm on a version tag, GATED on the
+# bypass suite being green. Triggers ONLY on tags — never on a PR or branch
+# push, so no PR can publish.
+#
+# DO NOT enable real publishing until ALL of the following hold (human steps):
+#   1. The T0 human gate has passed (review + cross-model review + ≥3 SAST +
+#      adversarial test) and bypass-suite is legitimately green.
+#   2. NPM_TOKEN is configured as a repo/org secret.
+#   3. The package build emits runtime-correct ESM. NOTE: the current tsconfig
+#      uses moduleResolution "Bundler" + extensionless imports, so `tsc` output
+#      is NOT directly Node-ESM-runnable. TODO(release): add a bundler (e.g.
+#      tsup) for dist before the first real publish.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  bypass-gate:
+    name: Bypass gate (must be green to release)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: pnpm install
+      - run: pnpm test:bypass
+
+  publish:
+    name: Publish to npm
+    needs: bypass-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - run: pnpm install
+      - run: pnpm -r build
+      # TODO(release): replace `tsc` dist with a bundled, runtime-correct ESM
+      # build before this is trusted (see header note 3).
+      - run: pnpm release
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

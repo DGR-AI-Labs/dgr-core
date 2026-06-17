@@ -1,15 +1,13 @@
 name: CI
 
-# Phase 0 (spine only). This workflow is INTENTIONALLY RED.
+# Phase 1. Path-filtered so each package builds/tests independently, plus a
+# structural/governance check and the bypass suite.
 #
-#   - `structure` is expected to PASS (governance spine present, README disclaimers).
-#   - `bypass-suite` is expected to FAIL: nothing is implemented, so the bypass
-#     tests (which assert the secure outcome) cannot pass. That red state is the
-#     correct, fail-closed-by-absence signal for Phase 0.
-#
-# Do NOT mark `bypass-suite` as a required status check. Flipping it to required
-# is a deliberate, later, HUMAN step taken only once a real gate exists and the
-# suite legitimately goes green.
+# IMPORTANT: `bypass-suite` passes ONLY if the T0 enforcement draft is correct,
+# and even a green run does NOT mean enforcement is proven (the T0 human gate —
+# human review + cross-model review + ≥3 SAST + adversarial test — must pass
+# first). Do NOT mark `bypass-suite` as a required status check here; that flip
+# is a deliberate, later, HUMAN step.
 
 on:
   push:
@@ -20,7 +18,35 @@ permissions:
   contents: read
 
 jobs:
-  # Expected: PASS. Validates the governance spine and README disclaimers.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.filter.outputs.core }}
+      adapter: ${{ steps.filter.outputs.adapter }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            core:
+              - 'packages/core/**'
+              - 'tests/bypass/**'
+              - 'package.json'
+              - 'pnpm-workspace.yaml'
+              - 'pnpm-lock.yaml'
+              - 'tsconfig*.json'
+              - 'vitest.config.ts'
+            adapter:
+              - 'packages/adapter-openclaw/**'
+              - 'packages/core/**'
+              - 'package.json'
+              - 'pnpm-workspace.yaml'
+              - 'pnpm-lock.yaml'
+              - 'tsconfig*.json'
+              - 'vitest.config.ts'
+
   structure:
     name: Structural / governance check
     runs-on: ubuntu-latest
@@ -29,32 +55,59 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Structural check
-        run: node scripts/check-structure.mjs
+      - run: node scripts/check-structure.mjs
 
-  # Expected: FAIL (red by design) in Phase 0. See tests/bypass/README.md.
-  # green = enforcement proven. NOT a required status check (see header).
-  bypass-suite:
-    name: Bypass suite (red by design until enforcement exists)
+  core:
+    name: "@dgr/core — build + test"
+    needs: changes
+    if: ${{ needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Run bypass suite
-        # No continue-on-error: this job SHOULD report failure in Phase 0.
-        run: node --test tests/bypass
+      - run: pnpm install
+      - run: pnpm --filter @dgr/core build
+      - run: pnpm --filter @dgr/core test
+
+  adapter:
+    name: "@dgr/openclaw — build + test"
+    needs: changes
+    if: ${{ needs.changes.outputs.adapter == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: pnpm install
+      - run: pnpm --filter @dgr/openclaw build
+      - run: pnpm --filter @dgr/openclaw test
+
+  bypass-suite:
+    name: Bypass suite (green only if T0 draft is correct; NOT a required check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: pnpm install
+      - run: pnpm test:bypass
 
   # ---------------------------------------------------------------------------
-  # PHASE 1 PLACEHOLDER — DO NOT IMPLEMENT NOW.
+  # PHASE 1 T0 GATE — SAST (>=3 tools). NOT enabled here on purpose.
   #
-  # Per Constitution P8, T0 (enforcement-critical) code requires >=3 SAST tools.
-  # The matrix below is a commented-out TODO to be wired up in Phase 1 alongside
-  # real enforcement. It is intentionally NOT enabled here.
+  # Per Constitution P8, T0 enforcement-critical code requires >=3 SAST tools as
+  # part of the human-led review gate. Wiring real scanners (and acting on their
+  # findings) is part of that human gate, not something this PR should fake.
   #
   # sast:
-  #   name: SAST (>=3 tools) [Phase 1 — TODO]
+  #   name: SAST (>=3 tools) [T0 gate — human-led]
   #   runs-on: ubuntu-latest
   #   strategy:
   #     fail-fast: false
@@ -65,6 +118,5 @@ jobs:
   #         - "[FILL: SAST tool #3, e.g., a third independent scanner]"
   #   steps:
   #     - uses: actions/checkout@v4
-  #     - name: Run ${{ matrix.tool }}
-  #       run: echo "TODO(Phase 1): wire up ${{ matrix.tool }} for T0 enforcement code"
+  #     - run: echo "TODO(T0 gate): run ${{ matrix.tool }} over packages/core T0 files"
   # ---------------------------------------------------------------------------
