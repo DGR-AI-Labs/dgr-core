@@ -2,6 +2,7 @@
 //! verification results and must never be used as enforcement inputs.
 
 use crate::before_tool_call::{BeforeToolCallRequest, EffectfulToolProbe, OpaqueCapabilityToken};
+use crate::val_002_fixtures::Val002Fixture;
 use crate::{AttackCase, DecisionContext, ProposedAction};
 
 pub const EFFECTFUL_ACTION: ProposedAction = ProposedAction {
@@ -74,6 +75,23 @@ pub fn request_for_attack(case: &'static AttackCase) -> BeforeToolCallRequest<'s
         proposed_action: &case.proposed_action,
         context: &case.context,
         capability_token,
+    }
+}
+
+/// Wires a VAL-002 fixture's presented token bytes to an existing conformance
+/// case. The fixture separately carries its complete action fields, fixed
+/// clock, and expected outcome sequence. This adapter does not interpret any
+/// of them or compute a guard decision.
+pub fn request_for_val_002_fixture<'a>(
+    case: &'static AttackCase,
+    fixture: &'a Val002Fixture,
+) -> BeforeToolCallRequest<'a> {
+    BeforeToolCallRequest {
+        proposed_action: &case.proposed_action,
+        context: &case.context,
+        capability_token: fixture.token.as_ref().map(|token| OpaqueCapabilityToken {
+            bytes: &token.wire_bytes,
+        }),
     }
 }
 
