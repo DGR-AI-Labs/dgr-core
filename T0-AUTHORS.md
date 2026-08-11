@@ -4,6 +4,10 @@ This file is the ownership map for CORE-002. It does not authorize an agent to
 write enforcement code. The binding repository constitution classifies every
 consequential authorization path as T0 and human-led.
 
+The normative contracts consumed by the founder implementation are listed in
+`specs/CORE-002-reference-contracts.md`. That file points to the pinned
+`dgr-internal` reference records; it does not duplicate or redefine them.
+
 ## Founder-authored units
 
 Only the founder authors the bodies of these functions:
