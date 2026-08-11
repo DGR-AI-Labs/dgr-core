@@ -10,9 +10,10 @@
 > README reference this document; they do not override it.
 
 - **Ratified:** 2026-06-16
-- **Version:** 1.0.0 (semver: MAJOR = principle removed/redefined, MINOR = principle added,
+- **Version:** 2.0.0 (semver: MAJOR = principle removed/redefined, MINOR = principle added,
   PATCH = wording/clarification)
-- **Current phase:** Phase 0 — spine only (see Principle 9)
+- **Amended:** 2026-08-10 (Principle 9: Phase 0 → Phase 1; see amendment log)
+- **Current phase:** Phase 1 — enforcement proof (see Principle 9)
 
 ---
 
@@ -103,18 +104,25 @@ never permitted to lower these bars.
 Only **T2/T3** run with high autonomy. **T0/T1 are human-led.** When in doubt about a tier,
 treat the work as the *higher* (more critical) tier.
 
-## Principle 9 — Current phase: Phase 0 (spine only)
+## Principle 9 — Current phase: Phase 1 (enforcement proof)
 
-This repository is currently in **Phase 0**: signal-testing demand. The decision core is
-**explicitly gated and forbidden** until a later phase.
+This repository is in **Phase 1**: authoring the proof that DGR is non-bypassable. The decision
+core is **permitted**, and its authoring is **human-led (founder-authored) T0 work** under
+Principle 8.
 
-- **Do NOT implement** the decision core, enforcement logic, token issuance/verification,
-  admission control, or any product logic.
-- This repo currently holds **specs, governance, and red (failing) scaffolding only.**
-- The failing bypass suite and red CI are **intentional and correct** (fail-closed by
-  absence): there is nothing implemented to make them pass, and that is the truthful state.
-- Green CI for the bypass suite is a **future milestone** that means *real, reviewed
-  enforcement exists* — it is never to be achieved by weakening the tests.
+- **Permitted, founder-authored:** the enforcement guard, capability-token verification, the
+  fail-closed decision path, single-use consumption, and the consumption-store interface — the
+  `{FOUNDER-AUTHORS}` units defined in the published CORE-002 design. These are **T0** and
+  follow Principle 8's human-led process without exception.
+- **Still prohibited:** no agent may author, complete, or stub-with-working-logic any T0
+  enforcement unit. Agents may author tests, harness/adapters, fixtures, and specs (T2/T3), and
+  may perform **review-only** passes over founder-authored T0 code — never author it.
+- The bypass suite transitions from **red-by-absence** to **green-by-authored-enforcement**,
+  one attack at a time, as the founder implements each unit. Green for an attack means *real,
+  reviewed enforcement exists for it* — **never** achieved by weakening a test or bypassing the
+  guard.
+- Scope is unchanged (Principle 6): Phase 1 authorizes the enforcement *proof*, not new market
+  surface.
 
 ---
 
@@ -124,10 +132,17 @@ Changes to this constitution require a pull request that (a) states the principl
 (b) bumps the version per the semver rule above, and (c) is merged by a human. No agent may
 amend this document and merge its own change.
 
-## Governance of this repo (Phase 0)
+## Governance of this repo (Phase 1)
 
 - All work lands via pull request on a branch; no direct pushes to `main`.
-- The bootstrap/scaffold PR is the one allowed exception to "CI must be green to merge,"
-  because CI is intentionally red until enforcement exists. A human merges it.
+- Non-T0 scaffold/support PRs (harness, fixtures, specs, tooling) merge under normal review;
+  CI may remain red for a bypass attack until its enforcement unit is authored, and that is the
+  truthful in-progress state — not a reason to weaken the test. A human merges T0-touching work.
 - The bypass suite is **not** wired as a required status check yet. Flipping it to required is
   a deliberate, later, human step taken only once a real gate exists.
+
+## Amendment log
+
+- **2.0.0 — 2026-08-10 (FND-13):** Principle 9 advanced Phase 0 → Phase 1. Decision core moves
+  from forbidden to permitted, founder-authored under the unchanged Principle 8 T0 process.
+  Principles 1–8 unchanged. Authored by agent for review; merged by human.
