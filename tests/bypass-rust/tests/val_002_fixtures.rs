@@ -12,6 +12,22 @@ fn lowercase_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+use dgr_core_bypass_harness::founder_token_verification::{
+    CONFORMANCE_K2_KEY_ID, CONFORMANCE_K2_PUBLIC_KEY,
+};
+
+#[test]
+fn founder_k2_entry_matches_val_002_registered_key() {
+    let catalog = fixture_catalog();
+
+    assert_eq!(catalog.fixture_k2_keys.len(), 1);
+    assert_eq!(CONFORMANCE_K2_KEY_ID, REGISTERED_KEY_ID);
+    assert_eq!(
+        CONFORMANCE_K2_PUBLIC_KEY,
+        catalog.fixture_k2_keys[0].public_key
+    );
+}
+
 #[test]
 fn registered_test_public_key_and_valid_artifact_are_golden() {
     let catalog = fixture_catalog();
