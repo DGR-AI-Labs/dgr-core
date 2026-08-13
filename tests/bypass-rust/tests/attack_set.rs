@@ -1,10 +1,102 @@
 use dgr_core_bypass_harness::before_tool_call::{
-    BeforeToolCallAdapter, BeforeToolCallObservation, EffectfulToolProbe,
+    BeforeToolCallAdapter, BeforeToolCallObservation, BeforeToolCallRequest, EffectfulToolProbe,
+    GuardFault, OpaqueCapabilityToken,
 };
-use dgr_core_bypass_harness::fixtures::{RecordingToolProbe, no_token_request, request_for_attack};
+use dgr_core_bypass_harness::fixtures::{
+    RecordingToolProbe, no_token_request, request_for_attack, request_for_val_002_fixture,
+};
+
+use dgr_core_bypass_harness::val_002_fixtures::fixture_catalog;
+
 use dgr_core_bypass_harness::founder_authored_guard::FounderAuthoredGuard;
 use dgr_core_bypass_harness::{ATTACK_SET, HarnessTarget, RequiredOutcome, attack_by_id};
 use std::panic::{AssertUnwindSafe, catch_unwind};
+
+fn observe_val_002_fixture(fixture_id: &str, attack_id: &str) -> BeforeToolCallObservation {
+    let catalog = fixture_catalog();
+    let fixture = catalog.by_id(fixture_id).expect("VAL-002 fixture");
+    let case = attack_by_id(attack_id).expect("registered attack");
+    let request = request_for_val_002_fixture(case, fixture);
+    let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
+    let mut tool = RecordingToolProbe::default();
+
+    let observed = adapter.before_tool_call(&request, &mut tool);
+
+    assert_eq!(
+        tool.invocation_count(),
+        0,
+        "{fixture_id} reached the effectful tool"
+    );
+
+    observed
+}
+
+#[test]
+fn atk_10_unknown_key_is_denied() {
+    assert_eq!(
+        observe_val_002_fixture("unknown-key-id", "ATK-10"),
+        BeforeToolCallObservation::Blocked {
+            outcome: RequiredOutcome::Deny,
+            denial_signal: "ATK-10 unknown key id",
+            authorization_issued: false,
+            effectful_invocations: 0,
+        }
+    );
+}
+
+#[test]
+fn atk_10_tampered_expiry_fails_signature_verification() {
+    assert_eq!(
+        observe_val_002_fixture("tampered-expires-at", "ATK-10"),
+        BeforeToolCallObservation::Blocked {
+            outcome: RequiredOutcome::Deny,
+            denial_signal: "ATK-10 invalid signature",
+            authorization_issued: false,
+            effectful_invocations: 0,
+        }
+    );
+}
+
+#[test]
+fn step_2_valid_token_reaches_next_founder_step() {
+    assert_eq!(
+        observe_val_002_fixture("valid", "ATK-11"),
+        BeforeToolCallObservation::GuardFault {
+            fault: GuardFault::FounderImplementationRequired,
+            authorization_issued: false,
+            effectful_invocations: 0,
+        }
+    );
+}
+
+#[test]
+fn atk_10_malformed_length_is_denied_before_parsing() {
+    let catalog = fixture_catalog();
+    let valid = catalog.by_id("valid").expect("valid fixture");
+    let wire = &valid.token.as_ref().expect("valid token").wire_bytes;
+    let malformed = &wire[..wire.len() - 1];
+    let case = attack_by_id("ATK-10").expect("ATK-10");
+    let request = BeforeToolCallRequest {
+        proposed_action: &case.proposed_action,
+        context: &case.context,
+        capability_token: Some(OpaqueCapabilityToken { bytes: malformed }),
+    };
+    let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
+    let mut tool = RecordingToolProbe::default();
+
+    let observed = adapter.before_tool_call(&request, &mut tool);
+
+    assert_eq!(tool.invocation_count(), 0);
+    assert_eq!(
+        observed,
+        BeforeToolCallObservation::Blocked {
+            outcome: RequiredOutcome::Deny,
+            denial_signal: "ATK-10 malformed token length",
+            authorization_issued: false,
+            effectful_invocations: 0,
+        }
+    );
+}
 
 #[test]
 fn registry_contains_the_complete_core_001_id_set() {
@@ -149,7 +241,6 @@ ignored_gate_attack!(atk_06_approval_timeout, "ATK-06");
 ignored_gate_attack!(atk_07_hook_error, "ATK-07");
 ignored_gate_attack!(atk_08_scope_escalation, "ATK-08");
 ignored_gate_attack!(atk_09_token_substitution, "ATK-09");
-ignored_gate_attack!(atk_10_forged_authorization, "ATK-10");
 ignored_gate_attack!(atk_11_parameter_swap, "ATK-11");
 ignored_gate_attack!(atk_12_revoked_credential, "ATK-12");
 ignored_gate_attack!(atk_13_audit_append_failure, "ATK-13");
