@@ -42,7 +42,11 @@ pub enum GuardFault {
 
 /// Interface implemented only by the founder-authored guard unit.
 pub trait GuardDecisionPort {
-    fn decide(&self, request: &BeforeToolCallRequest<'_>) -> Result<GuardDecision, GuardFault>;
+    fn decide(
+        &self,
+        request: &BeforeToolCallRequest<'_>,
+        now_unix_seconds: u64,
+    ) -> Result<GuardDecision, GuardFault>;
 }
 
 /// A fake effectful boundary used only to observe whether execution occurred.
@@ -89,12 +93,13 @@ where
     pub fn before_tool_call<T>(
         &self,
         request: &BeforeToolCallRequest<'_>,
+        now_unix_seconds: u64,
         tool: &mut T,
     ) -> BeforeToolCallObservation
     where
         T: EffectfulToolProbe,
     {
-        match self.guard.decide(request) {
+        match self.guard.decide(request, now_unix_seconds) {
             Ok(GuardDecision::Deny {
                 outcome,
                 denial_signal,

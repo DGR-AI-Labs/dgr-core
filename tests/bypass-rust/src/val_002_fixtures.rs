@@ -190,6 +190,42 @@ pub fn fixture_catalog() -> Val002FixtureCatalog {
         baseline_canonical.clone(),
     ));
 
+    fixtures.push(fixture(
+        "lifetime-over-maximum",
+        &["ATK-02"],
+        "correctly signed token has a 301-second lifetime",
+        vec![ExpectedFixtureOutcome::Deny],
+        baseline_request,
+        author_fixture_token(
+            &registered_signing_key,
+            REGISTERED_KEY_ID,
+            FIXED_NOW_UNIX_SECONDS - 60,
+            FIXED_NOW_UNIX_SECONDS + 241,
+            [0x06; 16],
+            baseline_commitment,
+        ),
+        baseline_canonical.clone(),
+        baseline_canonical.clone(),
+    ));
+
+    fixtures.push(fixture(
+        "lifetime-reversed",
+        &["ATK-02"],
+        "correctly signed token expires before it is issued",
+        vec![ExpectedFixtureOutcome::Deny],
+        baseline_request,
+        author_fixture_token(
+            &registered_signing_key,
+            REGISTERED_KEY_ID,
+            FIXED_NOW_UNIX_SECONDS + 60,
+            FIXED_NOW_UNIX_SECONDS + 30,
+            [0x07; 16],
+            baseline_commitment,
+        ),
+        baseline_canonical.clone(),
+        baseline_canonical.clone(),
+    ));
+
     for (id, attack_ids, description, changed_request) in [
         (
             "swap-amount",
