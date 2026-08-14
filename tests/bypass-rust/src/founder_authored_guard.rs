@@ -18,8 +18,21 @@ use crate::founder_token_verification::{
 #[derive(Clone, Copy, Debug, Default)]
 pub struct FounderAuthoredGuard;
 
+const MAXIMUM_LIFETIME_SECONDS: u64 = 300;
+const EXPIRY_SKEW_SECONDS: u64 = 30;
+
+#[doc(hidden)]
+pub const CONFORMANCE_MAXIMUM_LIFETIME_SECONDS: u64 = MAXIMUM_LIFETIME_SECONDS;
+
+#[doc(hidden)]
+pub const CONFORMANCE_EXPIRY_SKEW_SECONDS: u64 = EXPIRY_SKEW_SECONDS;
+
 impl GuardDecisionPort for FounderAuthoredGuard {
-    fn decide(&self, request: &BeforeToolCallRequest<'_>) -> Result<GuardDecision, GuardFault> {
+    fn decide(
+        &self,
+        request: &BeforeToolCallRequest<'_>,
+        now_unix_seconds: u64,
+    ) -> Result<GuardDecision, GuardFault> {
         match request.capability_token {
             None => Ok(GuardDecision::Deny {
                 outcome: RequiredOutcome::Block,
@@ -39,7 +52,33 @@ impl GuardDecisionPort for FounderAuthoredGuard {
                     })
                 }
                 Faulted(f) => Err(f),
-                Verified(_) => Err(GuardFault::FounderImplementationRequired), // still no Allow
+                Verified(token) => {
+                    let lifetime_is_valid = token
+                        .expires_at
+                        .checked_sub(token.issued_at)
+                        .is_some_and(|lifetime| lifetime <= MAXIMUM_LIFETIME_SECONDS);
+
+                    if !lifetime_is_valid {
+                        return Ok(GuardDecision::Deny {
+                            outcome: RequiredOutcome::Block,
+                            denial_signal: "ATK-02 invalid capability token lifetime",
+                        });
+                    }
+
+                    let latest_valid_time = token
+                        .expires_at
+                        .checked_add(EXPIRY_SKEW_SECONDS)
+                        .ok_or(GuardFault::InternalError)?;
+
+                    if now_unix_seconds <= latest_valid_time {
+                        Err(GuardFault::FounderImplementationRequired)
+                    } else {
+                        Ok(GuardDecision::Deny {
+                            outcome: RequiredOutcome::Block,
+                            denial_signal: "ATK-02 expired capability token",
+                        })
+                    }
+                }
             },
         }
     }

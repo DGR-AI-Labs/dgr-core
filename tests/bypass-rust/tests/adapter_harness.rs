@@ -1,11 +1,13 @@
 use dgr_core_bypass_harness::RequiredOutcome;
+
 use dgr_core_bypass_harness::before_tool_call::{
-    BeforeToolCallAdapter, BeforeToolCallObservation, EffectfulToolProbe, GuardDecision,
-    GuardDecisionPort, GuardFault,
+    BeforeToolCallAdapter, BeforeToolCallObservation, BeforeToolCallRequest, EffectfulToolProbe,
+    GuardDecision, GuardDecisionPort, GuardFault,
 };
 use dgr_core_bypass_harness::fixtures::{
     RecordingToolProbe, no_token_request, valid_token_request,
 };
+use dgr_core_bypass_harness::val_002_fixtures::FIXED_NOW_UNIX_SECONDS;
 
 #[derive(Clone, Copy)]
 struct ScriptedDecision(Result<GuardDecision, GuardFault>);
@@ -13,7 +15,8 @@ struct ScriptedDecision(Result<GuardDecision, GuardFault>);
 impl GuardDecisionPort for ScriptedDecision {
     fn decide(
         &self,
-        _request: &dgr_core_bypass_harness::before_tool_call::BeforeToolCallRequest<'_>,
+        _request: &BeforeToolCallRequest<'_>,
+        _now_unix_seconds: u64,
     ) -> Result<GuardDecision, GuardFault> {
         self.0
     }
@@ -27,7 +30,7 @@ fn adapter_does_not_invoke_tool_for_a_returned_deny() {
     })));
     let mut tool = RecordingToolProbe::default();
 
-    let observed = adapter.before_tool_call(&no_token_request(), &mut tool);
+    let observed = adapter.before_tool_call(&no_token_request(), FIXED_NOW_UNIX_SECONDS, &mut tool);
 
     assert_eq!(tool.invocation_count(), 0);
     assert_eq!(
@@ -48,7 +51,8 @@ fn adapter_invokes_probe_only_for_a_returned_allow() {
     })));
     let mut tool = RecordingToolProbe::default();
 
-    let observed = adapter.before_tool_call(&valid_token_request(), &mut tool);
+    let observed =
+        adapter.before_tool_call(&valid_token_request(), FIXED_NOW_UNIX_SECONDS, &mut tool);
 
     assert_eq!(tool.invocation_count(), 1);
     assert_eq!(
@@ -66,7 +70,7 @@ fn adapter_never_invokes_probe_for_a_guard_fault() {
     let adapter = BeforeToolCallAdapter::new(ScriptedDecision(Err(GuardFault::InternalError)));
     let mut tool = RecordingToolProbe::default();
 
-    let observed = adapter.before_tool_call(&no_token_request(), &mut tool);
+    let observed = adapter.before_tool_call(&no_token_request(), FIXED_NOW_UNIX_SECONDS, &mut tool);
 
     assert_eq!(tool.invocation_count(), 0);
     assert_eq!(

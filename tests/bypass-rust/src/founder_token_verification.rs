@@ -51,11 +51,11 @@ pub enum TokenRejection {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct VerifiedToken {
-    key_id: [u8; 16],
-    issued_at: u64,
-    expires_at: u64,
-    nonce: [u8; 16],
-    action_commitment: [u8; 32],
+    pub(crate) key_id: [u8; 16],
+    pub(crate) issued_at: u64,
+    pub(crate) expires_at: u64,
+    pub(crate) nonce: [u8; 16],
+    pub(crate) action_commitment: [u8; 32],
 }
 
 struct ParsedToken {

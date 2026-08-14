@@ -6,7 +6,9 @@ use dgr_core_bypass_harness::fixtures::{
     RecordingToolProbe, no_token_request, request_for_attack, request_for_val_002_fixture,
 };
 
-use dgr_core_bypass_harness::val_002_fixtures::fixture_catalog;
+use dgr_core_bypass_harness::val_002_fixtures::{
+    FIXED_NOW_UNIX_SECONDS, FixtureClock, fixture_catalog,
+};
 
 use dgr_core_bypass_harness::founder_authored_guard::FounderAuthoredGuard;
 use dgr_core_bypass_harness::{ATTACK_SET, HarnessTarget, RequiredOutcome, attack_by_id};
@@ -20,7 +22,7 @@ fn observe_val_002_fixture(fixture_id: &str, attack_id: &str) -> BeforeToolCallO
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
     let mut tool = RecordingToolProbe::default();
 
-    let observed = adapter.before_tool_call(&request, &mut tool);
+    let observed = adapter.before_tool_call(&request, fixture.clock.now_unix_seconds(), &mut tool);
 
     assert_eq!(
         tool.invocation_count(),
@@ -84,7 +86,7 @@ fn atk_10_malformed_length_is_denied_before_parsing() {
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
     let mut tool = RecordingToolProbe::default();
 
-    let observed = adapter.before_tool_call(&request, &mut tool);
+    let observed = adapter.before_tool_call(&request, FIXED_NOW_UNIX_SECONDS, &mut tool);
 
     assert_eq!(tool.invocation_count(), 0);
     assert_eq!(
@@ -146,7 +148,8 @@ fn assert_gate_case(id: &str) {
 
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
     let mut tool = RecordingToolProbe::default();
-    let observed = adapter.before_tool_call(&request_for_attack(case), &mut tool);
+    let observed =
+        adapter.before_tool_call(&request_for_attack(case), FIXED_NOW_UNIX_SECONDS, &mut tool);
 
     match observed {
         BeforeToolCallObservation::Blocked {
@@ -188,7 +191,7 @@ fn unimplemented_guard_cannot_reach_the_effectful_probe() {
     let mut tool = RecordingToolProbe::default();
 
     let result = catch_unwind(AssertUnwindSafe(|| {
-        adapter.before_tool_call(&request, &mut tool)
+        adapter.before_tool_call(&request, FIXED_NOW_UNIX_SECONDS, &mut tool)
     }));
 
     assert_eq!(
@@ -214,7 +217,7 @@ fn atk_01_no_authorization_is_blocked_before_tool_execution() {
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
     let mut tool = RecordingToolProbe::default();
 
-    let observed = adapter.before_tool_call(&request, &mut tool);
+    let observed = adapter.before_tool_call(&request, FIXED_NOW_UNIX_SECONDS, &mut tool);
 
     assert_eq!(
         tool.invocation_count(),
@@ -233,7 +236,70 @@ fn atk_01_no_authorization_is_blocked_before_tool_execution() {
     );
 }
 
-ignored_gate_attack!(atk_02_expired_token, "ATK-02");
+#[test]
+fn atk_02_expired_beyond_skew_is_denied() {
+    assert_eq!(
+        observe_val_002_fixture("expired-beyond-skew", "ATK-02"),
+        BeforeToolCallObservation::Blocked {
+            outcome: RequiredOutcome::Block,
+            denial_signal: "ATK-02 expired capability token",
+            authorization_issued: false,
+            effectful_invocations: 0,
+        }
+    );
+}
+
+#[test]
+fn atk_02_at_skew_boundary_reaches_next_founder_step() {
+    assert_eq!(
+        observe_val_002_fixture("expired-within-skew", "ATK-02"),
+        BeforeToolCallObservation::GuardFault {
+            fault: GuardFault::FounderImplementationRequired,
+            authorization_issued: false,
+            effectful_invocations: 0,
+        }
+    );
+}
+
+#[test]
+fn atk_02_just_outside_skew_is_denied() {
+    assert_eq!(
+        observe_val_002_fixture("expired-just-outside-skew", "ATK-02"),
+        BeforeToolCallObservation::Blocked {
+            outcome: RequiredOutcome::Block,
+            denial_signal: "ATK-02 expired capability token",
+            authorization_issued: false,
+            effectful_invocations: 0,
+        }
+    );
+}
+
+#[test]
+fn atk_02_overlong_lifetime_is_denied() {
+    assert_eq!(
+        observe_val_002_fixture("lifetime-over-maximum", "ATK-02"),
+        BeforeToolCallObservation::Blocked {
+            outcome: RequiredOutcome::Block,
+            denial_signal: "ATK-02 invalid capability token lifetime",
+            authorization_issued: false,
+            effectful_invocations: 0,
+        }
+    );
+}
+
+#[test]
+fn atk_02_reversed_lifetime_is_denied() {
+    assert_eq!(
+        observe_val_002_fixture("lifetime-reversed", "ATK-02"),
+        BeforeToolCallObservation::Blocked {
+            outcome: RequiredOutcome::Block,
+            denial_signal: "ATK-02 invalid capability token lifetime",
+            authorization_issued: false,
+            effectful_invocations: 0,
+        }
+    );
+}
+
 ignored_gate_attack!(atk_03_replayed_token, "ATK-03");
 ignored_gate_attack!(atk_04_missing_justification, "ATK-04");
 ignored_gate_attack!(atk_05_ambiguous_evidence, "ATK-05");

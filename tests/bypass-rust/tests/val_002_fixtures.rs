@@ -16,6 +16,19 @@ use dgr_core_bypass_harness::founder_token_verification::{
     CONFORMANCE_K2_KEY_ID, CONFORMANCE_K2_PUBLIC_KEY,
 };
 
+use dgr_core_bypass_harness::founder_authored_guard::{
+    CONFORMANCE_EXPIRY_SKEW_SECONDS, CONFORMANCE_MAXIMUM_LIFETIME_SECONDS,
+};
+
+#[test]
+fn founder_time_constants_match_val_002_contract() {
+    assert_eq!(CONFORMANCE_EXPIRY_SKEW_SECONDS, EXPIRY_SKEW_SECONDS);
+    assert_eq!(
+        CONFORMANCE_MAXIMUM_LIFETIME_SECONDS,
+        MAXIMUM_LIFETIME_SECONDS
+    );
+}
+
 #[test]
 fn founder_k2_entry_matches_val_002_registered_key() {
     let catalog = fixture_catalog();
@@ -74,6 +87,8 @@ fn catalog_is_complete_unique_and_deterministic() {
         "tampered-expires-at",
         "malformed-amount-decimal",
         "malformed-amount-leading-zero",
+        "lifetime-over-maximum",
+        "lifetime-reversed",
     ];
     let actual: BTreeSet<_> = first.fixtures.iter().map(|fixture| fixture.id).collect();
     let expected: BTreeSet<_> = expected_ids.into_iter().collect();
@@ -206,6 +221,26 @@ fn valid_and_skew_boundary_outcomes_are_explicit_fixture_data() {
         just_outside.expected_sequence,
         [ExpectedFixtureOutcome::Deny]
     );
+
+    //step 3 piece2
+    let overlong = catalog
+        .by_id("lifetime-over-maximum")
+        .expect("overlong-lifetime fixture");
+    let overlong_token = overlong.token.as_ref().expect("overlong token");
+
+    assert_eq!(
+        overlong_token.signed_expires_at - overlong_token.issued_at,
+        MAXIMUM_LIFETIME_SECONDS + 1
+    );
+    assert_eq!(overlong.expected_sequence, [ExpectedFixtureOutcome::Deny]);
+
+    let reversed = catalog
+        .by_id("lifetime-reversed")
+        .expect("reversed-lifetime fixture");
+    let reversed_token = reversed.token.as_ref().expect("reversed token");
+
+    assert!(reversed_token.signed_expires_at < reversed_token.issued_at);
+    assert_eq!(reversed.expected_sequence, [ExpectedFixtureOutcome::Deny]);
 }
 
 #[test]
