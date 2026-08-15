@@ -33,12 +33,18 @@ fn observe_val_002_fixture(fixture_id: &str, attack_id: &str) -> BeforeToolCallO
     observed
 }
 
+fn required_outcome(attack_id: &str) -> RequiredOutcome {
+    attack_by_id(attack_id)
+        .unwrap_or_else(|| panic!("{attack_id} must be registered"))
+        .expected
+}
+
 #[test]
 fn atk_10_unknown_key_is_denied() {
     assert_eq!(
         observe_val_002_fixture("unknown-key-id", "ATK-10"),
         BeforeToolCallObservation::Blocked {
-            outcome: RequiredOutcome::Deny,
+            outcome: required_outcome("ATK-10"),
             denial_signal: "ATK-10 unknown key id",
             authorization_issued: false,
             effectful_invocations: 0,
@@ -51,7 +57,7 @@ fn atk_10_tampered_expiry_fails_signature_verification() {
     assert_eq!(
         observe_val_002_fixture("tampered-expires-at", "ATK-10"),
         BeforeToolCallObservation::Blocked {
-            outcome: RequiredOutcome::Deny,
+            outcome: required_outcome("ATK-10"),
             denial_signal: "ATK-10 invalid signature",
             authorization_issued: false,
             effectful_invocations: 0,
@@ -92,7 +98,7 @@ fn atk_10_malformed_length_is_denied_before_parsing() {
     assert_eq!(
         observed,
         BeforeToolCallObservation::Blocked {
-            outcome: RequiredOutcome::Deny,
+            outcome: case.expected,
             denial_signal: "ATK-10 malformed token length",
             authorization_issued: false,
             effectful_invocations: 0,
@@ -227,7 +233,7 @@ fn atk_01_no_authorization_is_blocked_before_tool_execution() {
     assert_eq!(
         observed,
         BeforeToolCallObservation::Blocked {
-            outcome: RequiredOutcome::Block,
+            outcome: case.expected,
             denial_signal: "ATK-01 no valid capability token",
             authorization_issued: false,
             effectful_invocations: 0,
@@ -241,7 +247,7 @@ fn atk_02_expired_beyond_skew_is_denied() {
     assert_eq!(
         observe_val_002_fixture("expired-beyond-skew", "ATK-02"),
         BeforeToolCallObservation::Blocked {
-            outcome: RequiredOutcome::Block,
+            outcome: required_outcome("ATK-02"),
             denial_signal: "ATK-02 expired capability token",
             authorization_issued: false,
             effectful_invocations: 0,
@@ -266,7 +272,7 @@ fn atk_02_just_outside_skew_is_denied() {
     assert_eq!(
         observe_val_002_fixture("expired-just-outside-skew", "ATK-02"),
         BeforeToolCallObservation::Blocked {
-            outcome: RequiredOutcome::Block,
+            outcome: required_outcome("ATK-02"),
             denial_signal: "ATK-02 expired capability token",
             authorization_issued: false,
             effectful_invocations: 0,
@@ -279,7 +285,7 @@ fn atk_02_overlong_lifetime_is_denied() {
     assert_eq!(
         observe_val_002_fixture("lifetime-over-maximum", "ATK-02"),
         BeforeToolCallObservation::Blocked {
-            outcome: RequiredOutcome::Block,
+            outcome: required_outcome("ATK-02"),
             denial_signal: "ATK-02 invalid capability token lifetime",
             authorization_issued: false,
             effectful_invocations: 0,
@@ -292,7 +298,7 @@ fn atk_02_reversed_lifetime_is_denied() {
     assert_eq!(
         observe_val_002_fixture("lifetime-reversed", "ATK-02"),
         BeforeToolCallObservation::Blocked {
-            outcome: RequiredOutcome::Block,
+            outcome: required_outcome("ATK-02"),
             denial_signal: "ATK-02 invalid capability token lifetime",
             authorization_issued: false,
             effectful_invocations: 0,

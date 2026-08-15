@@ -60,7 +60,7 @@ impl GuardDecisionPort for FounderAuthoredGuard {
 
                     if !lifetime_is_valid {
                         return Ok(GuardDecision::Deny {
-                            outcome: RequiredOutcome::Block,
+                            outcome: RequiredOutcome::Deny,
                             denial_signal: "ATK-02 invalid capability token lifetime",
                         });
                     }
@@ -74,7 +74,7 @@ impl GuardDecisionPort for FounderAuthoredGuard {
                         Err(GuardFault::FounderImplementationRequired)
                     } else {
                         Ok(GuardDecision::Deny {
-                            outcome: RequiredOutcome::Block,
+                            outcome: RequiredOutcome::Deny,
                             denial_signal: "ATK-02 expired capability token",
                         })
                     }
