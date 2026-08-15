@@ -1,15 +1,6 @@
 name: CI
 
-# Phase 0 (spine only). This workflow is INTENTIONALLY RED.
-#
-#   - `structure` is expected to PASS (governance spine present, README disclaimers).
-#   - `bypass-suite` is expected to FAIL: nothing is implemented, so the bypass
-#     tests (which assert the secure outcome) cannot pass. That red state is the
-#     correct, fail-closed-by-absence signal for Phase 0.
-#
-# Do NOT mark `bypass-suite` as a required status check. Flipping it to required
-# is a deliberate, later, HUMAN step taken only once a real gate exists and the
-# suite legitimately goes green.
+# Phase 1 CI. Governance and the canonical Rust bypass harness must stay green.
 
 on:
   push:
@@ -32,19 +23,19 @@ jobs:
       - name: Structural check
         run: node scripts/check-structure.mjs
 
-  # Expected: FAIL (red by design) in Phase 0. See tests/bypass/README.md.
-  # green = enforcement proven. NOT a required status check (see header).
-  bypass-suite:
-    name: Bypass suite (red by design until enforcement exists)
+  rust-bypass:
+    name: Rust format / build / test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Run bypass suite
-        # No continue-on-error: this job SHOULD report failure in Phase 0.
-        run: node --test tests/bypass
+      - name: Ensure rustfmt is installed
+        run: rustup component add rustfmt
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path tests/bypass-rust/Cargo.toml --all -- --check
+      - name: Build Rust bypass harness
+        run: cargo build --manifest-path tests/bypass-rust/Cargo.toml --all-targets --locked
+      - name: Test Rust bypass harness
+        run: cargo test --manifest-path tests/bypass-rust/Cargo.toml --all-targets --locked
 
   # ---------------------------------------------------------------------------
   # PHASE 1 PLACEHOLDER — DO NOT IMPLEMENT NOW.
