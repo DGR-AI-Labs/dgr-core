@@ -8,6 +8,11 @@ use crate::{AttackCase, DecisionContext, ProposedAction};
 pub const EFFECTFUL_ACTION: ProposedAction = ProposedAction {
     tool: "payments",
     action: "release",
+    amount: "",
+    currency: "",
+    destination: "",
+    invoice_id: "",
+    source_account: "",
 };
 
 pub const ATK_01_CONTEXT: DecisionContext = DecisionContext {
@@ -23,7 +28,7 @@ pub const OUT_OF_SCOPE_TOKEN_BYTES: &[u8] = b"fixture:valid-token-for-another-ac
 
 pub const fn no_token_request() -> BeforeToolCallRequest<'static> {
     BeforeToolCallRequest {
-        proposed_action: &EFFECTFUL_ACTION,
+        proposed_action: EFFECTFUL_ACTION,
         context: &ATK_01_CONTEXT,
         capability_token: None,
     }
@@ -72,7 +77,7 @@ pub fn request_for_attack(case: &'static AttackCase) -> BeforeToolCallRequest<'s
         _ => None,
     };
     BeforeToolCallRequest {
-        proposed_action: &case.proposed_action,
+        proposed_action: case.proposed_action,
         context: &case.context,
         capability_token,
     }
@@ -86,8 +91,20 @@ pub fn request_for_val_002_fixture<'a>(
     case: &'static AttackCase,
     fixture: &'a Val002Fixture,
 ) -> BeforeToolCallRequest<'a> {
+    let presented = fixture
+        .request
+        .expect("VAL-002 fixture must carry a presented action");
+
     BeforeToolCallRequest {
-        proposed_action: &case.proposed_action,
+        proposed_action: ProposedAction {
+            tool: case.proposed_action.tool,
+            action: presented.action,
+            amount: presented.amount,
+            currency: presented.currency,
+            destination: presented.destination,
+            invoice_id: presented.invoice_id,
+            source_account: presented.source_account,
+        },
         context: &case.context,
         capability_token: fixture.token.as_ref().map(|token| OpaqueCapabilityToken {
             bytes: &token.wire_bytes,
@@ -97,7 +114,7 @@ pub fn request_for_val_002_fixture<'a>(
 
 const fn token_request(bytes: &'static [u8]) -> BeforeToolCallRequest<'static> {
     BeforeToolCallRequest {
-        proposed_action: &EFFECTFUL_ACTION,
+        proposed_action: EFFECTFUL_ACTION,
         context: &ATK_01_CONTEXT,
         capability_token: Some(OpaqueCapabilityToken { bytes }),
     }

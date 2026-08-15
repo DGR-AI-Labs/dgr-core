@@ -15,7 +15,7 @@ pub struct OpaqueCapabilityToken<'a> {
 /// The intercepted call presented at OpenClaw's `before_tool_call` seam.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BeforeToolCallRequest<'a> {
-    pub proposed_action: &'a ProposedAction,
+    pub proposed_action: ProposedAction,
     pub context: &'a DecisionContext,
     pub capability_token: Option<OpaqueCapabilityToken<'a>>,
 }
@@ -112,7 +112,7 @@ where
             Ok(GuardDecision::Allow {
                 authorization_reference,
             }) => {
-                tool.invoke(request.proposed_action);
+                tool.invoke(&request.proposed_action);
                 BeforeToolCallObservation::Proceeded {
                     authorization_reference,
                     authorization_issued: true,

@@ -20,6 +20,22 @@ use dgr_core_bypass_harness::founder_authored_guard::{
     CONFORMANCE_EXPIRY_SKEW_SECONDS, CONFORMANCE_MAXIMUM_LIFETIME_SECONDS,
 };
 
+use dgr_core_bypass_harness::founder_authored_guard::conformance_canonical_action_bytes;
+
+#[test]
+fn founder_canonicalizer_matches_arch_005_fixture_bytes() {
+    let catalog = fixture_catalog();
+    let fixture = catalog.by_id("valid").expect("valid fixture");
+    let case = attack_by_id("ATK-11").expect("ATK-11");
+    let request = request_for_val_002_fixture(case, fixture);
+    let fixture_request = fixture.request.expect("presented action");
+
+    assert_eq!(
+        conformance_canonical_action_bytes(&request.proposed_action).expect("canonical action"),
+        fixture_canonical_action_bytes(&fixture_request),
+    );
+}
+
 #[test]
 fn founder_time_constants_match_val_002_contract() {
     assert_eq!(CONFORMANCE_EXPIRY_SKEW_SECONDS, EXPIRY_SKEW_SECONDS);
