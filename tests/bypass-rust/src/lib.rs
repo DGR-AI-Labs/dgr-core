@@ -38,6 +38,11 @@ pub enum HarnessTarget {
 pub struct ProposedAction {
     pub tool: &'static str,
     pub action: &'static str,
+    pub amount: &'static str,
+    pub currency: &'static str,
+    pub destination: &'static str,
+    pub invoice_id: &'static str,
+    pub source_account: &'static str,
 }
 
 /// Opaque scenario context. The scenario is test data, not enforcement logic.
@@ -75,7 +80,15 @@ const fn case(
         srs07_trace,
         target,
         expected,
-        proposed_action: ProposedAction { tool, action },
+        proposed_action: ProposedAction {
+            tool,
+            action,
+            amount: "",
+            currency: "",
+            destination: "",
+            invoice_id: "",
+            source_account: "",
+        },
         context: DecisionContext {
             attack_id: id,
             scenario,

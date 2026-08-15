@@ -85,7 +85,7 @@ fn atk_10_malformed_length_is_denied_before_parsing() {
     let malformed = &wire[..wire.len() - 1];
     let case = attack_by_id("ATK-10").expect("ATK-10");
     let request = BeforeToolCallRequest {
-        proposed_action: &case.proposed_action,
+        proposed_action: case.proposed_action,
         context: &case.context,
         capability_token: Some(OpaqueCapabilityToken { bytes: malformed }),
     };
@@ -306,14 +306,60 @@ fn atk_02_reversed_lifetime_is_denied() {
     );
 }
 
+fn assert_binding_denied(fixture_id: &str, attack_id: &str) {
+    assert_eq!(
+        observe_val_002_fixture(fixture_id, attack_id),
+        BeforeToolCallObservation::Blocked {
+            outcome: required_outcome(attack_id),
+            denial_signal: "ATK-08/09/11 action commitment mismatch",
+            authorization_issued: false,
+            effectful_invocations: 0,
+        }
+    );
+}
+
+#[test]
+fn atk_08_scope_escalation_is_denied() {
+    for fixture_id in [
+        "swap-amount",
+        "swap-destination",
+        "swap-source-account",
+        "malformed-amount-decimal",
+        "malformed-amount-leading-zero",
+    ] {
+        assert_binding_denied(fixture_id, "ATK-08");
+    }
+}
+
+#[test]
+fn atk_09_token_substitution_is_denied() {
+    assert_binding_denied("swap-invoice-id", "ATK-09");
+}
+
+#[test]
+fn atk_11_parameter_swap_is_denied() {
+    assert_binding_denied("wrong-action", "ATK-11");
+}
+
+#[test]
+fn nonbinding_changes_reach_the_next_founder_step() {
+    for fixture_id in ["change-idempotency-key", "change-memo"] {
+        assert_eq!(
+            observe_val_002_fixture(fixture_id, "ATK-11"),
+            BeforeToolCallObservation::GuardFault {
+                fault: GuardFault::FounderImplementationRequired,
+                authorization_issued: false,
+                effectful_invocations: 0,
+            }
+        );
+    }
+}
+
 ignored_gate_attack!(atk_03_replayed_token, "ATK-03");
 ignored_gate_attack!(atk_04_missing_justification, "ATK-04");
 ignored_gate_attack!(atk_05_ambiguous_evidence, "ATK-05");
 ignored_gate_attack!(atk_06_approval_timeout, "ATK-06");
 ignored_gate_attack!(atk_07_hook_error, "ATK-07");
-ignored_gate_attack!(atk_08_scope_escalation, "ATK-08");
-ignored_gate_attack!(atk_09_token_substitution, "ATK-09");
-ignored_gate_attack!(atk_11_parameter_swap, "ATK-11");
 ignored_gate_attack!(atk_12_revoked_credential, "ATK-12");
 ignored_gate_attack!(atk_13_audit_append_failure, "ATK-13");
 ignored_gate_attack!(atk_14_cross_tenant_use, "ATK-14");
