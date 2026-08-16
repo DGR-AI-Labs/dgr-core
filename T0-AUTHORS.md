@@ -20,11 +20,16 @@ Only the founder authors the bodies of these functions:
 | `tests/bypass-rust/src/founder_s2_consumption_store.rs` | `S2ConsumptionStore::consume` | Durable-local, atomic single-use consumption before allow |
 | `tests/bypass-rust/src/founder_consumption_store.rs` | `ConsumptionStore::consume` | Store boundary retained for S2 now and S3 later |
 
-Each unit currently contains only a public signature, a
-`{FOUNDER-AUTHORS}` marker, and
-`unimplemented!("FounderImplementationRequired")`. It cannot verify, decide,
-deny, consume, or return allow. An agent must not replace, complete, refactor,
-or route around that default.
+## Current implementation state
+
+All five units now contain founder-authored enforcement pending the full T0
+review gate. The default `ConsumptionStore` implementation still returns
+`FounderImplementationRequired` explicitly so an absent concrete store fails
+closed. The S2 unit exposes an in-memory constructor for isolated conformance
+tests and a file-backed constructor for restart-durable local consumption.
+
+This state record does not relax the authorship boundary. An agent must not
+replace, complete, refactor, or route around any founder-authored unit.
 
 ## Agent-authored supporting units
 
@@ -37,7 +42,8 @@ The following are outside the founder implementation surface:
 - `tests/bypass-rust/tests/adapter_harness.rs`: adapter-plumbing tests using
   scripted decisions; and
 - `tests/bypass-rust/tests/attack_set.rs`: conformance expectations, including
-  the deliberately red ATK-01 test.
+  active CORE-002 checks for ATK-01/02/03/08/09/10/11/13 and explicitly
+  deferred cases.
 
 These supporting units must not absorb token verification, decision policy,
 error-to-deny logic, consumption, audit recording, or any real tool

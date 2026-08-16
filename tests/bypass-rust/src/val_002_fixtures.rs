@@ -448,6 +448,10 @@ fn fixture_action_commitment(canonical_action_bytes: &[u8]) -> [u8; 32] {
     Sha256::digest(canonical_action_bytes).into()
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "fixture construction keeps signed and presented test data explicit"
+)]
 fn fixture(
     id: &'static str,
     attack_ids: &'static [&'static str],

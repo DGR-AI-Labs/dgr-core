@@ -1,8 +1,9 @@
-//! CORE-001 portable bypass-attack registry.
+//! CORE-001 registry and CORE-002 conformance harness.
 //!
-//! T0 BOUNDARY: this crate is test data and a compile-only interface scaffold.
-//! It contains no token, decision-point, runtime-guard, or audit-chain logic.
-//! See ../T0-BOUNDARY.md before changing this crate.
+//! T0 BOUNDARY: this crate contains T3 test plumbing plus explicitly marked,
+//! founder-owned T0 verification, decision, fail-closed, and consumption
+//! units. It is not a production gate. See ../T0-BOUNDARY.md before changing
+//! this crate.
 
 pub mod before_tool_call;
 pub mod fixtures;
@@ -64,6 +65,10 @@ pub struct AttackCase {
     pub context: DecisionContext,
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "registry rows keep every immutable conformance field explicit"
+)]
 const fn case(
     id: &'static str,
     name: &'static str,

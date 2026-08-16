@@ -4,6 +4,7 @@
 //! decision, convert a gate fault into an authorization result, or write an
 //! audit record. The effectful target is a test probe, never a real tool.
 
+use crate::founder_consumption_store::ConsumptionStore;
 use crate::{DecisionContext, ProposedAction, RequiredOutcome};
 
 /// Opaque bytes passed to the founder-authored guard without interpretation.
@@ -46,6 +47,7 @@ pub trait GuardDecisionPort {
         &self,
         request: &BeforeToolCallRequest<'_>,
         now_unix_seconds: u64,
+        store: &mut dyn ConsumptionStore,
     ) -> Result<GuardDecision, GuardFault>;
 }
 
@@ -94,12 +96,13 @@ where
         &self,
         request: &BeforeToolCallRequest<'_>,
         now_unix_seconds: u64,
+        store: &mut dyn ConsumptionStore,
         tool: &mut T,
     ) -> BeforeToolCallObservation
     where
         T: EffectfulToolProbe,
     {
-        match self.guard.decide(request, now_unix_seconds) {
+        match self.guard.decide(request, now_unix_seconds, store) {
             Ok(GuardDecision::Deny {
                 outcome,
                 denial_signal,

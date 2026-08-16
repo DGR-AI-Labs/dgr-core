@@ -11,6 +11,8 @@ use dgr_core_bypass_harness::val_002_fixtures::{
 };
 
 use dgr_core_bypass_harness::founder_authored_guard::FounderAuthoredGuard;
+use dgr_core_bypass_harness::founder_consumption_store::{ConsumeOutcome, ConsumptionStore};
+use dgr_core_bypass_harness::founder_s2_consumption_store::S2ConsumptionStore;
 use dgr_core_bypass_harness::{ATTACK_SET, HarnessTarget, RequiredOutcome, attack_by_id};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -20,17 +22,15 @@ fn observe_val_002_fixture(fixture_id: &str, attack_id: &str) -> BeforeToolCallO
     let case = attack_by_id(attack_id).expect("registered attack");
     let request = request_for_val_002_fixture(case, fixture);
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
+    let mut store = S2ConsumptionStore::open_in_memory().expect("store");
     let mut tool = RecordingToolProbe::default();
 
-    let observed = adapter.before_tool_call(&request, fixture.clock.now_unix_seconds(), &mut tool);
-
-    assert_eq!(
-        tool.invocation_count(),
-        0,
-        "{fixture_id} reached the effectful tool"
-    );
-
-    observed
+    adapter.before_tool_call(
+        &request,
+        fixture.clock.now_unix_seconds(),
+        &mut store,
+        &mut tool,
+    )
 }
 
 fn required_outcome(attack_id: &str) -> RequiredOutcome {
@@ -66,13 +66,13 @@ fn atk_10_tampered_expiry_fails_signature_verification() {
 }
 
 #[test]
-fn step_2_valid_token_reaches_next_founder_step() {
+fn valid_token_is_authorized() {
     assert_eq!(
         observe_val_002_fixture("valid", "ATK-11"),
-        BeforeToolCallObservation::GuardFault {
-            fault: GuardFault::FounderImplementationRequired,
-            authorization_issued: false,
-            effectful_invocations: 0,
+        BeforeToolCallObservation::Proceeded {
+            authorization_reference: "CORE-002 authorized",
+            authorization_issued: true,
+            effectful_invocations: 1,
         }
     );
 }
@@ -90,10 +90,11 @@ fn atk_10_malformed_length_is_denied_before_parsing() {
         capability_token: Some(OpaqueCapabilityToken { bytes: malformed }),
     };
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
+    let mut store = S2ConsumptionStore::open_in_memory().expect("store");
     let mut tool = RecordingToolProbe::default();
 
-    let observed = adapter.before_tool_call(&request, FIXED_NOW_UNIX_SECONDS, &mut tool);
-
+    let observed =
+        adapter.before_tool_call(&request, FIXED_NOW_UNIX_SECONDS, &mut store, &mut tool);
     assert_eq!(tool.invocation_count(), 0);
     assert_eq!(
         observed,
@@ -151,11 +152,15 @@ fn assert_gate_case(id: &str) {
         HarnessTarget::ExternalIam,
         "external IAM assertions must not be simulated by the gate"
     );
-
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
+    let mut store = S2ConsumptionStore::open_in_memory().expect("store");
     let mut tool = RecordingToolProbe::default();
-    let observed =
-        adapter.before_tool_call(&request_for_attack(case), FIXED_NOW_UNIX_SECONDS, &mut tool);
+    let observed = adapter.before_tool_call(
+        &request_for_attack(case),
+        FIXED_NOW_UNIX_SECONDS,
+        &mut store,
+        &mut tool,
+    );
 
     match observed {
         BeforeToolCallObservation::Blocked {
@@ -191,19 +196,20 @@ macro_rules! ignored_gate_attack {
 }
 
 #[test]
-fn unimplemented_guard_cannot_reach_the_effectful_probe() {
+fn no_token_guard_cannot_reach_the_effectful_probe() {
     let request = no_token_request();
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
+    let mut store = S2ConsumptionStore::open_in_memory().expect("store");
     let mut tool = RecordingToolProbe::default();
 
     let result = catch_unwind(AssertUnwindSafe(|| {
-        adapter.before_tool_call(&request, FIXED_NOW_UNIX_SECONDS, &mut tool)
+        adapter.before_tool_call(&request, FIXED_NOW_UNIX_SECONDS, &mut store, &mut tool)
     }));
 
     assert_eq!(
         tool.invocation_count(),
         0,
-        "the founder stub reached the effectful probe"
+        "the no-token guard reached the effectful probe"
     );
     if let Ok(observed) = result {
         assert!(
@@ -220,10 +226,13 @@ fn atk_01_no_authorization_is_blocked_before_tool_execution() {
 
     let request = no_token_request();
     assert!(request.capability_token.is_none());
+
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
+    let mut store = S2ConsumptionStore::open_in_memory().expect("store");
     let mut tool = RecordingToolProbe::default();
 
-    let observed = adapter.before_tool_call(&request, FIXED_NOW_UNIX_SECONDS, &mut tool);
+    let observed =
+        adapter.before_tool_call(&request, FIXED_NOW_UNIX_SECONDS, &mut store, &mut tool);
 
     assert_eq!(
         tool.invocation_count(),
@@ -256,13 +265,13 @@ fn atk_02_expired_beyond_skew_is_denied() {
 }
 
 #[test]
-fn atk_02_at_skew_boundary_reaches_next_founder_step() {
+fn atk_02_at_skew_boundary_is_authorized() {
     assert_eq!(
         observe_val_002_fixture("expired-within-skew", "ATK-02"),
-        BeforeToolCallObservation::GuardFault {
-            fault: GuardFault::FounderImplementationRequired,
-            authorization_issued: false,
-            effectful_invocations: 0,
+        BeforeToolCallObservation::Proceeded {
+            authorization_reference: "CORE-002 authorized",
+            authorization_issued: true,
+            effectful_invocations: 1,
         }
     );
 }
@@ -342,26 +351,108 @@ fn atk_11_parameter_swap_is_denied() {
 }
 
 #[test]
-fn nonbinding_changes_reach_the_next_founder_step() {
+fn nonbinding_changes_are_authorized() {
     for fixture_id in ["change-idempotency-key", "change-memo"] {
         assert_eq!(
             observe_val_002_fixture(fixture_id, "ATK-11"),
-            BeforeToolCallObservation::GuardFault {
-                fault: GuardFault::FounderImplementationRequired,
-                authorization_issued: false,
-                effectful_invocations: 0,
+            BeforeToolCallObservation::Proceeded {
+                authorization_reference: "CORE-002 authorized",
+                authorization_issued: true,
+                effectful_invocations: 1,
             }
         );
     }
 }
 
-ignored_gate_attack!(atk_03_replayed_token, "ATK-03");
+#[test]
+fn atk_03_replayed_token() {
+    let catalog = fixture_catalog();
+    let fixture = catalog.by_id("replay").expect("replay fixture");
+    let case = attack_by_id("ATK-03").expect("ATK-03 is registered");
+    let request = request_for_val_002_fixture(case, fixture);
+    let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
+    let mut store = S2ConsumptionStore::open_in_memory().expect("store");
+
+    let mut first_tool = RecordingToolProbe::default();
+    let first = adapter.before_tool_call(
+        &request,
+        fixture.clock.now_unix_seconds(),
+        &mut store,
+        &mut first_tool,
+    );
+
+    let mut second_tool = RecordingToolProbe::default();
+    let second = adapter.before_tool_call(
+        &request,
+        fixture.clock.now_unix_seconds(),
+        &mut store,
+        &mut second_tool,
+    );
+
+    assert_eq!(
+        first,
+        BeforeToolCallObservation::Proceeded {
+            authorization_reference: "CORE-002 authorized",
+            authorization_issued: true,
+            effectful_invocations: 1,
+        }
+    );
+    assert_eq!(first_tool.invocation_count(), 1);
+
+    assert_eq!(
+        second,
+        BeforeToolCallObservation::Blocked {
+            outcome: required_outcome("ATK-03"),
+            denial_signal: "ATK-03 replayed capability token",
+            authorization_issued: false,
+            effectful_invocations: 0,
+        }
+    );
+    assert_eq!(second_tool.invocation_count(), 0);
+}
+
+struct FaultingConsumptionStore;
+
+impl ConsumptionStore for FaultingConsumptionStore {
+    fn consume(&mut self, _authorization_reference: &[u8]) -> ConsumeOutcome {
+        ConsumeOutcome::Faulted(GuardFault::Unavailable)
+    }
+}
+
+#[test]
+fn atk_13_audit_append_failure() {
+    let catalog = fixture_catalog();
+    let fixture = catalog.by_id("valid").expect("valid fixture");
+    let case = attack_by_id("ATK-13").expect("ATK-13 is registered");
+    let request = request_for_val_002_fixture(case, fixture);
+    let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
+    let mut store = FaultingConsumptionStore;
+    let mut tool = RecordingToolProbe::default();
+
+    let observed = adapter.before_tool_call(
+        &request,
+        fixture.clock.now_unix_seconds(),
+        &mut store,
+        &mut tool,
+    );
+
+    assert_eq!(
+        observed,
+        BeforeToolCallObservation::Blocked {
+            outcome: required_outcome("ATK-13"),
+            denial_signal: "CORE-002 guard unavailable",
+            authorization_issued: false,
+            effectful_invocations: 0,
+        }
+    );
+    assert_eq!(tool.invocation_count(), 0);
+}
+
 ignored_gate_attack!(atk_04_missing_justification, "ATK-04");
 ignored_gate_attack!(atk_05_ambiguous_evidence, "ATK-05");
 ignored_gate_attack!(atk_06_approval_timeout, "ATK-06");
 ignored_gate_attack!(atk_07_hook_error, "ATK-07");
 ignored_gate_attack!(atk_12_revoked_credential, "ATK-12");
-ignored_gate_attack!(atk_13_audit_append_failure, "ATK-13");
 ignored_gate_attack!(atk_14_cross_tenant_use, "ATK-14");
 
 #[test]
