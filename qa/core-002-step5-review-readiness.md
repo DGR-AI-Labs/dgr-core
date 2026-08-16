@@ -6,9 +6,14 @@
 
 ## Review disposition
 
-The Step 5 implementation is ready to enter the T0 review gate. It is not
-approved or merge-ready until the pending founder formatting, human,
-cross-model, three-tool SAST, and final sign-off evidence is attached.
+The Step 5 implementation has passed formatting and cross-model correctness
+review. It remains in the T0 review gate and is not merge-ready until the
+three-tool SAST, founder/human review, PR approval, and final sign-off evidence
+is attached.
+
+The cross-model disposition is recorded in
+`qa/core-002-step5-cross-model-review.md` against the exact reviewed commit and
+bundle digest.
 
 The founder-owned implementation now has one reachable allow path, after
 signature, temporal, typed request-binding, and atomic single-use checks. An
@@ -69,10 +74,9 @@ hosted-IAM assertion.
    `specs/CORE-002-guard-review-checklist.md` and attach file-and-line findings.
 2. Run and attach three independent SAST results. Clippy alone does not close
    this gate.
-3. Attach and resolve or explicitly accept the Claude cross-model QA findings.
-4. Confirm no test expectation was weakened and that every ignored case is
+3. Confirm no test expectation was weakened and that every ignored case is
    still accurately classified.
-5. Record founder/human approval in the protected review checklist, then merge
+4. Record founder/human approval in the protected review checklist, then merge
    through the normal PR path.
 
 ## Known non-blocking scope limits
