@@ -303,23 +303,24 @@ hosted/multi-tenant deployment.
 
 ## Harness contract and dependencies
 
-The non-T0 Rust scaffold stores these definitions as immutable test data and
-exposes only:
+The Rust conformance harness stores these definitions as immutable test data
+and exposes only:
 
 ```text
 submit(proposed action, context) -> observed decision
 ```
 
-Its placeholder implementation is deliberately unimplemented, and all
-enforcement conformance tests are ignored. CORE-002 through CORE-004 may supply
-an implementation of the interface without changing attack definitions.
-CORE-005 may wire the resulting suite into CI only after the T0 human gate.
+Founder-authored CORE-002 enforcement is present behind the same interface and
+is pending the full T0 review gate. ATK-01/02/03/08/09/10/11/13 are active;
+later CORE-003/004 and hosted cases remain explicitly ignored without changing
+their attack definitions. CORE-005 may wire the resulting suite into CI only
+after the T0 human gate.
 
-ATK-12 and ATK-13 need the real reviewed enforcement and dependency contracts
-before they can execute. ATK-14 needs the hosted tenant verifier. ATK-15 is an
-external IAM assertion and must be implemented in the hosted infrastructure
-test suite, not in the core gate. These are dependencies, not permission to
-stub token, decision-point, guard, ledger, or IAM logic here.
+ATK-12 still needs the reviewed revocation contract before it can execute.
+ATK-14 needs the hosted tenant verifier. ATK-15 is an external IAM assertion
+and must be implemented in the hosted infrastructure test suite, not in the
+core gate. These are dependencies, not permission to stub token,
+decision-point, guard, ledger, or IAM logic here.
 
 ## T0 boundary
 

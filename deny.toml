@@ -1,0 +1,36 @@
+[advisories]
+ignore = []
+
+[licenses]
+unused-allowed-license = "deny"
+include-dev = true
+include-build = true
+allow = [
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "MIT",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.8
+private = { ignore = false }
+
+[bans]
+multiple-versions = "deny"
+wildcards = "deny"
+highlight = "all"
+allow = []
+deny = []
+skip = [
+    { crate = "hashbrown@0.16.1", reason = "Temporary transitive split: sqlite-wasm-rs/rsqlite-vfs has not converged on hashlink's hashbrown line; no advisory is present in the reviewed lockfile." },
+    { crate = "syn@2.0.119", reason = "Temporary build-time proc-macro split: Ed25519/wasm dependencies require syn 2 while rsqlite-vfs/thiserror requires syn 3; no advisory is present in the reviewed lockfile." },
+]
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+required-git-spec = "rev"
+unused-allowed-source = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

@@ -8,6 +8,8 @@ use crate::before_tool_call::{
     BeforeToolCallRequest, GuardDecision, GuardDecisionPort, GuardFault,
 };
 
+use crate::founder_consumption_store::{ConsumeOutcome, ConsumptionStore};
+
 use crate::{ProposedAction, RequiredOutcome};
 use sha2::{Digest, Sha256};
 
@@ -16,6 +18,8 @@ use crate::founder_token_verification::{
     VerifyOutcome::{Faulted, Rejected, Verified},
     verify_capability_token,
 };
+
+use crate::founder_fail_closed::fail_closed_decision;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct FounderAuthoredGuard;
@@ -34,6 +38,7 @@ impl GuardDecisionPort for FounderAuthoredGuard {
         &self,
         request: &BeforeToolCallRequest<'_>,
         now_unix_seconds: u64,
+        store: &mut dyn ConsumptionStore,
     ) -> Result<GuardDecision, GuardFault> {
         match request.capability_token {
             None => Ok(GuardDecision::Deny {
@@ -53,7 +58,7 @@ impl GuardDecisionPort for FounderAuthoredGuard {
                         denial_signal,
                     })
                 }
-                Faulted(f) => Err(f),
+                Faulted(fault) => fail_closed_decision(fault),
                 Verified(token) => {
                     let lifetime_is_valid = token
                         .expires_at
@@ -67,10 +72,11 @@ impl GuardDecisionPort for FounderAuthoredGuard {
                         });
                     }
 
-                    let latest_valid_time = token
-                        .expires_at
-                        .checked_add(EXPIRY_SKEW_SECONDS)
-                        .ok_or(GuardFault::InternalError)?;
+                    let latest_valid_time = match token.expires_at.checked_add(EXPIRY_SKEW_SECONDS)
+                    {
+                        Some(time) => time,
+                        None => return fail_closed_decision(GuardFault::InternalError),
+                    };
 
                     if now_unix_seconds > latest_valid_time {
                         return Ok(GuardDecision::Deny {
@@ -92,7 +98,16 @@ impl GuardDecisionPort for FounderAuthoredGuard {
                         });
                     }
 
-                    Err(GuardFault::FounderImplementationRequired)
+                    match store.consume(&token.nonce) {
+                        ConsumeOutcome::Consumed => Ok(GuardDecision::Allow {
+                            authorization_reference: "CORE-002 authorized",
+                        }),
+                        ConsumeOutcome::AlreadyConsumed => Ok(GuardDecision::Deny {
+                            outcome: RequiredOutcome::Deny,
+                            denial_signal: "ATK-03 replayed capability token",
+                        }),
+                        ConsumeOutcome::Faulted(fault) => fail_closed_decision(fault),
+                    }
                 }
             },
         }

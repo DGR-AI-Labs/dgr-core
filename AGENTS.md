@@ -10,13 +10,14 @@ truth.** It wins over anything here. Reference it; do not duplicate it.
 
 ## Current-phase guardrail
 
-> **Phase 0 — spine only.** Do **NOT** implement the decision core. Hold the **FS-wedge scope
-> fence** (financial-services risk, fraud, payments; reject scope creep — generation speed is
-> not a reason to broaden). **The enforcement proof is the one un-rushable thing.**
+> **Phase 1 — enforcement proof.** Founder-authored T0 enforcement is permitted only in the
+> five units named by [`T0-AUTHORS.md`](T0-AUTHORS.md). Agents may review those units but may
+> not author, complete, refactor, or patch their enforcement logic. Hold the FS-wedge scope
+> fence and never weaken a bypass test to obtain green.
 
-The repo holds **specs, governance, and red (failing) scaffolding only.** Red CI and the failing
-bypass suite are intentional (fail-closed by absence) — never make them green by weakening the
-tests or the [`src/gate.mjs`](src/gate.mjs) stub.
+Tests, harnesses, fixtures, specs, and tooling may support the proof within their assigned
+tier. A green attack case must come from real founder-authored enforcement, not a bypass or
+reclassified expectation.
 
 ## Consequence-tier rules (Constitution P8)
 
