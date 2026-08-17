@@ -8,17 +8,17 @@
 
 ## Review disposition
 
-The implementation, cross-model review, adversarial tests, and three-engine raw
-SAST/SCA evidence are present. Step 5 remains **In Review**, not merge-ready,
-until the founder records dispositions for the eight analyzer findings, an
-independent human reviews the founder-authored T0 code, and the founder signs
-the protected checklist before the normal PR/merge path.
+The implementation merged through PR #68. The independent-human, cross-model,
+adversarial, and three-engine SAST/SCA reviews and founder finding dispositions
+were recorded through PR #70. The protected checklist accurately records that
+final checklist sign-off occurred after PR #68 merged, so the pre-merge timing
+item remains unchecked.
 
-Claude's independent QA pass over the final bundle reports PASS with no code
-defect and four confirmation items. Repository verification has resolved the
-fail-closed mapping and empty Rust-diff confirmations; cargo-deny exception
-adjudication and the two scoped test-only finding dispositions remain founder
-actions. See `qa/core-002-step5-claude-independent-qa-addendum.md`.
+On 2026-08-17, the founder confirmed that merging PR #70 was intended to
+formally accept the post-merge remediation. The durable decision and its limits
+are recorded in `qa/core-002-step5-governance-disposition.md`. This acceptance
+closes the Step 5 process nonconformance for backlog-status purposes without
+rewriting its history or weakening future T0 review gates.
 
 The cross-model review covered T0 commit
 `0727e327631b475990ef8d9b7ef3b2c3554050a8`. The final scans covered descendant
@@ -67,9 +67,9 @@ digests are indexed in `qa/sast/README.md`.
 
 | Engine | Execution and coverage | Findings | Current gate state |
 |---|---|---|---|
-| Semgrep 1.173.0, `p/rust` | completed; 14/14 Rust files; 0 scan errors | 1 INFO finding: test-only `std::env::temp_dir()` | founder disposition pending |
-| CodeQL 2.25.5, `codeql/rust-queries@0.1.35` | create/analyze exit 0; 14/14; 0 extraction/execution errors | 7 hard-coded cryptographic-value findings in deterministic fixtures | founder disposition pending |
-| cargo-deny 0.20.2 | exit 0 using committed `deny.toml` | 0 blocking diagnostics; 2 ban notes; 54 accepted-license notes | raw result passes; founder review pending |
+| Semgrep 1.173.0, `p/rust` | completed; 14/14 Rust files; 0 scan errors | 1 INFO finding: test-only `std::env::temp_dir()` | accepted as test-only by founder |
+| CodeQL 2.25.5, `codeql/rust-queries@0.1.35` | create/analyze exit 0; 14/14; 0 extraction/execution errors | 7 hard-coded cryptographic-value findings in deterministic fixtures | accepted as deterministic fixtures by founder |
+| cargo-deny 0.20.2 | exit 0 using committed `deny.toml` | 0 blocking diagnostics; 2 ban notes; 54 accepted-license notes | pass; temporary duplicate-version exceptions accepted by founder |
 
 The first unconfigured cargo-deny run against `0727e327...` is retained under
 `qa/sast/pre-policy-0727e327/`. It failed closed on license policy and motivated
@@ -98,18 +98,14 @@ The seven ignored cases are explicit deferrals, not Step 5 coverage:
 ATK-04/05/06/07/12/14 remain later-control cases and ATK-15 remains an external
 hosted-IAM assertion.
 
-## Remaining reviewer actions
+## Closure actions
 
-1. Founder: record a disposition for the Semgrep finding and one grouped
-   disposition for the seven CodeQL fixture findings. Suggested review text is
-   in `qa/core-002-step5-founder-review-input.md`.
-2. Independent human reviewer: review every founder-owned line against
-   `specs/CORE-002-guard-review-checklist.md`, confirm no test was weakened, and
-   record identity/date/file-and-line evidence.
-3. Founder: review the cargo-deny policy, its two version-pinned duplicate notes,
-   and accepted-license set; then complete and sign the protected checklist.
-4. Open the PR, obtain approval, and merge through the normal human path. Only
-   then may the backlog item move from In Review to Done.
+1. Review and merge the durable governance-disposition record without changing
+   the protected checklist's historical process-nonconformance entry.
+2. Reconcile `CORE-002-STEP5` to Done in the canonical backlog with links to
+   PR #68, PR #70, and the merged governance disposition.
+3. Keep parent `CORE-002` In Progress and retain all deferred attack and S3
+   scope classifications.
 
 ## Known non-blocking scope limits
 
