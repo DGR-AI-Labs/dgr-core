@@ -1,5 +1,9 @@
 # CORE-002 Step 5 cross-model review record
 
+The later independent QA pass over the final SAST/SCA bundle, including its
+founder-confirmation list and repository verification appendix, is recorded in
+`qa/core-002-step5-claude-independent-qa-addendum.md`.
+
 **Review date:** 2026-08-16  
 **Review type:** independent cross-model design and correctness review  
 **Disposition:** PASS WITH ERRATA  
