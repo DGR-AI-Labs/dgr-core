@@ -161,3 +161,9 @@ For gate reporting, prefer **“three-engine SAST/SCA gate: Semgrep, CodeQL, and
 cargo-deny”** or name all three engines explicitly. Avoid implying that
 cargo-deny is a third first-party code scanner, but do not treat Claude's
 terminology preference as overriding the recorded founder decision.
+
+**Founder terminology approval (2026-08-17):** Approved as the canonical
+label: **“three-engine SAST/SCA gate: Semgrep, CodeQL, and cargo-deny.”** This
+approval resolves the terminology question only. It is not a disposition of
+the analyzer findings or cargo-deny exceptions, protected-checklist sign-off,
+or independent human T0 review.
