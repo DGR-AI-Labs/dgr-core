@@ -14,6 +14,12 @@ until the founder records dispositions for the eight analyzer findings, an
 independent human reviews the founder-authored T0 code, and the founder signs
 the protected checklist before the normal PR/merge path.
 
+Claude's independent QA pass over the final bundle reports PASS with no code
+defect and four confirmation items. Repository verification has resolved the
+fail-closed mapping and empty Rust-diff confirmations; cargo-deny exception
+adjudication and the two scoped test-only finding dispositions remain founder
+actions. See `qa/core-002-step5-claude-independent-qa-addendum.md`.
+
 The cross-model review covered T0 commit
 `0727e327631b475990ef8d9b7ef3b2c3554050a8`. The final scans covered descendant
 `0a54d4995d1b9d98ab8a3ec61861fe2fe7ae29c3`. The intervening commits add only
