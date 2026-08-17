@@ -14,8 +14,8 @@
   `055906424049a610839098d40e0c729b62fb1fae`
 - dgr-internal generated reference commit:
   `505f3e470109bd10581b79980dc6a3ed2bb0b546`
-- dgr-backlog reconciled evidence-state commit:
-  `3feef3ba9e37a5b01e11799f9ebb6c63f0cec08c`
+- dgr-backlog reconciled evidence-state and draft-PR commit:
+  `3779178d8080df0916e774c94d13a9f4637ab4a4`
 
 ## Bundle layout
 
