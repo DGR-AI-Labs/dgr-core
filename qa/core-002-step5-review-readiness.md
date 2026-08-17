@@ -59,7 +59,8 @@ does not claim that production wiring already exists.
 
 ## Three-engine evidence
 
-FND-7 selects Semgrep, CodeQL, and cargo-deny. cargo-deny is the third
+The founder-approved canonical label is **“three-engine SAST/SCA gate:
+Semgrep, CodeQL, and cargo-deny.”** cargo-deny is the third
 dependency/supply-chain analyzer; it is not represented as a third overlapping
 first-party pattern scanner. Raw files, commands, versions, commit binding, and
 digests are indexed in `qa/sast/README.md`.
