@@ -1,0 +1,95 @@
+tool: Semgrep
+tool_version: 1.173.0
+scanned_commit: 0a54d4995d1b9d98ab8a3ec61861fe2fe7ae29c3
+cargo_lock_sha256: 59c1a398c6a3405a6a895da2e794b7ed7cb0d6970ac74840cbd698c40b0f39ad
+scan_utc: 2026-08-17T02:32:03Z
+ruleset: p/rust
+ignore_policy: empty temporary .semgrepignore overrides Semgrep default tests/ exclusion
+semgrepignore_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+command: cd <detached-scan-tree> && semgrep scan --config p/rust --error --strict --metrics=off --exclude target --verbose --json tests/bypass-rust
+exit_code: 1
+status: completed; findings present
+finding_count: 1
+scan_error_count: 0
+tracked_rust_file_count: 14
+scanned_target_count: 14
+coverage_status: complete
+
+--- stderr ---
+running 11 rules from 1 config remote-registry_0
+Rules:
+- generic.unicode.security.bidi.contains-bidirectional-characters
+- rust.lang.security.args-os.args-os
+- rust.lang.security.args.args
+- rust.lang.security.current-exe.current-exe
+- rust.lang.security.insecure-hashes.insecure-hashes
+- rust.lang.security.reqwest-accept-invalid.reqwest-accept-invalid
+- rust.lang.security.reqwest-set-sensitive.reqwest-set-sensitive
+- rust.lang.security.rustls-dangerous.rustls-dangerous
+- rust.lang.security.ssl-verify-none.ssl-verify-none
+- rust.lang.security.temp-dir.temp-dir
+- rust.lang.security.unsafe-usage.unsafe-usage
+               
+               
+┌─────────────┐
+│ Scan Status │
+└─────────────┘
+  Scanning 18 files tracked by git with 11 Code rules:
+  Scanning 14 files with 11 rust rules.
+SCA findings adjustment: No SCA rules to adjust
+
+========================================
+Files skipped:
+========================================
+
+  Always skipped by Semgrep:
+
+   • <none>
+
+  Skipped by .gitignore:
+  (Disable by passing --no-git-ignore)
+
+   • <all files not listed by `git ls-files` were skipped>
+
+  Skipped by .semgrepignore:
+  - https://semgrep.dev/docs/ignoring-files-folders-code/#understand-semgrep-defaults
+
+   • <none>
+
+  Skipped by --include patterns:
+
+   • <none>
+
+  Skipped by --exclude patterns:
+
+   • <none>
+
+  Files that couldn't be accessed:
+
+   • <none>
+
+  Skipped by limiting to files smaller than 1000000 bytes:
+  (Adjust with the --max-target-bytes flag)
+
+   • <none>
+
+  Partially analyzed due to parsing or internal Semgrep errors
+
+   • <none>
+
+                
+                
+┌──────────────┐
+│ Scan Summary │
+└──────────────┘
+✅ Scan completed successfully.
+ • Findings: 1 (1 blocking)
+ • Rules run: 11
+ • Targets scanned: 14
+ • Parsed lines: ~100.0%
+ • Scan was limited to files tracked by git
+Ran 11 rules on 14 files: 1 finding.
+Not sending pseudonymous metrics since metrics are configured to OFF, registry usage is True, and login status is False
+
+--- raw JSON ---
+{"version":"1.173.0","results":[{"check_id":"rust.lang.security.temp-dir.temp-dir","path":"tests/bypass-rust/tests/consumption_store.rs","start":{"line":19,"col":20,"offset":579},"end":{"line":19,"col":40,"offset":599},"extra":{"message":"temp_dir should not be used for security operations. From the docs: 'The temporary directory may be shared among users, or between processes with different privileges; thus, the creation of any files or directories in the temporary directory must use a secure method to create a uniquely named file. Creating a file or directory with a fixed or predictable name may result in “insecure temporary file” security vulnerabilities.'","metadata":{"references":["https://doc.rust-lang.org/stable/std/env/fn.temp_dir.html"],"technology":["rust"],"category":"security","cwe":"CWE-807: Reliance on Untrusted Inputs in a Security Decision","confidence":"HIGH","likelihood":"LOW","impact":"LOW","subcategory":"audit","license":"Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license","vulnerability_class":["Other"],"source":"https://semgrep.dev/r/rust.lang.security.temp-dir.temp-dir","shortlink":"https://sg.run/qzEO"},"severity":"INFO","fingerprint":"requires login","lines":"requires login","validation_state":"NO_VALIDATOR","engine_kind":"OSS"}}],"errors":[],"paths":{"scanned":["tests/bypass-rust/src/before_tool_call.rs","tests/bypass-rust/src/fixtures.rs","tests/bypass-rust/src/founder_authored_guard.rs","tests/bypass-rust/src/founder_consumption_store.rs","tests/bypass-rust/src/founder_fail_closed.rs","tests/bypass-rust/src/founder_s2_consumption_store.rs","tests/bypass-rust/src/founder_token_verification.rs","tests/bypass-rust/src/lib.rs","tests/bypass-rust/src/val_002_fixtures.rs","tests/bypass-rust/tests/adapter_harness.rs","tests/bypass-rust/tests/attack_set.rs","tests/bypass-rust/tests/consumption_store.rs","tests/bypass-rust/tests/fail_closed.rs","tests/bypass-rust/tests/val_002_fixtures.rs"],"skipped":[]},"time":{"rules":[],"rules_parse_time":0.0043299198150634766,"profiling_times":{"config_time":0.3842606544494629,"core_time":0.5979316234588623,"ignores_time":9.274482727050781e-05,"total_time":1.0283722877502441},"parsing_time":{"total_time":0.0,"per_file_time":{"mean":0.0,"std_dev":0.0},"very_slow_stats":{"time_ratio":0.0,"count_ratio":0.0},"very_slow_files":[]},"scanning_time":{"total_time":1.027937889099121,"per_file_time":{"mean":0.07342413493565152,"std_dev":0.00021177608522177663},"very_slow_stats":{"time_ratio":0.0,"count_ratio":0.0},"very_slow_files":[]},"matching_time":{"total_time":0.0,"per_file_and_rule_time":{"mean":0.0,"std_dev":0.0},"very_slow_stats":{"time_ratio":0.0,"count_ratio":0.0},"very_slow_rules_on_files":[]},"tainting_time":{"total_time":0.0,"per_def_and_rule_time":{"mean":0.0,"std_dev":0.0},"very_slow_stats":{"time_ratio":0.0,"count_ratio":0.0},"very_slow_rules_on_defs":[]},"fixpoint_timeouts":[],"prefiltering":{"project_level_time":0.0,"file_level_time":0.0,"rules_with_project_prefilters_ratio":0.0,"rules_with_file_prefilters_ratio":0.9090909090909091,"rules_selected_ratio":0.09740259740259741,"rules_matched_ratio":0.09740259740259741},"targets":[],"total_bytes":0,"max_memory_bytes":189597632},"engine_requested":"OSS","skipped_rules":[],"profiling_results":[]}

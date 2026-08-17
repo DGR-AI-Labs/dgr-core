@@ -30,7 +30,9 @@ repository evidence:
   it, so restart durability on reopening the same SQLite file is backed by
   code and tests.
 - The code/design review PASS does not mean CORE-002 or Step 5 is complete.
-  Required SAST, founder/human, PR, and merge gates remain.
+  Raw SAST/SCA evidence is now attached against policy-only descendant
+  `0a54d4995d1b9d98ab8a3ec61861fe2fe7ae29c3`; founder finding dispositions,
+  independent human review, PR, and merge gates remain.
 - Merging Step 5 would not make the complete bypass suite green. Deferred
   cases and CORE-003/004/005 remain separate work.
 - Runtime integration does not activate on CORE-002 merge. Its canonical
@@ -53,8 +55,9 @@ repository evidence:
 This disposition closes only the cross-model review evidence requirement. It
 does not replace:
 
-1. results from at least three independent SAST tools;
-2. founder/human review of the protected checklist;
+1. founder adjudication of the attached Semgrep, CodeQL, and cargo-deny raw
+   results;
+2. independent human review and founder sign-off in the protected checklist;
 3. PR approval and merge; or
 4. final backlog completion evidence with stable PR and commit links.
 

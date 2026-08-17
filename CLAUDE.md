@@ -11,15 +11,14 @@ or paraphrase its principles into code or docs — link to them.
 
 ## Current-phase guardrail (read every time)
 
-> **Phase 0 — spine only.** Do **NOT** implement the decision core (no enforcement logic, no
-> token issuance/verification, no admission control, no product logic). Hold the **FS-wedge
-> scope fence** (AI-agent execution control in financial-services risk, fraud, payments — reject
-> scope creep; generation speed is not a reason to broaden). **The enforcement proof is the one
-> un-rushable thing.**
+> **Phase 1 — enforcement proof.** Founder-authored T0 enforcement is permitted only in the
+> five units named by [`T0-AUTHORS.md`](T0-AUTHORS.md). Agents may review those units but may
+> not author, complete, refactor, or patch their enforcement logic. Hold the FS-wedge scope
+> fence and never weaken a bypass test to obtain green.
 
-This repo currently holds **specs, governance, and red (failing) scaffolding only**. The failing
-bypass suite and red CI are intentional and correct (fail-closed by absence). Do not "fix" them
-by weakening tests or the [`src/gate.mjs`](src/gate.mjs) stub.
+Tests, harnesses, fixtures, specs, and tooling may support the proof within their assigned
+tier. A green attack case must come from real founder-authored enforcement, not a bypass or
+reclassified expectation.
 
 ## Consequence-tier rules (Constitution P8)
 
