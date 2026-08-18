@@ -1,6 +1,6 @@
 use dgr_core_bypass_harness::before_tool_call::{
     BeforeToolCallAdapter, BeforeToolCallObservation, BeforeToolCallRequest, EffectfulToolProbe,
-    GuardFault, OpaqueCapabilityToken,
+    GuardDecision, GuardDecisionPort, GuardFault, OpaqueCapabilityToken,
 };
 use dgr_core_bypass_harness::fixtures::{
     RecordingToolProbe, no_token_request, request_for_attack, request_for_val_002_fixture,
@@ -175,6 +175,101 @@ fn assert_gate_case(id: &str) {
         }
         other => panic!("{id} did not emit the required denial signal: {other:?}"),
     }
+}
+
+#[derive(Clone, Copy)]
+struct Atk07FaultingGuard;
+
+impl GuardDecisionPort for Atk07FaultingGuard {
+    fn decide(
+        &self,
+        _request: &BeforeToolCallRequest<'_>,
+        _now_unix_seconds: u64,
+        _store: &mut dyn ConsumptionStore,
+    ) -> Result<GuardDecision, GuardFault> {
+        Err(GuardFault::InternalError)
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Atk07PanickingGuard;
+
+impl GuardDecisionPort for Atk07PanickingGuard {
+    fn decide(
+        &self,
+        _request: &BeforeToolCallRequest<'_>,
+        _now_unix_seconds: u64,
+        _store: &mut dyn ConsumptionStore,
+    ) -> Result<GuardDecision, GuardFault> {
+        panic!("forced ATK-07 hook failure")
+    }
+}
+
+fn assert_atk_07_fail_closed(observed: BeforeToolCallObservation, tool: &RecordingToolProbe) {
+    assert_eq!(
+        tool.invocation_count(),
+        0,
+        "ATK-07 reached the effectful probe"
+    );
+
+    match observed {
+        BeforeToolCallObservation::Blocked {
+            outcome,
+            authorization_issued,
+            effectful_invocations,
+            ..
+        } => {
+            assert_eq!(outcome, required_outcome("ATK-07"));
+            assert!(!authorization_issued, "ATK-07 issued authorization");
+            assert_eq!(effectful_invocations, 0, "ATK-07 reached the tool");
+        }
+        BeforeToolCallObservation::Proceeded { .. } => {
+            panic!("ATK-07 RED: a faulting boundary proceeded to the tool")
+        }
+        BeforeToolCallObservation::GuardFault { .. } => {
+            panic!("ATK-07 RED: the boundary exposed a raw guard fault instead of blocking")
+        }
+    }
+}
+
+// Required CI runs all Rust targets, so these remain compiled but ignored until
+// the founder authors the T0 fault/panic floor. Run each explicitly to observe RED.
+#[test]
+#[ignore = "CORE-003-T0-boundary pending founder authoring"]
+fn atk_07_typed_guard_fault_requires_fail_closed_floor() {
+    let case = attack_by_id("ATK-07").expect("ATK-07 is registered");
+    let request = request_for_attack(case);
+    let adapter = BeforeToolCallAdapter::new(Atk07FaultingGuard);
+    let mut store = S2ConsumptionStore::open_in_memory().expect("store");
+    let mut tool = RecordingToolProbe::default();
+
+    let observed =
+        adapter.before_tool_call(&request, FIXED_NOW_UNIX_SECONDS, &mut store, &mut tool);
+
+    assert_atk_07_fail_closed(observed, &tool);
+}
+
+#[test]
+#[ignore = "CORE-003-T0-boundary pending founder authoring"]
+fn atk_07_guard_panic_requires_fail_closed_floor() {
+    let case = attack_by_id("ATK-07").expect("ATK-07 is registered");
+    let request = request_for_attack(case);
+    let adapter = BeforeToolCallAdapter::new(Atk07PanickingGuard);
+    let mut store = S2ConsumptionStore::open_in_memory().expect("store");
+    let mut tool = RecordingToolProbe::default();
+
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        adapter.before_tool_call(&request, FIXED_NOW_UNIX_SECONDS, &mut store, &mut tool)
+    }));
+
+    assert_eq!(
+        tool.invocation_count(),
+        0,
+        "ATK-07 panic reached the effectful probe"
+    );
+    let observed = result
+        .unwrap_or_else(|_| panic!("ATK-07 RED: the boundary allowed a guard panic to escape"));
+    assert_atk_07_fail_closed(observed, &tool);
 }
 
 fn assert_external_iam_case_is_not_a_gate_test(id: &str) {
