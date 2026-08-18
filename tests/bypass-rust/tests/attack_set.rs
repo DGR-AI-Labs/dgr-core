@@ -232,10 +232,8 @@ fn assert_atk_07_fail_closed(observed: BeforeToolCallObservation, tool: &Recordi
     }
 }
 
-// Required CI runs all Rust targets, so these remain compiled but ignored until
-// the founder authors the T0 fault/panic floor. Run each explicitly to observe RED.
+// Active adversarial checks for the founder-authored CORE-003 T0 boundary.
 #[test]
-#[ignore = "CORE-003-T0-boundary pending founder authoring"]
 fn atk_07_typed_guard_fault_requires_fail_closed_floor() {
     let case = attack_by_id("ATK-07").expect("ATK-07 is registered");
     let request = request_for_attack(case);
@@ -250,7 +248,6 @@ fn atk_07_typed_guard_fault_requires_fail_closed_floor() {
 }
 
 #[test]
-#[ignore = "CORE-003-T0-boundary pending founder authoring"]
 fn atk_07_guard_panic_requires_fail_closed_floor() {
     let case = attack_by_id("ATK-07").expect("ATK-07 is registered");
     let request = request_for_attack(case);
@@ -546,7 +543,6 @@ fn atk_13_audit_append_failure() {
 ignored_gate_attack!(atk_04_missing_justification, "ATK-04");
 ignored_gate_attack!(atk_05_ambiguous_evidence, "ATK-05");
 ignored_gate_attack!(atk_06_approval_timeout, "ATK-06");
-ignored_gate_attack!(atk_07_hook_error, "ATK-07");
 ignored_gate_attack!(atk_12_revoked_credential, "ATK-12");
 ignored_gate_attack!(atk_14_cross_tenant_use, "ATK-14");
 

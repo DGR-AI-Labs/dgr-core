@@ -83,7 +83,7 @@ fn adapter_invokes_probe_only_for_a_returned_allow() {
 }
 
 #[test]
-fn adapter_never_invokes_probe_for_a_guard_fault() {
+fn adapter_fail_closes_for_a_guard_fault() {
     let adapter = BeforeToolCallAdapter::new(ScriptedDecision(Err(GuardFault::InternalError)));
     let mut store = S2ConsumptionStore::open_in_memory().expect("store");
     let mut tool = RecordingToolProbe::default();
@@ -96,10 +96,12 @@ fn adapter_never_invokes_probe_for_a_guard_fault() {
     );
 
     assert_eq!(tool.invocation_count(), 0);
+
     assert_eq!(
         observed,
-        BeforeToolCallObservation::GuardFault {
-            fault: GuardFault::InternalError,
+        BeforeToolCallObservation::Blocked {
+            outcome: RequiredOutcome::FailClosed,
+            denial_signal: "CORE-003 boundary fail-closed",
             authorization_issued: false,
             effectful_invocations: 0,
         }
