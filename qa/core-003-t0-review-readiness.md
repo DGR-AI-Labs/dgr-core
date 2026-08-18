@@ -1,6 +1,6 @@
 # CORE-003 T0 review readiness
 
-**Status:** Review gates complete; post-merge evidence publication pending
+**Status:** Complete — review gates satisfied and evidence published
 **Code commit:** `6cb6826fb29ee18bd2ce5f596c620f4170f37a47`
 **Baseline:** `4c7f6a33a5f0c01c42eed81b936a77450c8edd40`
 **Reviewed patch SHA-256:**
@@ -47,10 +47,11 @@
 
 The founder and independent-human dispositions record decision timestamps of
 2026-08-18T19:59:00Z, before PR #73 merged at 2026-08-18T20:04:12Z. The signed
-forms were completed in the local review worktree and are being persisted to
-the repository after the merge. GitHub exposes no submitted review event for
-PR #73, so the independent-human result is evidenced by the signed repository
-record rather than represented as a GitHub review approval.
+forms were completed in the local review worktree and persisted to the
+repository after the merge through PR #74, merged at 2026-08-18T20:26:36Z as
+`6db4761f42c79ccd757bcef9726466aef6610776`. GitHub exposes no submitted review
+event for PR #73, so the independent-human result is evidenced by the signed
+repository record rather than represented as a GitHub review approval.
 
 ## Change invalidation rule
 
