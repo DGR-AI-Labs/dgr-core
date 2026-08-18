@@ -1,6 +1,6 @@
 # CORE-003 T0 review readiness
 
-**Status:** Ready for founder/human disposition; not yet founder-approved
+**Status:** Review gates complete; post-merge evidence publication pending
 **Code commit:** `6cb6826fb29ee18bd2ce5f596c620f4170f37a47`
 **Baseline:** `4c7f6a33a5f0c01c42eed81b936a77450c8edd40`
 **Reviewed patch SHA-256:**
@@ -25,21 +25,32 @@
 
 - `qa/core-003-t0-cross-model-review.md`
 - `qa/core-003-t0-founder-review-draft.md`
+- `qa/core-003-t0-independent-human-review-input.md`
 - `qa/sast/core-003-t0-semgrep-2026-08-18.txt`
 - `qa/sast/core-003-t0-semgrep-2026-08-18.json`
 - `qa/sast/core-003-t0-codeql-2026-08-18.txt`
 - `qa/sast/core-003-t0-codeql-2026-08-18.sarif`
 - `qa/sast/core-003-t0-cargo-deny-2026-08-18.txt`
 
-## Pending human actions
+## Completed human actions
 
-1. Founder completes every applicable checkbox and all disposition fields in
-   `qa/core-003-t0-founder-review-draft.md`.
-2. Founder records an explicit review decision for each scanner's raw output.
-3. Founder selects the final T0 disposition and signs it.
-4. PR receives the required human approval.
-5. Founder/human merges only if the PR code commit remains
-   `6cb6826fb29ee18bd2ce5f596c620f4170f37a47` and no T0 code changes are added.
+1. Founder reviewed the exact code commit, adjudicated each scanner output,
+   selected APPROVE, and signed the final T0 disposition.
+2. Gaziz Nugmanov independently reviewed the complete seven-file patch at the
+   same exact commit, confirmed reviewer/writer separation, reported no
+   findings, and selected PASS.
+3. dgr-core PR #73 merged as
+   `50347fe169e1207146ffe7a111669cddcd22c664` without a replacement T0 code
+   commit.
+
+## Evidence-publication timing
+
+The founder and independent-human dispositions record decision timestamps of
+2026-08-18T19:59:00Z, before PR #73 merged at 2026-08-18T20:04:12Z. The signed
+forms were completed in the local review worktree and are being persisted to
+the repository after the merge. GitHub exposes no submitted review event for
+PR #73, so the independent-human result is evidenced by the signed repository
+record rather than represented as a GitHub review approval.
 
 ## Change invalidation rule
 
