@@ -1,7 +1,6 @@
-# CORE-003 T0 independent human review — input for completion
+# CORE-003 T0 independent human review disposition
 
-**Status:** Incomplete review input; not evidence until an independent human
-reviewer completes and signs it
+**Status:** Complete — PASS
 
 This record satisfies a different gate from founder authorship/sign-off. Under
 DECI-0011, the T0 writer cannot be the sole human code reviewer. The reviewer
@@ -11,16 +10,16 @@ not satisfy this gate.
 
 ## Review identity and artifact binding
 
-- **Independent reviewer:** `[FULL NAME]`
-- **Reviewer relationship/role:** `[ROLE; CONFIRM NOT THE T0 WRITER]`
-- **Review date/time (UTC):** `[YYYY-MM-DDTHH:MM:SSZ]`
+- **Independent reviewer:** `Gaziz Nugmanov`
+- **Reviewer relationship/role:** Independent human reviewer — not the T0 writer
+- **Review date/time (UTC):** `2026-08-18T19:12:00Z`
 - **Reviewed code commit:**
   `6cb6826fb29ee18bd2ce5f596c620f4170f37a47`
 - **Baseline commit:** `4c7f6a33a5f0c01c42eed81b936a77450c8edd40`
 - **Reviewed patch SHA-256:**
   `d689cfe6fc092b7cac1fcfea397e09288a169aa2be14c94583cff57eedc905d9`
-- **Stable approval/review reference:** `[PR REVIEW URL, REVIEW ID, OR OTHER
-  DURABLE EVIDENCE LOCATION]`
+- **Stable approval/review reference:** this signed repository record,
+  `qa/core-003-t0-independent-human-review-input.md`
 
 Suggested integrity command:
 
@@ -50,29 +49,29 @@ Review the complete seven-file patch, not only the new match arm:
 
 ## Independent code-review checks
 
-- [ ] I am not the writer of the founder-owned T0 boundary behavior.
-- [ ] I verified the full commit and patch digest above.
-- [ ] I reviewed all seven changed files.
-- [ ] The complete `guard.decide` invocation is contained by
+- [x] I am not the writer of the founder-owned T0 boundary behavior.
+- [x] I verified the full commit and patch digest above.
+- [x] I reviewed all seven changed files.
+- [x] The complete `guard.decide` invocation is contained by
   `catch_unwind(AssertUnwindSafe(...))`.
-- [ ] A returned `Err(GuardFault)` and a caught Rust unwind both produce
+- [x] A returned `Err(GuardFault)` and a caught Rust unwind both produce
   `Blocked(FailClosed)` with no authorization.
-- [ ] Neither failure path calls the effectful tool.
-- [ ] Returned `Ok(Deny)` and `Ok(Allow)` retain their established relay
+- [x] Neither failure path calls the effectful tool.
+- [x] Returned `Ok(Deny)` and `Ok(Allow)` retain their established relay
   semantics; only the Allow path invokes the tool.
-- [ ] The bounded `AssertUnwindSafe` rationale is acceptable: the current
+- [x] The bounded `AssertUnwindSafe` rationale is acceptable: the current
   invocation neither inspects nor reuses the store after the caught unwind,
   and the code does not claim safety for a later invocation.
-- [ ] The limitation to unwind-mode panics is explicit; `panic=abort`, process
+- [x] The limitation to unwind-mode panics is explicit; `panic=abort`, process
   termination, OOM abort, and hook-never-fired remain outside this proof.
-- [ ] The two dedicated ATK-07 tests cover typed fault and panic independently,
+- [x] The two dedicated ATK-07 tests cover typed fault and panic independently,
   derive `FailClosed` from the attack registry, and assert zero effectful
   invocations.
-- [ ] No ignored or generic ATK-07 stub weakens or duplicates the dedicated
+- [x] No ignored or generic ATK-07 stub weakens or duplicates the dedicated
   evidence.
-- [ ] Governance files accurately separate founder-owned T0 behavior from test
+- [x] Governance files accurately separate founder-owned T0 behavior from test
   plumbing and retain the RUNTIME-003/004 scope fence.
-- [ ] I found no unrelated enforcement change or weakened adversarial
+- [x] I found no unrelated enforcement change or weakened adversarial
   expectation.
 
 ## Review findings
@@ -81,14 +80,14 @@ Record every finding, including non-blocking observations. Use `None` only if
 the review found none.
 
 ```text
-[FINDINGS, OR "None"]
+None
 ```
 
 ## Independent disposition
 
 Select exactly one:
 
-- [ ] **PASS** — no blocking defect; the exact reviewed commit is acceptable.
+- [x] **PASS** — no blocking defect; the exact reviewed commit is acceptable.
 - [ ] **PASS WITH NON-BLOCKING FINDINGS** — all findings are recorded above.
 - [ ] **CHANGES REQUIRED** — do not treat CORE-003 as complete; record defects
   above and repeat affected gates on the replacement commit.
@@ -96,11 +95,15 @@ Select exactly one:
 
 ## Reviewer attestation
 
-> I independently reviewed the complete seven-file CORE-003 T0 patch at commit
-> `6cb6826fb29ee18bd2ce5f596c620f4170f37a47`. I am not the writer of the
-> founder-owned boundary behavior. My selected disposition and findings above
-> are my human code-review result for the DECI-0011 reviewer-separation gate.
+Independent human T0 review: PASS.
 
-- **Independent reviewer name:** `[FULL NAME]`
-- **Signature/approval reference:** `[REFERENCE]`
-- **Decision timestamp (UTC):** `[YYYY-MM-DDTHH:MM:SSZ]`
+I reviewed the complete seven-file CORE-003 patch at commit
+6cb6826fb29ee18bd2ce5f596c620f4170f37a47, with patch SHA-256
+d689cfe6fc092b7cac1fcfea397e09288a169aa2be14c94583cff57eedc905d9.
+I did not author the founder-owned T0 boundary. I found no blocking or
+non-blocking defects.
+
+- **Independent reviewer name:** `Gaziz Nugmanov`
+- **Signature/approval reference:** this signed repository record,
+  `qa/core-003-t0-independent-human-review-input.md`
+- **Decision timestamp (UTC):** `2026-08-18T19:59:00Z`
