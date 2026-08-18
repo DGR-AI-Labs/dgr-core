@@ -78,8 +78,10 @@ pub enum BeforeToolCallObservation {
     },
 }
 
-/// OpenClaw-shaped test adapter. It relays the guard's returned decision; it
-/// does not make, repair, or default that decision.
+/// OpenClaw-shaped test adapter contract. It relays a returned `Ok(Deny|Allow)`
+/// decision unchanged. The native boundary must also impose a founder-authored
+/// fail-closed floor when the guard returns `Err(GuardFault)` or unwinds; that
+/// T0 behavior is intentionally absent from this T3 adapter.
 pub struct BeforeToolCallAdapter<G> {
     guard: G,
 }
