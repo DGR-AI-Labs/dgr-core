@@ -1,0 +1,254 @@
+CORE-003 T0 — CodeQL raw SAST evidence
+tool_version: CodeQL command-line toolchain release 2.25.5.
+query_pack: codeql/rust-queries@0.1.35
+scan_utc: 2026-08-18T18:42:50Z
+scanned_commit: 6cb6826fb29ee18bd2ce5f596c620f4170f37a47
+cargo_lock_sha256: 59c1a398c6a3405a6a895da2e794b7ed7cb0d6970ac74840cbd698c40b0f39ad
+database_create_command: CARGO_INCREMENTAL=0 codeql database create <db> --language=rust --source-root=<detached-tree> --command="cargo build --manifest-path tests/bypass-rust/Cargo.toml --all-targets --locked"
+database_create_exit_code: 0
+database_analyze_command: codeql database analyze <db> codeql/rust-queries@0.1.35 --format=sarif-latest --output=<sarif> --sarif-category=rust --sarif-add-baseline-file-info --threads=0 --verbose
+database_analyze_exit_code: 0
+status: completed; 7 findings
+finding_count: 7
+execution_error_count: 0
+coverage: CodeQL scanned 14 out of 14 Rust files
+extracted_with_errors: 0
+extracted_without_error: 14
+
+--- findings ---
+rust/hard-coded-cryptographic-value	tests/bypass-rust/src/val_002_fixtures.rs	126
+rust/hard-coded-cryptographic-value	tests/bypass-rust/src/val_002_fixtures.rs	152
+rust/hard-coded-cryptographic-value	tests/bypass-rust/src/val_002_fixtures.rs	169
+rust/hard-coded-cryptographic-value	tests/bypass-rust/src/val_002_fixtures.rs	186
+rust/hard-coded-cryptographic-value	tests/bypass-rust/src/val_002_fixtures.rs	204
+rust/hard-coded-cryptographic-value	tests/bypass-rust/src/val_002_fixtures.rs	222
+rust/hard-coded-cryptographic-value	tests/bypass-rust/src/val_002_fixtures.rs	339
+
+--- database-create output ---
+Initializing database at /tmp/core003-sast-wUYG7f/codeql-rust-db.
+Running build command: [cargo, build, --manifest-path, tests/bypass-rust/Cargo.toml, --all-targets, --locked]
+Running command in /tmp/core003-sast-wUYG7f/repo: [/home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/rust/tools/autobuild.sh]
+[2026-08-18 14:36:00] [build-stderr] Scanning for files in /tmp/core003-sast-wUYG7f/repo...
+[2026-08-18 14:36:00] [build-stderr] /tmp/core003-sast-wUYG7f/codeql-rust-db: Indexing files in in /tmp/core003-sast-wUYG7f/repo...
+[2026-08-18 14:36:00] [build-stderr] Running command in /tmp/core003-sast-wUYG7f/repo: [/home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/rust/tools/index-files.sh, /tmp/core003-sast-wUYG7f/codeql-rust-db/working/files-to-index3266128000696300662.list]
+Running command in /tmp/core003-sast-wUYG7f/repo: [cargo, build, --manifest-path, tests/bypass-rust/Cargo.toml, --all-targets, --locked]
+[2026-08-18 14:36:50] [build-stderr]    Compiling version_check v0.9.5
+[2026-08-18 14:36:50] [build-stderr]    Compiling proc-macro2 v1.0.107
+[2026-08-18 14:36:50] [build-stderr]    Compiling typenum v1.20.1
+[2026-08-18 14:36:50] [build-stderr]    Compiling quote v1.0.47
+[2026-08-18 14:36:50] [build-stderr]    Compiling unicode-ident v1.0.24
+[2026-08-18 14:36:50] [build-stderr]    Compiling shlex v2.0.1
+[2026-08-18 14:36:50] [build-stderr]    Compiling find-msvc-tools v0.1.10
+[2026-08-18 14:36:50] [build-stderr]    Compiling semver v1.0.28
+[2026-08-18 14:36:50] [build-stderr]    Compiling vcpkg v0.2.15
+[2026-08-18 14:36:50] [build-stderr]    Compiling pkg-config v0.3.33
+[2026-08-18 14:36:50] [build-stderr]    Compiling cpufeatures v0.2.17
+[2026-08-18 14:36:50] [build-stderr]    Compiling cfg-if v1.0.4
+[2026-08-18 14:36:50] [build-stderr]    Compiling foldhash v0.2.0
+[2026-08-18 14:36:50] [build-stderr]    Compiling signature v2.2.0
+[2026-08-18 14:36:50] [build-stderr]    Compiling subtle v2.6.1
+[2026-08-18 14:36:50] [build-stderr]    Compiling zeroize v1.9.0
+[2026-08-18 14:36:50] [build-stderr]    Compiling smallvec v1.15.2
+[2026-08-18 14:36:50] [build-stderr]    Compiling fallible-iterator v0.3.0
+[2026-08-18 14:36:50] [build-stderr]    Compiling fallible-streaming-iterator v0.1.9
+[2026-08-18 14:36:50] [build-stderr]    Compiling hashbrown v0.17.1
+[2026-08-18 14:36:50] [build-stderr]    Compiling cc v1.4.2
+[2026-08-18 14:36:50] [build-stderr]    Compiling ed25519 v2.2.3
+[2026-08-18 14:36:50] [build-stderr]    Compiling bitflags v2.13.1
+[2026-08-18 14:36:50] [build-stderr]    Compiling base64ct v1.8.3
+[2026-08-18 14:36:50] [build-stderr]    Compiling rustc_version v0.4.1
+[2026-08-18 14:36:51] [build-stderr]    Compiling generic-array v0.14.7
+[2026-08-18 14:36:51] [build-stderr]    Compiling curve25519-dalek v4.1.3
+[2026-08-18 14:36:51] [build-stderr]    Compiling hashlink v0.12.1
+[2026-08-18 14:36:52] [build-stderr]    Compiling syn v2.0.119
+[2026-08-18 14:36:52] [build-stderr]    Compiling libsqlite3-sys v0.38.2
+[2026-08-18 14:36:52] [build-stderr]    Compiling crypto-common v0.1.7
+[2026-08-18 14:36:52] [build-stderr]    Compiling block-buffer v0.10.4
+[2026-08-18 14:36:52] [build-stderr]    Compiling digest v0.10.7
+[2026-08-18 14:36:52] [build-stderr]    Compiling sha2 v0.10.9
+[2026-08-18 14:36:55] [build-stderr]    Compiling curve25519-dalek-derive v0.1.1
+[2026-08-18 14:36:56] [build-stderr]    Compiling ed25519-dalek v2.2.0
+[2026-08-18 14:37:02] [build-stderr]    Compiling rusqlite v0.40.2
+[2026-08-18 14:37:03] [build-stderr]    Compiling dgr-core-bypass-harness v0.0.0 (/tmp/core003-sast-wUYG7f/repo/tests/bypass-rust)
+[2026-08-18 14:37:04] [build-stderr]     Finished `dev` profile [unoptimized + debuginfo] target(s) in 14.05s
+Finalizing database at /tmp/core003-sast-wUYG7f/codeql-rust-db.
+Running TRAP import for CodeQL database at /tmp/core003-sast-wUYG7f/codeql-rust-db...
+Importing TRAP files
+Merging relations
+Finished writing database (relations: 46.71 MiB; string pool: 22.03 MiB).
+TRAP import complete (23.4s).
+Finished zipping source archive (10.00 MiB).
+Successfully created database at /tmp/core003-sast-wUYG7f/codeql-rust-db.
+
+--- database-analyze output ---
+Writing logs to /tmp/core003-sast-wUYG7f/codeql-rust-db/log/database-analyze-20260818.143810.764.log.
+Running queries.
+Writing logs to /tmp/core003-sast-wUYG7f/codeql-rust-db/log/execute-queries-20260818.143811.975.log.
+Recording pack reference codeql/rust-queries at /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35.
+Recording pack reference codeql/suite-helpers at /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/.codeql/libraries/codeql/suite-helpers/1.0.50.
+Resolving data extensions.
+Finished resolving data extensions.
+Loading data extensions.
+Finished loading data extensions.
+Not caching stages during query-loading, since max heap size is only 1166 MB.
+[1/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-770/UncontrolledAllocationSize.qlx.
+[2/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-327/BrokenCryptoAlgorithm.qlx.
+[3/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-319/UseOfHttp.qlx.
+[4/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-918/RequestForgery.qlx.
+[5/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-798/HardcodedCryptographicValue.qlx.
+[6/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-312/CleartextLogging.qlx.
+[7/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-295/DisabledCertificateCheck.qlx.
+[8/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-089/SqlInjection.qlx.
+[9/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-311/CleartextTransmission.qlx.
+[10/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-825/AccessInvalidPointer.qlx.
+[11/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-022/TaintedPath.qlx.
+[12/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-020/RegexInjection.qlx.
+[13/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-312/CleartextStorageDatabase.qlx.
+[14/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/ExtractionWarnings.qlx.
+[15/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-079/XSS.qlx.
+[16/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-327/WeakSensitiveDataHashing.qlx.
+[17/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/ExtractedFiles.qlx.
+[18/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/summary/NumberOfFilesExtractedWithErrors.qlx.
+[19/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/ExtractionErrors.qlx.
+[20/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/UnextractedElements.qlx.
+[21/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/summary/LinesOfUserCode.qlx.
+[22/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/summary/NumberOfSuccessfullyExtractedFiles.qlx.
+[23/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/summary/LinesOfCode.qlx.
+[24/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/UnresolvedMacroCalls.qlx.
+[25/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-614/InsecureCookie.qlx.
+[26/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/AstConsistencyCounts.qlx.
+[27/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/SsaConsistencyCounts.qlx.
+[28/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/TypeInferenceConsistencyCounts.qlx.
+[29/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/telemetry/DatabaseQualityDiagnostics.qlx.
+[30/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/CfgConsistencyCounts.qlx.
+[31/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/summary/NodesWithTypeAtLengthLimit.qlx.
+[32/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/telemetry/ExtractorInformation.qlx.
+[33/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/DataFlowConsistencyCounts.qlx.
+[34/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/summary/QuerySinkCounts.qlx.
+[35/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/summary/SummaryStatsReduced.qlx.
+[36/36] Loaded /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/summary/SummaryStats.qlx.
+Starting evaluation of codeql/rust-queries/queries/diagnostics/CfgConsistencyCounts.ql.
+Starting evaluation of codeql/rust-queries/queries/diagnostics/AstConsistencyCounts.ql.
+Starting evaluation of codeql/rust-queries/queries/diagnostics/ExtractionErrors.ql.
+Starting evaluation of codeql/rust-queries/queries/diagnostics/ExtractionWarnings.ql.
+Starting evaluation of codeql/rust-queries/queries/diagnostics/DataFlowConsistencyCounts.ql.
+Starting evaluation of codeql/rust-queries/queries/diagnostics/ExtractedFiles.ql.
+Starting evaluation of codeql/rust-queries/queries/diagnostics/TypeInferenceConsistencyCounts.ql.
+Starting evaluation of codeql/rust-queries/queries/diagnostics/UnextractedElements.ql.
+Starting evaluation of codeql/rust-queries/queries/diagnostics/UnresolvedMacroCalls.ql.
+Starting evaluation of codeql/rust-queries/queries/diagnostics/SsaConsistencyCounts.ql.
+Starting evaluation of codeql/rust-queries/queries/security/CWE-022/TaintedPath.ql.
+Starting evaluation of codeql/rust-queries/queries/security/CWE-079/XSS.ql.
+Starting evaluation of codeql/rust-queries/queries/security/CWE-089/SqlInjection.ql.
+Starting evaluation of codeql/rust-queries/queries/security/CWE-295/DisabledCertificateCheck.ql.
+Starting evaluation of codeql/rust-queries/queries/security/CWE-020/RegexInjection.ql.
+Starting evaluation of codeql/rust-queries/queries/security/CWE-311/CleartextTransmission.ql.
+Starting evaluation of codeql/rust-queries/queries/security/CWE-312/CleartextLogging.ql.
+Starting evaluation of codeql/rust-queries/queries/security/CWE-770/UncontrolledAllocationSize.ql.
+Starting evaluation of codeql/rust-queries/queries/security/CWE-825/AccessInvalidPointer.ql.
+Starting evaluation of codeql/rust-queries/queries/security/CWE-312/CleartextStorageDatabase.ql.
+Starting evaluation of codeql/rust-queries/queries/summary/LinesOfUserCode.ql.
+Starting evaluation of codeql/rust-queries/queries/security/CWE-319/UseOfHttp.ql.
+Starting evaluation of codeql/rust-queries/queries/security/CWE-327/BrokenCryptoAlgorithm.ql.
+Starting evaluation of codeql/rust-queries/queries/security/CWE-327/WeakSensitiveDataHashing.ql.
+Starting evaluation of codeql/rust-queries/queries/security/CWE-614/InsecureCookie.ql.
+Starting evaluation of codeql/rust-queries/queries/security/CWE-798/HardcodedCryptographicValue.ql.
+Starting evaluation of codeql/rust-queries/queries/security/CWE-918/RequestForgery.ql.
+Starting evaluation of codeql/rust-queries/queries/summary/LinesOfCode.ql.
+Starting evaluation of codeql/rust-queries/queries/summary/NodesWithTypeAtLengthLimit.ql.
+Starting evaluation of codeql/rust-queries/queries/summary/NumberOfSuccessfullyExtractedFiles.ql.
+Starting evaluation of codeql/rust-queries/queries/summary/NumberOfFilesExtractedWithErrors.ql.
+Starting evaluation of codeql/rust-queries/queries/summary/QuerySinkCounts.ql.
+Starting evaluation of codeql/rust-queries/queries/summary/SummaryStats.ql.
+Starting evaluation of codeql/rust-queries/queries/summary/SummaryStatsReduced.ql.
+Starting evaluation of codeql/rust-queries/queries/telemetry/DatabaseQualityDiagnostics.ql.
+Starting evaluation of codeql/rust-queries/queries/telemetry/ExtractorInformation.ql.
+[1/36 eval 57.8s] Evaluation done; writing results to codeql/rust-queries/queries/diagnostics/ExtractionErrors.bqrs.
+[2/36 eval 57.8s] Evaluation done; writing results to codeql/rust-queries/queries/summary/NumberOfFilesExtractedWithErrors.bqrs.
+[3/36 eval 57.8s] Evaluation done; writing results to codeql/rust-queries/queries/diagnostics/ExtractionWarnings.bqrs.
+[4/36 eval 57.8s] Evaluation done; writing results to codeql/rust-queries/queries/diagnostics/ExtractedFiles.bqrs.
+[5/36 eval 57.8s] Evaluation done; writing results to codeql/rust-queries/queries/summary/NumberOfSuccessfullyExtractedFiles.bqrs.
+[6/36 eval 1m9s] Evaluation done; writing results to codeql/rust-queries/queries/summary/LinesOfCode.bqrs.
+[7/36 eval 1m9s] Evaluation done; writing results to codeql/rust-queries/queries/summary/LinesOfUserCode.bqrs.
+[8/36 eval 1m46s] Evaluation done; writing results to codeql/rust-queries/queries/diagnostics/UnextractedElements.bqrs.
+[9/36 eval 1m46s] Evaluation done; writing results to codeql/rust-queries/queries/diagnostics/UnresolvedMacroCalls.bqrs.
+[10/36 eval 1m50s] Evaluation done; writing results to codeql/rust-queries/queries/diagnostics/AstConsistencyCounts.bqrs.
+[11/36 eval 2m18s] Evaluation done; writing results to codeql/rust-queries/queries/diagnostics/CfgConsistencyCounts.bqrs.
+[12/36 eval 2m18s] Evaluation done; writing results to codeql/rust-queries/queries/diagnostics/SsaConsistencyCounts.bqrs.
+[13/36 eval 2m47s] Evaluation done; writing results to codeql/rust-queries/queries/diagnostics/TypeInferenceConsistencyCounts.bqrs.
+[14/36 eval 2m47s] Evaluation done; writing results to codeql/rust-queries/queries/telemetry/ExtractorInformation.bqrs.
+[15/36 eval 2m47s] Evaluation done; writing results to codeql/rust-queries/queries/telemetry/DatabaseQualityDiagnostics.bqrs.
+[16/36 eval 2m48s] Evaluation done; writing results to codeql/rust-queries/queries/summary/NodesWithTypeAtLengthLimit.bqrs.
+[17/36 eval 2m52s] Evaluation done; writing results to codeql/rust-queries/queries/diagnostics/DataFlowConsistencyCounts.bqrs.
+[18/36 eval 2m52s] Evaluation done; writing results to codeql/rust-queries/queries/security/CWE-311/CleartextTransmission.bqrs.
+[19/36 eval 2m52s] Evaluation done; writing results to codeql/rust-queries/queries/security/CWE-327/BrokenCryptoAlgorithm.bqrs.
+[20/36 eval 2m52s] Evaluation done; writing results to codeql/rust-queries/queries/security/CWE-614/InsecureCookie.bqrs.
+[21/36 eval 2m52s] Evaluation done; writing results to codeql/rust-queries/queries/summary/SummaryStatsReduced.bqrs.
+[22/36 eval 2m52s] Evaluation done; writing results to codeql/rust-queries/queries/security/CWE-089/SqlInjection.bqrs.
+[23/36 eval 2m52s] Evaluation done; writing results to codeql/rust-queries/queries/security/CWE-918/RequestForgery.bqrs.
+[24/36 eval 2m52s] Evaluation done; writing results to codeql/rust-queries/queries/security/CWE-319/UseOfHttp.bqrs.
+[25/36 eval 2m52s] Evaluation done; writing results to codeql/rust-queries/queries/security/CWE-079/XSS.bqrs.
+[26/36 eval 2m53s] Evaluation done; writing results to codeql/rust-queries/queries/security/CWE-770/UncontrolledAllocationSize.bqrs.
+[27/36 eval 2m53s] Evaluation done; writing results to codeql/rust-queries/queries/security/CWE-022/TaintedPath.bqrs.
+[28/36 eval 2m53s] Evaluation done; writing results to codeql/rust-queries/queries/security/CWE-825/AccessInvalidPointer.bqrs.
+[29/36 eval 2m53s] Evaluation done; writing results to codeql/rust-queries/queries/security/CWE-020/RegexInjection.bqrs.
+[30/36 eval 2m53s] Evaluation done; writing results to codeql/rust-queries/queries/security/CWE-295/DisabledCertificateCheck.bqrs.
+[31/36 eval 2m54s] Evaluation done; writing results to codeql/rust-queries/queries/security/CWE-312/CleartextStorageDatabase.bqrs.
+[32/36 eval 2m54s] Evaluation done; writing results to codeql/rust-queries/queries/security/CWE-312/CleartextLogging.bqrs.
+[33/36 eval 2m54s] Evaluation done; writing results to codeql/rust-queries/queries/summary/SummaryStats.bqrs.
+[34/36 eval 2m54s] Evaluation done; writing results to codeql/rust-queries/queries/summary/QuerySinkCounts.bqrs.
+[35/36 eval 2m54s] Evaluation done; writing results to codeql/rust-queries/queries/security/CWE-327/WeakSensitiveDataHashing.bqrs.
+[36/36 eval 2m55s] Evaluation done; writing results to codeql/rust-queries/queries/security/CWE-798/HardcodedCryptographicValue.bqrs.
+Shutting down query evaluator.
+Interpreting results.
+Resolving extensions
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-089/SqlInjection.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-770/UncontrolledAllocationSize.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-295/DisabledCertificateCheck.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-918/RequestForgery.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-614/InsecureCookie.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-312/CleartextStorageDatabase.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-312/CleartextLogging.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-319/UseOfHttp.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-022/TaintedPath.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-020/RegexInjection.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-327/WeakSensitiveDataHashing.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-327/BrokenCryptoAlgorithm.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-311/CleartextTransmission.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-825/AccessInvalidPointer.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-798/HardcodedCryptographicValue.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/security/CWE-079/XSS.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/ExtractionWarnings.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/UnextractedElements.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/TypeInferenceConsistencyCounts.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/ExtractedFiles.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/ExtractionErrors.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/AstConsistencyCounts.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/DataFlowConsistencyCounts.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/SsaConsistencyCounts.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/CfgConsistencyCounts.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/diagnostics/UnresolvedMacroCalls.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/telemetry/DatabaseQualityDiagnostics.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/summary/NumberOfFilesExtractedWithErrors.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/summary/LinesOfUserCode.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/summary/NodesWithTypeAtLengthLimit.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/summary/NumberOfSuccessfullyExtractedFiles.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/summary/QuerySinkCounts.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/summary/SummaryStatsReduced.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/summary/LinesOfCode.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/summary/SummaryStats.ql...
+Interpreting /home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/qlpacks/codeql/rust-queries/0.1.35/queries/telemetry/ExtractorInformation.ql...
+Reading source archive /tmp/core003-sast-wUYG7f/codeql-rust-db/src.zip
+CodeQL scanned 14 out of 14 Rust files in this invocation. Typically CodeQL is configured to analyze a single CodeQL language per invocation, so check other invocations to determine overall coverage information.
+Analysis produced the following metric data:
+
+|                            Metric                            | Value |
++--------------------------------------------------------------+-------+
+| Total number of Rust files that were extracted with errors   |     0 |
+| Total number of Rust files that were extracted without error |    14 |
+
+Exporting results to SARIF...
+Exported results to SARIF (300ms).
+
+raw_sarif_file: core-003-t0-codeql-2026-08-18.sarif
+raw_sarif_sha256: 1cc6447023cf129fcf127b564b26ad6b7f9f60c08d9dc005b7258d39c13918ed

@@ -12,7 +12,7 @@ or paraphrase its principles into code or docs — link to them.
 ## Current-phase guardrail (read every time)
 
 > **Phase 1 — enforcement proof.** Founder-authored T0 enforcement is permitted only in the
-> five units named by [`T0-AUTHORS.md`](T0-AUTHORS.md). Agents may review those units but may
+> units named by [`T0-AUTHORS.md`](T0-AUTHORS.md). Agents may review those units but may
 > not author, complete, refactor, or patch their enforcement logic. Hold the FS-wedge scope
 > fence and never weaken a bypass test to obtain green.
 

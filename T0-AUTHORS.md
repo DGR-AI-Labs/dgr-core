@@ -1,8 +1,12 @@
 # T0 authorship boundary
 
-This file is the ownership map for CORE-002. It does not authorize an agent to
-write enforcement code. The binding repository constitution classifies every
-consequential authorization path as T0 and human-led.
+This file is the ownership map for CORE-002 and CORE-003. It does not authorize
+an agent to write enforcement code. The binding repository constitution
+classifies every consequential authorization path as T0 and human-led.
+
+The CORE-003 boundary contract is recorded in
+`tests/bypass-rust/T0-BOUNDARY.md` and the ATK-07 section of
+`specs/CORE-001-bypass-attack-set.md`.
 
 The normative contracts consumed by the founder implementation are listed in
 `specs/CORE-002-reference-contracts.md`. That file points to the pinned
@@ -19,14 +23,17 @@ Only the founder authors the bodies of these functions:
 | `tests/bypass-rust/src/founder_fail_closed.rs` | `fail_closed_decision` | Deny behavior for absence, invalidity, unavailability, or internal error |
 | `tests/bypass-rust/src/founder_s2_consumption_store.rs` | `S2ConsumptionStore::consume` | Durable-local, atomic single-use consumption before allow |
 | `tests/bypass-rust/src/founder_consumption_store.rs` | `ConsumptionStore::consume` | Store boundary retained for S2 now and S3 later |
+| `tests/bypass-rust/src/before_tool_call.rs` | `BeforeToolCallAdapter::before_tool_call` | Contain guard faults and unwinding panics and return a fail-closed block before tool invocation |
 
 ## Current implementation state
 
-All five units now contain founder-authored enforcement pending the full T0
-review gate. The default `ConsumptionStore` implementation still returns
-`FounderImplementationRequired` explicitly so an absent concrete store fails
-closed. The S2 unit exposes an in-memory constructor for isolated conformance
-tests and a file-backed constructor for restart-durable local consumption.
+The five CORE-002 units and the CORE-003
+`BeforeToolCallAdapter::before_tool_call` boundary contain founder-authored T0
+enforcement pending the applicable T0 review gates. The default
+`ConsumptionStore` implementation still returns `FounderImplementationRequired`
+explicitly so an absent concrete store fails closed. The S2 unit exposes an
+in-memory constructor for isolated conformance tests and a file-backed
+constructor for restart-durable local consumption.
 
 This state record does not relax the authorship boundary. An agent must not
 replace, complete, refactor, or route around any founder-authored unit.
@@ -35,19 +42,20 @@ replace, complete, refactor, or route around any founder-authored unit.
 
 The following are outside the founder implementation surface:
 
-- `tests/bypass-rust/src/before_tool_call.rs`: test-only adapter types and
-  mechanical relay to a fake tool probe;
+- `tests/bypass-rust/src/before_tool_call.rs`, except for the founder-owned
+  `BeforeToolCallAdapter::before_tool_call` body: test-only adapter types and
+  mechanical probe plumbing;
 - `tests/bypass-rust/src/fixtures.rs`: opaque no-token, valid-candidate,
   expired, replayed, forged, and out-of-scope fixture bytes;
 - `tests/bypass-rust/tests/adapter_harness.rs`: adapter-plumbing tests using
   scripted decisions; and
 - `tests/bypass-rust/tests/attack_set.rs`: conformance expectations, including
-  active CORE-002 checks for ATK-01/02/03/08/09/10/11/13 and explicitly
-  deferred cases.
+  active CORE-002 checks for ATK-01/02/03/08/09/10/11/13, active CORE-003
+  checks for ATK-07, and explicitly deferred cases.
 
-These supporting units must not absorb token verification, decision policy,
-error-to-deny logic, consumption, audit recording, or any real tool
-integration.
+The supporting portions of these units must not absorb token verification,
+decision policy, error-to-deny logic, consumption, audit recording, or any real
+tool integration.
 
 ## Required change process
 

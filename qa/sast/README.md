@@ -1,4 +1,6 @@
-# CORE-002 Step 5 SAST/SCA evidence index
+# T0 SAST/SCA evidence index
+
+## CORE-002 Step 5
 
 **Final scanned commit:** `0a54d4995d1b9d98ab8a3ec61861fe2fe7ae29c3`
 
@@ -44,3 +46,28 @@ The unconfigured cargo-deny run failed closed because default license policy did
 not encode the project's accepted licenses. The directory is retained as an
 audit trail; only the artifacts in this directory's root are the final gate
 inputs.
+
+## CORE-003 T0 reached-boundary floor
+
+**Scanned commit:** `6cb6826fb29ee18bd2ce5f596c620f4170f37a47`
+
+**Reviewed patch SHA-256:**
+`d689cfe6fc092b7cac1fcfea397e09288a169aa2be14c94583cff57eedc905d9`
+
+**Cargo.lock SHA-256:**
+`59c1a398c6a3405a6a895da2e794b7ed7cb0d6970ac74840cbd698c40b0f39ad`
+
+| Engine | Raw artifact | SHA-256 | Result |
+|---|---|---|---|
+| Semgrep | `core-003-t0-semgrep-2026-08-18.txt` | `d7ad41bcdf9f965a00cdbac474004c038e70d8f68cbfd8831560e823c5869fbe` | 14/14 targets, 0 errors, 1 INFO finding |
+| Semgrep | `core-003-t0-semgrep-2026-08-18.json` | `3a48987313ca4762ac239fdd194c902d32db98780479aaa5548c12b62af2d4dc` | machine-readable raw result |
+| CodeQL | `core-003-t0-codeql-2026-08-18.txt` | `5d87687f6343e31b91640caaab4fc9fa4ef6c423224274627135b77d23535ee3` | 14/14 extracted, 0 errors, 7 findings |
+| CodeQL | `core-003-t0-codeql-2026-08-18.sarif` | `1cc6447023cf129fcf127b564b26ad6b7f9f60c08d9dc005b7258d39c13918ed` | valid SARIF, one run |
+| cargo-deny | `core-003-t0-cargo-deny-2026-08-18.txt` | `eb78a5c15edf0ca315020d38a2136dcabedff79a427b4e3aa0149335779b220a` | exit 0; no blocking diagnostics |
+
+The Semgrep and CodeQL findings are the same test-only surfaces reviewed for
+CORE-002: one temporary-path helper in `tests/consumption_store.rs` and seven
+deterministic fixture nonces in `src/val_002_fixtures.rs`. No result touches
+`before_tool_call.rs` or the new CORE-003 boundary logic. These findings still
+require explicit founder disposition for this exact-commit gate; prior
+disposition is context, not a substitute for reviewing the fresh raw output.

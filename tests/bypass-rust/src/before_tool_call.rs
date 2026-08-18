@@ -1,8 +1,9 @@
-//! T3 conformance adapter for the OpenClaw `before_tool_call` boundary.
+//! Mixed-tier conformance adapter for the OpenClaw `before_tool_call` boundary.
 //!
-//! This module contains plumbing only. It does not classify tokens, choose a
-//! decision, convert a gate fault into an authorization result, or write an
-//! audit record. The effectful target is a test probe, never a real tool.
+//! The request, observation, and probe types are test-only plumbing. The body of
+//! `BeforeToolCallAdapter::before_tool_call` contains the founder-authored T0
+//! fail-closed floor for a reached boundary whose guard faults or unwinds.
+//! The effectful target remains a test probe, never a real tool.
 
 use crate::founder_consumption_store::ConsumptionStore;
 use crate::{DecisionContext, ProposedAction, RequiredOutcome};
@@ -78,10 +79,14 @@ pub enum BeforeToolCallObservation {
     },
 }
 
-/// OpenClaw-shaped test adapter contract. It relays a returned `Ok(Deny|Allow)`
-/// decision unchanged. The native boundary must also impose a founder-authored
-/// fail-closed floor when the guard returns `Err(GuardFault)` or unwinds; that
-/// T0 behavior is intentionally absent from this T3 adapter.
+/// OpenClaw-shaped test boundary. Returned `Ok(Deny | Allow)` decisions retain
+/// their established relay behavior. A typed guard fault or an unwinding panic
+/// is contained by the founder-authored T0 floor and becomes an explicit
+/// fail-closed block before the effectful probe can run.
+///
+/// This containment covers Rust unwinding panics after the boundary is reached.
+/// It does not cover `panic=abort`, process termination, OOM abort, or a hook
+/// that is never invoked.
 pub struct BeforeToolCallAdapter<G> {
     guard: G,
 }
@@ -104,19 +109,27 @@ where
     where
         T: EffectfulToolProbe,
     {
-        match self.guard.decide(request, now_unix_seconds, store) {
-            Ok(GuardDecision::Deny {
+        // `AssertUnwindSafe` is deliberately bounded to this invocation. If `decide`
+        // unwinds, this method does not inspect or reuse `store` and returns fail-closed
+        // immediately. This does not certify the store's invariants for reuse by a
+        // later invocation.
+        let decision = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.guard.decide(request, now_unix_seconds, store)
+        }));
+
+        match decision {
+            Ok(Ok(GuardDecision::Deny {
                 outcome,
                 denial_signal,
-            }) => BeforeToolCallObservation::Blocked {
+            })) => BeforeToolCallObservation::Blocked {
                 outcome,
                 denial_signal,
                 authorization_issued: false,
                 effectful_invocations: tool.invocation_count(),
             },
-            Ok(GuardDecision::Allow {
+            Ok(Ok(GuardDecision::Allow {
                 authorization_reference,
-            }) => {
+            })) => {
                 tool.invoke(&request.proposed_action);
                 BeforeToolCallObservation::Proceeded {
                     authorization_reference,
@@ -124,8 +137,9 @@ where
                     effectful_invocations: tool.invocation_count(),
                 }
             }
-            Err(fault) => BeforeToolCallObservation::GuardFault {
-                fault,
+            Ok(Err(_)) | Err(_) => BeforeToolCallObservation::Blocked {
+                outcome: RequiredOutcome::FailClosed,
+                denial_signal: "CORE-003 boundary fail-closed",
                 authorization_issued: false,
                 effectful_invocations: tool.invocation_count(),
             },
