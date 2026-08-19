@@ -2,9 +2,10 @@
 
 ## Purpose and current gate
 
-Use this workspace for CORE-004 documentation, ownership-map review, and—only
-after the founder freezes the design—for the separately authorized VAL/T3/T0
-steps. Opening this project does not authorize implementation.
+Use this workspace for CORE-004 documentation and ownership-map review. The
+founder-confirmed design is pinned by `specs/CORE-004-reference-contract.md`,
+but opening this project does not authorize implementation or start the
+separately gated VAL/T3/T0 steps.
 
 The current branch is documentation-only:
 
@@ -13,8 +14,8 @@ The current branch is documentation-only:
 - Cargo manifest: `tests/bypass-rust/Cargo.toml`.
 
 Before any Rust, fixture, or test authoring, confirm in the canonical backlog
-that `CORE-004-DESIGN` is Done with evidence and that the ownership/reference
-documentation task is complete. ATK-06 must remain ignored until the
+that `CORE-004-DESIGN` is Done with evidence and that `CORE-004-GOVERNANCE` is
+Done after founder review. ATK-06 must remain ignored until the
 founder-authored T0 implementation turns the reviewed RED tests green.
 
 ## Open the project
@@ -70,6 +71,8 @@ early. Create each only when its canonical backlog dependency is satisfied.
 
 - `specs/CORE-002-reference-contracts.md`: the established pointer-not-copy
   pattern for pinned dgr-internal contracts;
+- `specs/CORE-004-reference-contract.md`: the immutable design pointer and
+  drift-detection metadata for this work;
 - `T0-AUTHORS.md`: the binding founder-authored unit map;
 - `tests/bypass-rust/T0-BOUNDARY.md`: isolation and non-claim boundary;
 - `tests/bypass-rust/src/`: future implementation/support location, subject to
@@ -85,15 +88,17 @@ metadata and the ownership/boundary documentation needed to consume it.
 Before starting any follow-on activity, verify it is represented by one of the
 canonical CORE-004 backlog records:
 
-- founder design decision and publication: `CORE-004-DESIGN`;
+- founder design decision and publication: `CORE-004-DESIGN` (dgr-internal
+  pull request #3);
 - reference pointer, ownership-map/boundary documentation, workspace HOWTO,
   and runtime-item ID reconciliation: `CORE-004-GOVERNANCE` (proposed until
   its backlog PR is merged);
 - deterministic scenario data: `VAL-004`;
 - RED conformance scaffolding: `CORE-004-T3-tests`;
 - founder-only consequential implementation: `CORE-004-T0-boundary`;
-- real human delivery/wait and cross-instance behavior: a deferred runtime
-  item whose ID must be resolved because `RUNTIME-005` is already occupied.
+- real human delivery/wait and cross-instance behavior: `RUNTIME-006`, the
+  deferred item allocated without overwriting the existing `RUNTIME-005` risk
+  register.
 
 If an activity does not fit one of those records, add or amend a backlog item
 before authoring. A local IDE task, scratch branch, or review note is not a

@@ -1,12 +1,17 @@
 # T0 authorship boundary
 
-This file is the ownership map for CORE-002 and CORE-003. It does not authorize
-an agent to write enforcement code. The binding repository constitution
+This file is the ownership map for CORE-002, CORE-003, and CORE-004. It does
+not authorize an agent to write enforcement code. The binding repository constitution
 classifies every consequential authorization path as T0 and human-led.
 
 The CORE-003 boundary contract is recorded in
 `tests/bypass-rust/T0-BOUNDARY.md` and the ATK-07 section of
 `specs/CORE-001-bypass-attack-set.md`.
+
+The founder-confirmed CORE-004 contract is pinned by
+`specs/CORE-004-reference-contract.md`. The record selects the R-3
+two-surface model: token-bearing escalation at `before_tool_call`, followed by
+a distinct trusted-clock evaluation of the durable pending record.
 
 The normative contracts consumed by the founder implementation are listed in
 `specs/CORE-002-reference-contracts.md`. That file points to the pinned
@@ -14,7 +19,7 @@ The normative contracts consumed by the founder implementation are listed in
 
 ## Founder-authored units
 
-Only the founder authors the bodies of these functions:
+Only the founder authors the bodies of the existing functions named here:
 
 | File | Founder-only function | Required responsibility |
 |---|---|---|
@@ -25,9 +30,26 @@ Only the founder authors the bodies of these functions:
 | `tests/bypass-rust/src/founder_consumption_store.rs` | `ConsumptionStore::consume` | Store boundary retained for S2 now and S3 later |
 | `tests/bypass-rust/src/before_tool_call.rs` | `BeforeToolCallAdapter::before_tool_call` | Contain guard faults and unwinding panics and return a fail-closed block before tool invocation |
 
+## Planned CORE-004 founder-owned surfaces
+
+The following planned surfaces are T0 before they exist. Their names describe
+ownership and responsibility; they do not authorize creation by an agent or
+freeze an unreviewed Rust signature.
+
+| Planned surface/location | Founder-owned responsibility |
+|---|---|
+| `tests/bypass-rust/src/founder_approval_store.rs` | The `ApprovalStore` port and every consequential pending/not-found/fault outcome |
+| `tests/bypass-rust/src/founder_s2_approval_store.rs` | Durable-local SQLite record and lookup behavior, including deadline immutability and persist-then-observe |
+| `tests/bypass-rust/src/founder_authored_guard.rs` | Escalation and timeout decisions extending the existing founder guard behavior |
+| R-3 timeout-evaluation path (exact function/location selected by the founder during authoring) | Evaluate a pending record against the trusted injected clock without token re-presentation and return the terminal fail-closed outcome |
+| `tests/bypass-rust/src/before_tool_call.rs` adapter behavior | Emit `Escalated` only after durable persistence and guarantee no authorization or effectful invocation on that path |
+
+Any shared enum or trait encoding consequential pending, escalated, approved,
+or denied semantics is T0 until the founder records a narrower classification.
+
 ## Current implementation state
 
-The five CORE-002 units and the CORE-003
+The CORE-002 units named above and the CORE-003
 `BeforeToolCallAdapter::before_tool_call` boundary contain founder-authored T0
 enforcement pending the applicable T0 review gates. The default
 `ConsumptionStore` implementation still returns `FounderImplementationRequired`
@@ -52,6 +74,23 @@ The following are outside the founder implementation surface:
 - `tests/bypass-rust/tests/attack_set.rs`: conformance expectations, including
   active CORE-002 checks for ATK-01/02/03/08/09/10/11/13, active CORE-003
   checks for ATK-07, and explicitly deferred cases.
+
+After the pinned CORE-004 contract and documentation gate are merged, these
+additional support surfaces are T3 and agent-authorable only in their recorded
+backlog order:
+
+- VAL-004 fixture data: deterministic review-request IDs, requested/deadline
+  facts, clocks at `deadline - 1`, `deadline`, and `deadline + 1`, and the
+  no-approval scenario;
+- a deterministic or fake approval store used solely by tests; and
+- RED conformance tests asserting the ordered
+  `[Escalated, Blocked { ... }]` sequence with the registry-derived ATK-06
+  outcome and zero effectful invocations.
+
+Those support units may represent frozen facts and expectations. They must not
+calculate policy, extend a deadline, implement persistence semantics, emit a
+consequential observation, authorize, deny, or make ATK-06 green by changing
+the expected outcome.
 
 The supporting portions of these units must not absorb token verification,
 decision policy, error-to-deny logic, consumption, audit recording, or any real
