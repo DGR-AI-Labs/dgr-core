@@ -8,10 +8,12 @@ The CORE-003 boundary contract is recorded in
 `tests/bypass-rust/T0-BOUNDARY.md` and the ATK-07 section of
 `specs/CORE-001-bypass-attack-set.md`.
 
-The founder-confirmed CORE-004 contract is pinned by
-`specs/CORE-004-reference-contract.md`. The record selects the R-3
+The founder-confirmed CORE-004 contract and Addendum A are pinned by
+`specs/CORE-004-reference-contract.md`. Together they select the R-3
 two-surface model: token-bearing escalation at `before_tool_call`, followed by
-a distinct trusted-clock evaluation of the durable pending record.
+a distinct trusted-clock evaluation of the durable pending record. Addendum A
+also freezes the bound-amount trigger, pre-deadline re-observation, placement
+before nonce consumption, and ATK-05 path-reuse boundary.
 
 The normative contracts consumed by the founder implementation are listed in
 `specs/CORE-002-reference-contracts.md`. That file points to the pinned
@@ -38,11 +40,11 @@ freeze an unreviewed Rust signature.
 
 | Planned surface/location | Founder-owned responsibility |
 |---|---|
-| `tests/bypass-rust/src/founder_approval_store.rs` | The `ApprovalStore` port and every consequential pending/not-found/fault outcome |
-| `tests/bypass-rust/src/founder_s2_approval_store.rs` | Durable-local SQLite record and lookup behavior, including deadline immutability and persist-then-observe |
-| `tests/bypass-rust/src/founder_authored_guard.rs` | Escalation and timeout decisions extending the existing founder guard behavior |
-| R-3 timeout-evaluation path (exact function/location selected by the founder during authoring) | Evaluate a pending record against the trusted injected clock without token re-presentation and return the terminal fail-closed outcome |
-| `tests/bypass-rust/src/before_tool_call.rs` adapter behavior | Emit `Escalated` only after durable persistence and guarantee no authorization or effectful invocation on that path |
+| `tests/bypass-rust/src/founder_approval_store.rs` | The `ApprovalStore` port; original-id/deadline `AlreadyPending` behavior; and every consequential pending/not-found/timed-out/fault outcome |
+| `tests/bypass-rust/src/founder_s2_approval_store.rs` | Durable-local SQLite record, deduplication, lookup, and timeout-transition behavior, including deadline immutability and persist-then-observe |
+| `tests/bypass-rust/src/founder_authored_guard.rs` | Canonical amount validation; founder threshold and conformance mirrors; escalation after binding and before nonce consumption; and timeout decisions |
+| R-3 timeout-evaluation path (exact function/location selected by the founder during authoring) | Evaluate a pending record against the trusted injected clock without token re-presentation; return the same `Escalated` id/deadline while `now <= deadline`; persist timeout before returning the terminal block when `now > deadline` |
+| `tests/bypass-rust/src/before_tool_call.rs` adapter behavior | Emit `Escalated` only after durable persistence and guarantee no authorization, nonce consumption, or effectful invocation on that path |
 
 Any shared enum or trait encoding consequential pending, escalated, approved,
 or denied semantics is T0 until the founder records a narrower classification.
@@ -79,9 +81,10 @@ After the pinned CORE-004 contract and documentation gate are merged, these
 additional support surfaces are T3 and agent-authorable only in their recorded
 backlog order:
 
-- VAL-004 fixture data: deterministic review-request IDs, requested/deadline
-  facts, clocks at `deadline - 1`, `deadline`, and `deadline + 1`, and the
-  no-approval scenario;
+- VAL-004 fixture data: valid above-threshold and below-threshold actions,
+  deterministic review-request IDs, requested/deadline facts, clocks at
+  `deadline - 1`, `deadline`, and `deadline + 1`, re-presentation facts, and
+  the no-approval scenario;
 - a deterministic or fake approval store used solely by tests; and
 - RED conformance tests asserting the ordered
   `[Escalated, Blocked { ... }]` sequence with the registry-derived ATK-06

@@ -52,6 +52,19 @@ evaluates an existing pending record against the trusted injected clock
 without re-presenting or re-verifying an expired token. The existing
 verify-then-decide ordering for token-bearing requests remains unchanged.
 
+Addendum A freezes the token-bearing order as signature → lifetime/expiry →
+binding plus canonical validation → escalation check → consume → allow. The
+founder threshold is `1_000_000` minor units and escalation occurs only when
+the bound canonical amount is greater than it. Escalation must not consume the
+nonce. Re-presentation and pre-deadline timeout evaluation return the original
+review-request id and deadline; only `now > deadline` produces the ATK-06
+terminal block.
+
+An escalation predicate over agent-supplied action data may use only committed,
+verified fields. Future ATK-05 evidence handling must reuse the same approval
+path, store, and observations, but it remains deferred until its own evidence
+provenance/binding contract is founder-approved.
+
 The CORE-004 claim is bounded exactly as follows:
 
 > CORE-004 proves the escalate → deny-on-timeout contract for a single guard

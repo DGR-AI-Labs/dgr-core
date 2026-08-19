@@ -7,7 +7,13 @@ founder-confirmed design is pinned by `specs/CORE-004-reference-contract.md`,
 but opening this project does not authorize implementation or start the
 separately gated VAL/T3/T0 steps.
 
-The current branch is documentation-only:
+The original design-ownership branch was documentation-only and is merged.
+Addendum A and VAL-004 preparation use separate review branches; fixture and
+founder work must use the dedicated worktrees in
+`specs/HOWTO-VAL-004-PYCHARM.md` and
+`specs/HOWTO-CORE-004-T0-PYCHARM.md`.
+
+Original documentation workspace:
 
 - worktree: `/mnt/c/Users/Khazret/Documents/.codex-worktrees/dgr-core004-design-ownership`;
 - branch: `codex/core-004-design-ownership`;
@@ -91,8 +97,9 @@ canonical CORE-004 backlog records:
 - founder design decision and publication: `CORE-004-DESIGN` (dgr-internal
   pull request #3);
 - reference pointer, ownership-map/boundary documentation, workspace HOWTO,
-  and runtime-item ID reconciliation: `CORE-004-GOVERNANCE` (proposed until
-  its backlog PR is merged);
+  and runtime-item ID reconciliation: `CORE-004-GOVERNANCE` (Done);
+- Addendum A publication, pinning, and workspace preparation:
+  `CORE-004-ADDENDUM-A-GOVERNANCE`;
 - deterministic scenario data: `VAL-004`;
 - RED conformance scaffolding: `CORE-004-T3-tests`;
 - founder-only consequential implementation: `CORE-004-T0-boundary`;
