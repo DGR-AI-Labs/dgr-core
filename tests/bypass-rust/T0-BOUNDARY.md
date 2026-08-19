@@ -24,7 +24,7 @@ The following remain **T0, founder-led, and review-only once implemented**:
 - audit/hash-chain construction or verification; and
 - any implementation that can authorize or block a consequential action.
 
-The five founder-owned CORE-002 units and the founder-owned CORE-003 boundary
+The founder-owned CORE-002 units and the founder-owned CORE-003 boundary
 method are listed in the repository-root `T0-AUTHORS.md`. They contain
 founder-authored enforcement but remain pending the applicable T0 review gates.
 CORE-005 may wire conformance into required CI only after those human gates.
@@ -38,6 +38,42 @@ CORE-003 covers ATK-07 only: the boundary was reached, but its guard/verifier
 returned a fault or panicked. A hook that never fires, a route around the hook,
 a missing plugin, or operator bypass is runtime-integration scope retained by
 RUNTIME-003/004, not simulated by this isolation harness.
+
+## CORE-004 ownership and bounded claim
+
+CORE-004 covers ATK-06's timeout-only isolation contract. Its planned
+`Escalated` observation, durable pending-store behavior, escalation and
+timeout decisions, R-3 timeout-evaluation path, and adapter behavior that
+emits `Escalated` are founder-authored T0. In particular, `Escalated` is not an
+authorization and must not invoke the effectful probe.
+
+The R-3 timeout moment is distinct from token-bearing `before_tool_call`: it
+evaluates an existing pending record against the trusted injected clock
+without re-presenting or re-verifying an expired token. The existing
+verify-then-decide ordering for token-bearing requests remains unchanged.
+
+The CORE-004 claim is bounded exactly as follows:
+
+> CORE-004 proves the escalate → deny-on-timeout contract for a single guard
+> instance and its local pending store under a modeled clock. It does not prove
+> real human delivery, real waiting across restarts, cross-instance pending
+> state, or live non-bypassability.
+
+### Deadline and TTL standing rule
+
+The founder-owned deadline is computed once with checked arithmetic from the
+trusted injected clock, stored explicitly, and never extended. Timeout is
+evaluated by comparing the stored deadline at read time. SQLite cleanup,
+DynamoDB TTL, or another reaper may reclaim storage only; record expiry or
+absence must never be the enforcement signal.
+
+ATK-06 remains deferred and ignored until founder-authored T0 behavior turns
+the reviewed RED conformance tests green without changing the registry-derived
+expectation. Real human approval delivery and wait, live restart/retry,
+cross-instance pending state, and approval-path route-around/non-bypassability
+remain in the deferred runtime-integration epic; their exact runtime item is
+recorded by the canonical backlog and does not activate before CORE-005 Done
+with ATK-01..14 green.
 
 ATK-01/02/03/07/08/09/10/11/13 are active; ATK-04/05/06/12/14 remain deferred,
 and ATK-15 remains an external IAM case.
