@@ -13,6 +13,7 @@ pub mod founder_fail_closed;
 pub mod founder_s2_consumption_store;
 pub mod founder_token_verification;
 pub mod val_002_fixtures;
+pub mod val_004_fixtures;
 
 /// The only outcomes permitted by the CORE-001 specification.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

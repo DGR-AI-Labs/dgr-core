@@ -448,6 +448,32 @@ fn fixture_action_commitment(canonical_action_bytes: &[u8]) -> [u8; 32] {
     Sha256::digest(canonical_action_bytes).into()
 }
 
+/// Authors a deterministic token with the registered fixture-only K2 key.
+///
+/// This is shared fixture construction, not a verifier, trust-store lookup, or
+/// authorization decision. It keeps later validation fixtures on the same
+/// ARCH-005/006 minting path as VAL-002 without exposing the test signing seed.
+pub fn author_registered_fixture_token(
+    request: &PayInvoiceFixtureRequest,
+    issued_at: u64,
+    expires_at: u64,
+    nonce: [u8; 16],
+) -> (FixtureToken, Vec<u8>) {
+    let canonical_action_bytes = fixture_canonical_action_bytes(request);
+    let action_commitment = fixture_action_commitment(&canonical_action_bytes);
+    let signing_key = SigningKey::from_bytes(&REGISTERED_TEST_SIGNING_SEED);
+    let token = author_fixture_token(
+        &signing_key,
+        REGISTERED_KEY_ID,
+        issued_at,
+        expires_at,
+        nonce,
+        action_commitment,
+    );
+
+    (token, canonical_action_bytes)
+}
+
 #[allow(
     clippy::too_many_arguments,
     reason = "fixture construction keeps signed and presented test data explicit"
