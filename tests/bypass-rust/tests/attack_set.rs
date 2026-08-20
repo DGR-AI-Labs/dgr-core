@@ -542,9 +542,19 @@ fn atk_13_audit_append_failure() {
 
 ignored_gate_attack!(atk_04_missing_justification, "ATK-04");
 ignored_gate_attack!(atk_05_ambiguous_evidence, "ATK-05");
-ignored_gate_attack!(atk_06_approval_timeout, "ATK-06");
 ignored_gate_attack!(atk_12_revoked_credential, "ATK-12");
 ignored_gate_attack!(atk_14_cross_tenant_use, "ATK-14");
+
+#[test]
+#[ignore = "CORE-004 dedicated two-surface RED conformance pending founder T0"]
+fn atk_06_approval_timeout() {
+    let case = attack_by_id("ATK-06").expect("ATK-06 is registered");
+    assert_eq!(case.target, HarnessTarget::Gate);
+    assert_eq!(case.expected, RequiredOutcome::EscalateThenDenyOnTimeout);
+    panic!(
+        "ATK-06 RED: a generic terminal no-token block is not the required two-surface escalation/timeout proof; run core_004_conformance"
+    );
+}
 
 #[test]
 #[ignore = "waiting for hosted IAM assertion harness; this is not a gate test"]
