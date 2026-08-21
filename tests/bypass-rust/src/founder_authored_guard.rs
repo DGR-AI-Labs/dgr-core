@@ -33,6 +33,16 @@ pub const CONFORMANCE_MAXIMUM_LIFETIME_SECONDS: u64 = MAXIMUM_LIFETIME_SECONDS;
 #[doc(hidden)]
 pub const CONFORMANCE_EXPIRY_SKEW_SECONDS: u64 = EXPIRY_SKEW_SECONDS;
 
+const APPROVAL_REQUIRED_ABOVE_MINOR_UNITS: u64 = 1_000_000;
+const APPROVAL_WINDOW_SECONDS: u64 = 86_400;
+
+#[doc(hidden)]
+pub const CONFORMANCE_APPROVAL_REQUIRED_ABOVE_MINOR_UNITS: u64 =
+    APPROVAL_REQUIRED_ABOVE_MINOR_UNITS;
+
+#[doc(hidden)]
+pub const CONFORMANCE_APPROVAL_WINDOW_SECONDS: u64 = APPROVAL_WINDOW_SECONDS;
+
 impl GuardDecisionPort for FounderAuthoredGuard {
     fn decide(
         &self,
@@ -112,6 +122,31 @@ impl GuardDecisionPort for FounderAuthoredGuard {
             },
         }
     }
+}
+
+fn canonical_amount_requires_approval(amount: &str) -> Option<bool> {
+    let amount = amount.as_bytes();
+
+    if amount.is_empty()
+        || !amount.iter().all(u8::is_ascii_digit)
+        || (amount.len() > 1 && amount[0] == b'0')
+    {
+        return None;
+    }
+
+    let threshold = APPROVAL_REQUIRED_ABOVE_MINOR_UNITS.to_string();
+    let threshold = threshold.as_bytes();
+
+    Some(if amount.len() != threshold.len() {
+        amount.len() > threshold.len()
+    } else {
+        amount > threshold
+    })
+}
+
+#[doc(hidden)]
+pub fn conformance_amount_requires_approval(amount: &str) -> Option<bool> {
+    canonical_amount_requires_approval(amount)
 }
 
 fn canonical_action_bytes(action: &ProposedAction) -> Option<Vec<u8>> {
