@@ -14,12 +14,14 @@ use crate::{ProposedAction, RequiredOutcome};
 use sha2::{Digest, Sha256};
 
 use crate::founder_token_verification::{
-    TokenRejection,
+    TokenRejection, VerifiedToken,
     VerifyOutcome::{Faulted, Rejected, Verified},
     verify_capability_token,
 };
 
 use crate::founder_fail_closed::fail_closed_decision;
+
+use crate::founder_approval_store::{PendingApproval, ReviewRequestId};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct FounderAuthoredGuard;
@@ -42,6 +44,11 @@ pub const CONFORMANCE_APPROVAL_REQUIRED_ABOVE_MINOR_UNITS: u64 =
 
 #[doc(hidden)]
 pub const CONFORMANCE_APPROVAL_WINDOW_SECONDS: u64 = APPROVAL_WINDOW_SECONDS;
+
+const REVIEW_REQUEST_ID_DOMAIN: &[u8] = b"DGR-CORE004-REVIEW-V1\0";
+
+#[doc(hidden)]
+pub const CONFORMANCE_REVIEW_REQUEST_ID_DOMAIN: &[u8] = REVIEW_REQUEST_ID_DOMAIN;
 
 impl GuardDecisionPort for FounderAuthoredGuard {
     fn decide(
@@ -142,6 +149,42 @@ fn canonical_amount_requires_approval(amount: &str) -> Option<bool> {
     } else {
         amount > threshold
     })
+}
+
+fn derive_review_request_id(token: &VerifiedToken) -> ReviewRequestId {
+    let mut digest = Sha256::new();
+    digest.update(REVIEW_REQUEST_ID_DOMAIN);
+    digest.update(token.key_id);
+    digest.update(token.nonce);
+    digest.update(token.action_commitment);
+
+    ReviewRequestId::from_bytes(digest.finalize().into())
+}
+
+fn pending_approval(
+    token: &VerifiedToken,
+    requested_at: u64,
+) -> Result<PendingApproval, GuardFault> {
+    let deadline = requested_at
+        .checked_add(APPROVAL_WINDOW_SECONDS)
+        .ok_or(GuardFault::InternalError)?;
+
+    Ok(PendingApproval {
+        review_request_id: derive_review_request_id(token),
+        key_id: token.key_id,
+        nonce: token.nonce,
+        action_commitment: token.action_commitment,
+        requested_at,
+        deadline,
+    })
+}
+
+#[doc(hidden)]
+pub fn conformance_pending_approval(
+    token: &VerifiedToken,
+    requested_at: u64,
+) -> Result<PendingApproval, GuardFault> {
+    pending_approval(token, requested_at)
 }
 
 #[doc(hidden)]
