@@ -1,6 +1,6 @@
 # CORE-004 T0 founder review input
 
-**Status:** Founder pre-authoring decisions complete — T0 authoring may begin  
+**Status:** T0 authoring complete — exact-commit review gates pending
 **Founder T0 base:** `7324cbb33be59595657a2df13c300aa388208d77`  
 **Branch:** `codex/core-004-t0-founder`
 
@@ -149,19 +149,22 @@ Record the final file/function ownership before editing:
 | `tests/bypass-rust/src/founder_approval_timeout.rs` | Token-free R-3 evaluation and fail-closed mapping | `Confirmed — founder-owned T0` |
 | `tests/bypass-rust/src/lib.rs` | Mechanical module exports only | `Confirmed — mechanical exports only; no independent behavior` |
 
-## E. Post-authoring exact-commit gate — complete later
+## E. Post-authoring exact-commit gate
 
 - **Baseline commit:** `7324cbb33be59595657a2df13c300aa388208d77`
-- **Reviewed T0 commit:** `[AFTER AUTHORING]`
-- **Patch SHA-256:** `[AFTER AUTHORING]`
-- **Adversarial/regression evidence:** `[AFTER AUTHORING]`
-- **Independent human reviewer and stable reference:** `[AFTER AUTHORING]`
-- **Cross-model bundle/disposition:** `[AFTER AUTHORING]`
-- **Semgrep raw evidence and founder disposition:** `[AFTER AUTHORING]`
-- **CodeQL raw evidence and founder disposition:** `[AFTER AUTHORING]`
-- **cargo-deny raw evidence and founder disposition:** `[AFTER AUTHORING]`
-- **Founder final decision:** `[AFTER AUTHORING]`
+- **Reviewed T0 commit:** `60febb08ac9c3e207d6f7a3563b6824374c5c93e`
+- **Patch SHA-256:** `71f051e24055cb0febd620d84a2703ea43d7277f5af4266feef8d03d0fbb9f1f`
+  (`git diff --binary --full-index 7324cbb33be59595657a2df13c300aa388208d77..60febb08ac9c3e207d6f7a3563b6824374c5c93e`)
+- **Adversarial/regression evidence:** `qa/core-004-t3-green-report.md` — local
+  Rust gates pass; founder/human adjudication remains required.
+- **Independent human reviewer and stable reference:** `[HUMAN REVIEW REQUIRED]`
+- **Cross-model bundle/disposition:** `[CROSS-MODEL REVIEW REQUIRED]`
+- **Semgrep raw evidence and founder disposition:** `[SAST RUN AND FOUNDER DISPOSITION REQUIRED]`
+- **CodeQL raw evidence and founder disposition:** `[SAST RUN AND FOUNDER DISPOSITION REQUIRED]`
+- **cargo-deny raw evidence and founder disposition:** `[SAST/SCA RUN AND FOUNDER DISPOSITION REQUIRED]`
+- **Founder final decision:** `[FOUNDER SIGN-OFF REQUIRED AFTER ALL GATES]`
 
-ATK-06 stays ignored until the reviewed T0 implementation and mechanical
-test wiring make the dedicated two-surface contract green. The generic
-terminal no-token placeholder must never be used as completion evidence.
+ATK-06 is active in the isolated suite at the reviewed commit: the dedicated
+two-surface target has five passing tests and no ignored cases. This local green
+state is not merge approval and does not satisfy the outstanding human,
+cross-model, or SAST gates by itself.

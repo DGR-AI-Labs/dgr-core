@@ -1,5 +1,10 @@
 # CORE-004 T3 RED conformance report
 
+> Historical RED evidence. The reviewed founder implementation and mechanical
+> T3 wiring turned this contract green at `60febb08ac9c3e207d6f7a3563b6824374c5c93e`;
+> see `qa/core-004-t3-green-report.md`. The original RED facts below are retained
+> as the pre-authoring audit record.
+
 **Date:** 2026-08-20  
 **Status:** In Review — founder approval required before T0 authoring  
 **Base:** `0e462eb9dbfa8937aa64a80c978e560e5c0d2f32`  
