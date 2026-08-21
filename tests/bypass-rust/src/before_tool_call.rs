@@ -5,6 +5,8 @@
 //! fail-closed floor for a reached boundary whose guard faults or unwinds.
 //! The effectful target remains a test probe, never a real tool.
 
+use crate::founder_approval_store::ReviewRequestId;
+
 use crate::founder_consumption_store::ConsumptionStore;
 use crate::{DecisionContext, ProposedAction, RequiredOutcome};
 
@@ -27,6 +29,10 @@ pub struct BeforeToolCallRequest<'a> {
 pub enum GuardDecision {
     Allow {
         authorization_reference: &'static str,
+    },
+    Escalate {
+        review_request_id: ReviewRequestId,
+        deadline: u64,
     },
     Deny {
         outcome: RequiredOutcome,
@@ -67,6 +73,12 @@ pub enum BeforeToolCallObservation {
         authorization_issued: bool,
         effectful_invocations: u32,
     },
+    Escalated {
+        review_request_id: ReviewRequestId,
+        deadline: u64,
+        authorization_issued: bool,
+        effectful_invocations: u32,
+    },
     Proceeded {
         authorization_reference: &'static str,
         authorization_issued: bool,
@@ -79,7 +91,7 @@ pub enum BeforeToolCallObservation {
     },
 }
 
-/// OpenClaw-shaped test boundary. Returned `Ok(Deny | Allow)` decisions retain
+/// OpenClaw-shaped test boundary. Returned `Ok(Deny | Escalate | Allow)` decisions retain
 /// their established relay behavior. A typed guard fault or an unwinding panic
 /// is contained by the founder-authored T0 floor and becomes an explicit
 /// fail-closed block before the effectful probe can run.
@@ -124,6 +136,15 @@ where
             })) => BeforeToolCallObservation::Blocked {
                 outcome,
                 denial_signal,
+                authorization_issued: false,
+                effectful_invocations: tool.invocation_count(),
+            },
+            Ok(Ok(GuardDecision::Escalate {
+                review_request_id,
+                deadline,
+            })) => BeforeToolCallObservation::Escalated {
+                review_request_id,
+                deadline,
                 authorization_issued: false,
                 effectful_invocations: tool.invocation_count(),
             },

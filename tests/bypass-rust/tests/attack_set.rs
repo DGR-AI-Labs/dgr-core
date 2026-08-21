@@ -223,6 +223,9 @@ fn assert_atk_07_fail_closed(observed: BeforeToolCallObservation, tool: &Recordi
             assert!(!authorization_issued, "ATK-07 issued authorization");
             assert_eq!(effectful_invocations, 0, "ATK-07 reached the tool");
         }
+        BeforeToolCallObservation::Escalated { .. } => {
+            panic!("ATK-07 RED: a faulting boundary emitted an escalation")
+        }
         BeforeToolCallObservation::Proceeded { .. } => {
             panic!("ATK-07 RED: a faulting boundary proceeded to the tool")
         }
