@@ -32,13 +32,12 @@ Only the founder authors the bodies of the existing functions named here:
 | `tests/bypass-rust/src/founder_consumption_store.rs` | `ConsumptionStore::consume` | Store boundary retained for S2 now and S3 later |
 | `tests/bypass-rust/src/before_tool_call.rs` | `BeforeToolCallAdapter::before_tool_call` | Contain guard faults and unwinding panics and return a fail-closed block before tool invocation |
 
-## Planned CORE-004 founder-owned surfaces
+## CORE-004 founder-owned surfaces
 
-The following planned surfaces are T0 before they exist. Their names describe
-ownership and responsibility; they do not authorize creation by an agent or
-freeze an unreviewed Rust signature.
+The following implemented surfaces are founder-authored T0. Their names record
+ownership and responsibility and do not authorize later agent changes.
 
-| Planned surface/location | Founder-owned responsibility |
+| Surface/location | Founder-owned responsibility |
 |---|---|
 | `tests/bypass-rust/src/founder_approval_store.rs` | The `ApprovalStore` port; original-id/deadline `AlreadyPending` behavior; and every consequential pending/not-found/timed-out/fault outcome |
 | `tests/bypass-rust/src/founder_s2_approval_store.rs` | Durable-local SQLite record, deduplication, lookup, and timeout-transition behavior, including deadline immutability and persist-then-observe |
@@ -51,9 +50,9 @@ or denied semantics is T0 until the founder records a narrower classification.
 
 ## Current implementation state
 
-The CORE-002 units named above and the CORE-003
-`BeforeToolCallAdapter::before_tool_call` boundary contain founder-authored T0
-enforcement pending the applicable T0 review gates. The default
+The CORE-002 units named above, the CORE-003
+`BeforeToolCallAdapter::before_tool_call` boundary, and the CORE-004 surfaces
+contain founder-authored T0 enforcement pending the applicable T0 review gates. The default
 `ConsumptionStore` implementation still returns `FounderImplementationRequired`
 explicitly so an absent concrete store fails closed. The S2 unit exposes an
 in-memory constructor for isolated conformance tests and a file-backed
@@ -77,8 +76,7 @@ The following are outside the founder implementation surface:
   active CORE-002 checks for ATK-01/02/03/08/09/10/11/13, active CORE-003
   checks for ATK-07, and explicitly deferred cases.
 
-After the pinned CORE-004 contract and documentation gate are merged, these
-additional support surfaces are T3 and agent-authorable only in their recorded
+The following supporting surfaces are T3 and were authored in their recorded
 backlog order:
 
 - VAL-004 fixture data: valid above-threshold and below-threshold actions,
@@ -86,7 +84,8 @@ backlog order:
   `deadline - 1`, `deadline`, and `deadline + 1`, re-presentation facts, and
   the no-approval scenario;
 - a deterministic or fake approval store used solely by tests; and
-- RED conformance tests asserting the ordered
+- conformance tests, initially reviewed RED and activated only after founder
+  implementation, asserting the ordered
   `[Escalated, Blocked { ... }]` sequence with the registry-derived ATK-06
   outcome and zero effectful invocations.
 

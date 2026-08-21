@@ -5,6 +5,8 @@
 //! fail-closed floor for a reached boundary whose guard faults or unwinds.
 //! The effectful target remains a test probe, never a real tool.
 
+use crate::founder_approval_store::{ApprovalStore, ReviewRequestId};
+
 use crate::founder_consumption_store::ConsumptionStore;
 use crate::{DecisionContext, ProposedAction, RequiredOutcome};
 
@@ -28,6 +30,10 @@ pub enum GuardDecision {
     Allow {
         authorization_reference: &'static str,
     },
+    Escalate {
+        review_request_id: ReviewRequestId,
+        deadline: u64,
+    },
     Deny {
         outcome: RequiredOutcome,
         denial_signal: &'static str,
@@ -48,7 +54,8 @@ pub trait GuardDecisionPort {
         &self,
         request: &BeforeToolCallRequest<'_>,
         now_unix_seconds: u64,
-        store: &mut dyn ConsumptionStore,
+        consumption_store: &mut dyn ConsumptionStore,
+        approval_store: &mut dyn ApprovalStore,
     ) -> Result<GuardDecision, GuardFault>;
 }
 
@@ -67,6 +74,12 @@ pub enum BeforeToolCallObservation {
         authorization_issued: bool,
         effectful_invocations: u32,
     },
+    Escalated {
+        review_request_id: ReviewRequestId,
+        deadline: u64,
+        authorization_issued: bool,
+        effectful_invocations: u32,
+    },
     Proceeded {
         authorization_reference: &'static str,
         authorization_issued: bool,
@@ -79,7 +92,7 @@ pub enum BeforeToolCallObservation {
     },
 }
 
-/// OpenClaw-shaped test boundary. Returned `Ok(Deny | Allow)` decisions retain
+/// OpenClaw-shaped test boundary. Returned `Ok(Deny | Escalate | Allow)` decisions retain
 /// their established relay behavior. A typed guard fault or an unwinding panic
 /// is contained by the founder-authored T0 floor and becomes an explicit
 /// fail-closed block before the effectful probe can run.
@@ -103,18 +116,20 @@ where
         &self,
         request: &BeforeToolCallRequest<'_>,
         now_unix_seconds: u64,
-        store: &mut dyn ConsumptionStore,
+        consumption_store: &mut dyn ConsumptionStore,
+        approval_store: &mut dyn ApprovalStore,
         tool: &mut T,
     ) -> BeforeToolCallObservation
     where
         T: EffectfulToolProbe,
     {
         // `AssertUnwindSafe` is deliberately bounded to this invocation. If `decide`
-        // unwinds, this method does not inspect or reuse `store` and returns fail-closed
-        // immediately. This does not certify the store's invariants for reuse by a
-        // later invocation.
+        // unwinds, this method does not inspect or reuse either store and returns
+        // fail-closed immediately. This does not certify either store's invariants
+        // for reuse by a later invocation.
         let decision = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.guard.decide(request, now_unix_seconds, store)
+            self.guard
+                .decide(request, now_unix_seconds, consumption_store, approval_store)
         }));
 
         match decision {
@@ -124,6 +139,15 @@ where
             })) => BeforeToolCallObservation::Blocked {
                 outcome,
                 denial_signal,
+                authorization_issued: false,
+                effectful_invocations: tool.invocation_count(),
+            },
+            Ok(Ok(GuardDecision::Escalate {
+                review_request_id,
+                deadline,
+            })) => BeforeToolCallObservation::Escalated {
+                review_request_id,
+                deadline,
                 authorization_issued: false,
                 effectful_invocations: tool.invocation_count(),
             },

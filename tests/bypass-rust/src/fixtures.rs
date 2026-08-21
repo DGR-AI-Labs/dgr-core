@@ -2,6 +2,7 @@
 //! verification results and must never be used as enforcement inputs.
 
 use crate::before_tool_call::{BeforeToolCallRequest, EffectfulToolProbe, OpaqueCapabilityToken};
+use crate::founder_approval_store::ApprovalStore;
 use crate::val_002_fixtures::Val002Fixture;
 use crate::{AttackCase, DecisionContext, ProposedAction};
 
@@ -119,6 +120,13 @@ const fn token_request(bytes: &'static [u8]) -> BeforeToolCallRequest<'static> {
         capability_token: Some(OpaqueCapabilityToken { bytes }),
     }
 }
+
+/// Test-only approval port for paths that must not consult approval state.
+/// Any accidental call uses the founder-owned trait's fail-closed defaults.
+#[derive(Debug, Default)]
+pub struct FailClosedApprovalStore;
+
+impl ApprovalStore for FailClosedApprovalStore {}
 
 #[derive(Debug, Default)]
 pub struct RecordingToolProbe {

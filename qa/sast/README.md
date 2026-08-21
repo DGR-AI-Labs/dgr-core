@@ -71,3 +71,30 @@ deterministic fixture nonces in `src/val_002_fixtures.rs`. No result touches
 `before_tool_call.rs` or the new CORE-003 boundary logic. These findings still
 require explicit founder disposition for this exact-commit gate; prior
 disposition is context, not a substitute for reviewing the fresh raw output.
+
+## CORE-004 T0 two-surface approval timeout
+
+**Scanned commit:** `60febb08ac9c3e207d6f7a3563b6824374c5c93e`
+
+**Reviewed patch SHA-256:**
+`71f051e24055cb0febd620d84a2703ea43d7277f5af4266feef8d03d0fbb9f1f`
+
+**Cargo.lock SHA-256:**
+`59c1a398c6a3405a6a895da2e794b7ed7cb0d6970ac74840cbd698c40b0f39ad`
+
+| Engine | Raw artifact | SHA-256 | Result |
+|---|---|---|---|
+| Semgrep | `core-004-t0-semgrep-2026-08-21.txt` | `1cff06e57cb8f7b256abfd91f0c58b5598edfadf21de81536cc3141664dd3463` | 20/20 targets, 0 errors, 1 INFO finding |
+| Semgrep | `core-004-t0-semgrep-2026-08-21.json` | `1a18b314f853591469943751290779bf14bf7b59d5ac971ffbcc2fa4e07e5084` | machine-readable raw result |
+| CodeQL | `core-004-t0-codeql-2026-08-21.txt` | `b2ec19be1f5b114787bf0096a6b9cda434965331f8d669c5b70e7ffef3648850` | 20/20 extracted, 0 errors, 9 findings |
+| CodeQL | `core-004-t0-codeql-2026-08-21.sarif` | `85e7d20718c2fd8732699b61ba88a1d635fa927a35809e2e877efae3e1e801ba` | valid SARIF, one run |
+| cargo-deny | `core-004-t0-cargo-deny-2026-08-21.txt` | `23e4ec1efb089c4c960f977999520e1bd1be13b36b3c8e49200258708b917cb6` | exit 0; no blocking diagnostics |
+
+The Semgrep finding is the existing test-only temporary-path construction in
+`tests/consumption_store.rs`. CodeQL reports the seven previously reviewed
+VAL-002 deterministic fixture nonces plus two deterministic VAL-004 fixture
+nonces at `src/val_004_fixtures.rs:136,143`. The CodeQL Rust diagnostics also
+report seven path-resolution inconsistencies, but all 20 tracked Rust files
+were extracted without error and the analysis produced no execution errors.
+Every finding and diagnostic still requires explicit founder disposition for
+this exact-commit gate.

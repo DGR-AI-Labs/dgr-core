@@ -41,7 +41,7 @@ RUNTIME-003/004, not simulated by this isolation harness.
 
 ## CORE-004 ownership and bounded claim
 
-CORE-004 covers ATK-06's timeout-only isolation contract. Its planned
+CORE-004 covers ATK-06's timeout-only isolation contract. Its
 `Escalated` observation, durable pending-store behavior, escalation and
 timeout decisions, R-3 timeout-evaluation path, and adapter behavior that
 emits `Escalated` are founder-authored T0. In particular, `Escalated` is not an
@@ -80,13 +80,14 @@ evaluated by comparing the stored deadline at read time. SQLite cleanup,
 DynamoDB TTL, or another reaper may reclaim storage only; record expiry or
 absence must never be the enforcement signal.
 
-ATK-06 remains deferred and ignored until founder-authored T0 behavior turns
-the reviewed RED conformance tests green without changing the registry-derived
-expectation. Real human approval delivery and wait, live restart/retry,
+ATK-06 is active in the isolated conformance suite after founder-authored T0
+behavior turned the reviewed RED tests green without changing the
+registry-derived expectation. Merge remains gated by the complete T0 human,
+cross-model, adversarial-test, and three-engine SAST review. Real human approval delivery and wait, live restart/retry,
 cross-instance pending state, and approval-path route-around/non-bypassability
 remain in the deferred runtime-integration epic; their exact runtime item is
 recorded by the canonical backlog and does not activate before CORE-005 Done
 with ATK-01..14 green.
 
-ATK-01/02/03/07/08/09/10/11/13 are active; ATK-04/05/06/12/14 remain deferred,
+ATK-01/02/03/06/07/08/09/10/11/13 are active; ATK-04/05/12/14 remain deferred,
 and ATK-15 remains an external IAM case.

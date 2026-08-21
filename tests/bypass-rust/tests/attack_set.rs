@@ -3,13 +3,15 @@ use dgr_core_bypass_harness::before_tool_call::{
     GuardDecision, GuardDecisionPort, GuardFault, OpaqueCapabilityToken,
 };
 use dgr_core_bypass_harness::fixtures::{
-    RecordingToolProbe, no_token_request, request_for_attack, request_for_val_002_fixture,
+    FailClosedApprovalStore, RecordingToolProbe, no_token_request, request_for_attack,
+    request_for_val_002_fixture,
 };
 
 use dgr_core_bypass_harness::val_002_fixtures::{
     FIXED_NOW_UNIX_SECONDS, FixtureClock, fixture_catalog,
 };
 
+use dgr_core_bypass_harness::founder_approval_store::ApprovalStore;
 use dgr_core_bypass_harness::founder_authored_guard::FounderAuthoredGuard;
 use dgr_core_bypass_harness::founder_consumption_store::{ConsumeOutcome, ConsumptionStore};
 use dgr_core_bypass_harness::founder_s2_consumption_store::S2ConsumptionStore;
@@ -23,12 +25,14 @@ fn observe_val_002_fixture(fixture_id: &str, attack_id: &str) -> BeforeToolCallO
     let request = request_for_val_002_fixture(case, fixture);
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
     let mut store = S2ConsumptionStore::open_in_memory().expect("store");
+    let mut approval_store = FailClosedApprovalStore;
     let mut tool = RecordingToolProbe::default();
 
     adapter.before_tool_call(
         &request,
         fixture.clock.now_unix_seconds(),
         &mut store,
+        &mut approval_store,
         &mut tool,
     )
 }
@@ -91,10 +95,16 @@ fn atk_10_malformed_length_is_denied_before_parsing() {
     };
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
     let mut store = S2ConsumptionStore::open_in_memory().expect("store");
+    let mut approval_store = FailClosedApprovalStore;
     let mut tool = RecordingToolProbe::default();
 
-    let observed =
-        adapter.before_tool_call(&request, FIXED_NOW_UNIX_SECONDS, &mut store, &mut tool);
+    let observed = adapter.before_tool_call(
+        &request,
+        FIXED_NOW_UNIX_SECONDS,
+        &mut store,
+        &mut approval_store,
+        &mut tool,
+    );
     assert_eq!(tool.invocation_count(), 0);
     assert_eq!(
         observed,
@@ -154,11 +164,13 @@ fn assert_gate_case(id: &str) {
     );
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
     let mut store = S2ConsumptionStore::open_in_memory().expect("store");
+    let mut approval_store = FailClosedApprovalStore;
     let mut tool = RecordingToolProbe::default();
     let observed = adapter.before_tool_call(
         &request_for_attack(case),
         FIXED_NOW_UNIX_SECONDS,
         &mut store,
+        &mut approval_store,
         &mut tool,
     );
 
@@ -186,6 +198,7 @@ impl GuardDecisionPort for Atk07FaultingGuard {
         _request: &BeforeToolCallRequest<'_>,
         _now_unix_seconds: u64,
         _store: &mut dyn ConsumptionStore,
+        _approval_store: &mut dyn ApprovalStore,
     ) -> Result<GuardDecision, GuardFault> {
         Err(GuardFault::InternalError)
     }
@@ -200,6 +213,7 @@ impl GuardDecisionPort for Atk07PanickingGuard {
         _request: &BeforeToolCallRequest<'_>,
         _now_unix_seconds: u64,
         _store: &mut dyn ConsumptionStore,
+        _approval_store: &mut dyn ApprovalStore,
     ) -> Result<GuardDecision, GuardFault> {
         panic!("forced ATK-07 hook failure")
     }
@@ -223,6 +237,9 @@ fn assert_atk_07_fail_closed(observed: BeforeToolCallObservation, tool: &Recordi
             assert!(!authorization_issued, "ATK-07 issued authorization");
             assert_eq!(effectful_invocations, 0, "ATK-07 reached the tool");
         }
+        BeforeToolCallObservation::Escalated { .. } => {
+            panic!("ATK-07 RED: a faulting boundary emitted an escalation")
+        }
         BeforeToolCallObservation::Proceeded { .. } => {
             panic!("ATK-07 RED: a faulting boundary proceeded to the tool")
         }
@@ -239,10 +256,16 @@ fn atk_07_typed_guard_fault_requires_fail_closed_floor() {
     let request = request_for_attack(case);
     let adapter = BeforeToolCallAdapter::new(Atk07FaultingGuard);
     let mut store = S2ConsumptionStore::open_in_memory().expect("store");
+    let mut approval_store = FailClosedApprovalStore;
     let mut tool = RecordingToolProbe::default();
 
-    let observed =
-        adapter.before_tool_call(&request, FIXED_NOW_UNIX_SECONDS, &mut store, &mut tool);
+    let observed = adapter.before_tool_call(
+        &request,
+        FIXED_NOW_UNIX_SECONDS,
+        &mut store,
+        &mut approval_store,
+        &mut tool,
+    );
 
     assert_atk_07_fail_closed(observed, &tool);
 }
@@ -253,10 +276,17 @@ fn atk_07_guard_panic_requires_fail_closed_floor() {
     let request = request_for_attack(case);
     let adapter = BeforeToolCallAdapter::new(Atk07PanickingGuard);
     let mut store = S2ConsumptionStore::open_in_memory().expect("store");
+    let mut approval_store = FailClosedApprovalStore;
     let mut tool = RecordingToolProbe::default();
 
     let result = catch_unwind(AssertUnwindSafe(|| {
-        adapter.before_tool_call(&request, FIXED_NOW_UNIX_SECONDS, &mut store, &mut tool)
+        adapter.before_tool_call(
+            &request,
+            FIXED_NOW_UNIX_SECONDS,
+            &mut store,
+            &mut approval_store,
+            &mut tool,
+        )
     }));
 
     assert_eq!(
@@ -292,10 +322,17 @@ fn no_token_guard_cannot_reach_the_effectful_probe() {
     let request = no_token_request();
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
     let mut store = S2ConsumptionStore::open_in_memory().expect("store");
+    let mut approval_store = FailClosedApprovalStore;
     let mut tool = RecordingToolProbe::default();
 
     let result = catch_unwind(AssertUnwindSafe(|| {
-        adapter.before_tool_call(&request, FIXED_NOW_UNIX_SECONDS, &mut store, &mut tool)
+        adapter.before_tool_call(
+            &request,
+            FIXED_NOW_UNIX_SECONDS,
+            &mut store,
+            &mut approval_store,
+            &mut tool,
+        )
     }));
 
     assert_eq!(
@@ -321,10 +358,16 @@ fn atk_01_no_authorization_is_blocked_before_tool_execution() {
 
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
     let mut store = S2ConsumptionStore::open_in_memory().expect("store");
+    let mut approval_store = FailClosedApprovalStore;
     let mut tool = RecordingToolProbe::default();
 
-    let observed =
-        adapter.before_tool_call(&request, FIXED_NOW_UNIX_SECONDS, &mut store, &mut tool);
+    let observed = adapter.before_tool_call(
+        &request,
+        FIXED_NOW_UNIX_SECONDS,
+        &mut store,
+        &mut approval_store,
+        &mut tool,
+    );
 
     assert_eq!(
         tool.invocation_count(),
@@ -464,12 +507,14 @@ fn atk_03_replayed_token() {
     let request = request_for_val_002_fixture(case, fixture);
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
     let mut store = S2ConsumptionStore::open_in_memory().expect("store");
+    let mut approval_store = FailClosedApprovalStore;
 
     let mut first_tool = RecordingToolProbe::default();
     let first = adapter.before_tool_call(
         &request,
         fixture.clock.now_unix_seconds(),
         &mut store,
+        &mut approval_store,
         &mut first_tool,
     );
 
@@ -478,6 +523,7 @@ fn atk_03_replayed_token() {
         &request,
         fixture.clock.now_unix_seconds(),
         &mut store,
+        &mut approval_store,
         &mut second_tool,
     );
 
@@ -519,12 +565,14 @@ fn atk_13_audit_append_failure() {
     let request = request_for_val_002_fixture(case, fixture);
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
     let mut store = FaultingConsumptionStore;
+    let mut approval_store = FailClosedApprovalStore;
     let mut tool = RecordingToolProbe::default();
 
     let observed = adapter.before_tool_call(
         &request,
         fixture.clock.now_unix_seconds(),
         &mut store,
+        &mut approval_store,
         &mut tool,
     );
 
@@ -546,14 +594,14 @@ ignored_gate_attack!(atk_12_revoked_credential, "ATK-12");
 ignored_gate_attack!(atk_14_cross_tenant_use, "ATK-14");
 
 #[test]
-#[ignore = "CORE-004 dedicated two-surface RED conformance pending founder T0"]
 fn atk_06_approval_timeout() {
     let case = attack_by_id("ATK-06").expect("ATK-06 is registered");
     assert_eq!(case.target, HarnessTarget::Gate);
     assert_eq!(case.expected, RequiredOutcome::EscalateThenDenyOnTimeout);
-    panic!(
-        "ATK-06 RED: a generic terminal no-token block is not the required two-surface escalation/timeout proof; run core_004_conformance"
-    );
+
+    // The behavioral proof is intentionally kept in `core_004_conformance`:
+    // token presentation must first produce a durable escalation, and only the
+    // separate token-free timeout surface may produce the terminal denial.
 }
 
 #[test]

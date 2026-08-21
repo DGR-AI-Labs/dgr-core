@@ -14,12 +14,16 @@ use crate::{ProposedAction, RequiredOutcome};
 use sha2::{Digest, Sha256};
 
 use crate::founder_token_verification::{
-    TokenRejection,
+    TokenRejection, VerifiedToken,
     VerifyOutcome::{Faulted, Rejected, Verified},
     verify_capability_token,
 };
 
 use crate::founder_fail_closed::fail_closed_decision;
+
+use crate::founder_approval_store::{
+    ApprovalStore, PendingApproval, RecordPendingOutcome, ReviewRequestId,
+};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct FounderAuthoredGuard;
@@ -33,12 +37,28 @@ pub const CONFORMANCE_MAXIMUM_LIFETIME_SECONDS: u64 = MAXIMUM_LIFETIME_SECONDS;
 #[doc(hidden)]
 pub const CONFORMANCE_EXPIRY_SKEW_SECONDS: u64 = EXPIRY_SKEW_SECONDS;
 
+const APPROVAL_REQUIRED_ABOVE_MINOR_UNITS: u64 = 1_000_000;
+const APPROVAL_WINDOW_SECONDS: u64 = 86_400;
+
+#[doc(hidden)]
+pub const CONFORMANCE_APPROVAL_REQUIRED_ABOVE_MINOR_UNITS: u64 =
+    APPROVAL_REQUIRED_ABOVE_MINOR_UNITS;
+
+#[doc(hidden)]
+pub const CONFORMANCE_APPROVAL_WINDOW_SECONDS: u64 = APPROVAL_WINDOW_SECONDS;
+
+const REVIEW_REQUEST_ID_DOMAIN: &[u8] = b"DGR-CORE004-REVIEW-V1\0";
+
+#[doc(hidden)]
+pub const CONFORMANCE_REVIEW_REQUEST_ID_DOMAIN: &[u8] = REVIEW_REQUEST_ID_DOMAIN;
+
 impl GuardDecisionPort for FounderAuthoredGuard {
     fn decide(
         &self,
         request: &BeforeToolCallRequest<'_>,
         now_unix_seconds: u64,
-        store: &mut dyn ConsumptionStore,
+        consumption_store: &mut dyn ConsumptionStore,
+        approval_store: &mut dyn ApprovalStore,
     ) -> Result<GuardDecision, GuardFault> {
         match request.capability_token {
             None => Ok(GuardDecision::Deny {
@@ -98,7 +118,52 @@ impl GuardDecisionPort for FounderAuthoredGuard {
                         });
                     }
 
-                    match store.consume(&token.nonce) {
+                    let requires_approval =
+                        match canonical_amount_requires_approval(request.proposed_action.amount) {
+                            Some(requires_approval) => requires_approval,
+                            None => {
+                                return Ok(GuardDecision::Deny {
+                                    outcome: RequiredOutcome::Deny,
+                                    denial_signal: "CORE-004 non-canonical amount",
+                                });
+                            }
+                        };
+
+                    if requires_approval {
+                        let candidate = match pending_approval(&token, now_unix_seconds) {
+                            Ok(candidate) => candidate,
+                            Err(fault) => return fail_closed_decision(fault),
+                        };
+
+                        let stored = match approval_store.record_pending(candidate) {
+                            RecordPendingOutcome::Recorded(stored) => {
+                                if stored != candidate {
+                                    return fail_closed_decision(GuardFault::InternalError);
+                                }
+
+                                stored
+                            }
+                            RecordPendingOutcome::AlreadyPending(stored) => {
+                                if !same_pending_identity(&stored, &candidate)
+                                    || stored.deadline < stored.requested_at
+                                {
+                                    return fail_closed_decision(GuardFault::InternalError);
+                                }
+
+                                stored
+                            }
+                            RecordPendingOutcome::Faulted(fault) => {
+                                return fail_closed_decision(fault);
+                            }
+                        };
+
+                        return Ok(GuardDecision::Escalate {
+                            review_request_id: stored.review_request_id,
+                            deadline: stored.deadline,
+                        });
+                    }
+
+                    match consumption_store.consume(&token.nonce) {
                         ConsumeOutcome::Consumed => Ok(GuardDecision::Allow {
                             authorization_reference: "CORE-002 authorized",
                         }),
@@ -112,6 +177,74 @@ impl GuardDecisionPort for FounderAuthoredGuard {
             },
         }
     }
+}
+
+fn canonical_amount_requires_approval(amount: &str) -> Option<bool> {
+    let amount = amount.as_bytes();
+
+    if amount.is_empty()
+        || !amount.iter().all(u8::is_ascii_digit)
+        || (amount.len() > 1 && amount[0] == b'0')
+    {
+        return None;
+    }
+
+    let threshold = APPROVAL_REQUIRED_ABOVE_MINOR_UNITS.to_string();
+    let threshold = threshold.as_bytes();
+
+    Some(if amount.len() != threshold.len() {
+        amount.len() > threshold.len()
+    } else {
+        amount > threshold
+    })
+}
+
+fn derive_review_request_id(token: &VerifiedToken) -> ReviewRequestId {
+    let mut digest = Sha256::new();
+    digest.update(REVIEW_REQUEST_ID_DOMAIN);
+    digest.update(token.key_id);
+    digest.update(token.nonce);
+    digest.update(token.action_commitment);
+
+    ReviewRequestId::from_bytes(digest.finalize().into())
+}
+
+fn pending_approval(
+    token: &VerifiedToken,
+    requested_at: u64,
+) -> Result<PendingApproval, GuardFault> {
+    let deadline = requested_at
+        .checked_add(APPROVAL_WINDOW_SECONDS)
+        .ok_or(GuardFault::InternalError)?;
+
+    Ok(PendingApproval {
+        review_request_id: derive_review_request_id(token),
+        key_id: token.key_id,
+        nonce: token.nonce,
+        action_commitment: token.action_commitment,
+        requested_at,
+        deadline,
+    })
+}
+
+fn same_pending_identity(existing: &PendingApproval, candidate: &PendingApproval) -> bool {
+    existing.review_request_id == candidate.review_request_id
+        && existing.key_id == candidate.key_id
+        && existing.nonce == candidate.nonce
+        && existing.action_commitment == candidate.action_commitment
+}
+
+#[doc(hidden)]
+pub fn conformance_pending_approval(
+    token: &VerifiedToken,
+    requested_at: u64,
+) -> Result<PendingApproval, GuardFault> {
+    pending_approval(token, requested_at)
+}
+
+#[doc(hidden)]
+pub fn conformance_amount_requires_approval(amount: &str) -> Option<bool> {
+    canonical_amount_requires_approval(amount)
 }
 
 fn canonical_action_bytes(action: &ProposedAction) -> Option<Vec<u8>> {

@@ -1,67 +1,33 @@
-//! RED CORE-004 conformance scaffolding.
+//! Live CORE-004 two-surface conformance coverage.
 //!
-//! These tests freeze the T3-observable ATK-06 contract without creating the
-//! founder-owned approval port, durable store, observation variant, escalation
-//! decision, or R-3 timeout evaluator. Required CI compiles this file while the
-//! dedicated CORE-004 cases remain ignored. Run the ignored cases explicitly to
-//! observe RED until the founder-authored T0 surfaces exist.
+//! Token presentation exercises durable escalation without consuming the nonce.
+//! Token-free timeout evaluation then re-observes the original pending request
+//! through its deadline and commits the registry-derived denial after it.
 
 use dgr_core_bypass_harness::RequiredOutcome;
 use dgr_core_bypass_harness::attack_by_id;
 use dgr_core_bypass_harness::before_tool_call::{
-    BeforeToolCallAdapter, BeforeToolCallObservation, EffectfulToolProbe,
+    BeforeToolCallAdapter, BeforeToolCallObservation, EffectfulToolProbe, GuardDecision,
 };
-use dgr_core_bypass_harness::fixtures::RecordingToolProbe;
+use dgr_core_bypass_harness::fixtures::{FailClosedApprovalStore, RecordingToolProbe};
+use dgr_core_bypass_harness::founder_approval_store::ReviewRequestId;
+use dgr_core_bypass_harness::founder_approval_timeout::evaluate_approval_timeout;
 use dgr_core_bypass_harness::founder_authored_guard::FounderAuthoredGuard;
+use dgr_core_bypass_harness::founder_consumption_store::{ConsumeOutcome, ConsumptionStore};
+use dgr_core_bypass_harness::founder_s2_approval_store::S2ApprovalStore;
 use dgr_core_bypass_harness::founder_s2_consumption_store::S2ConsumptionStore;
 use dgr_core_bypass_harness::val_002_fixtures::FixtureClock;
 use dgr_core_bypass_harness::val_004_fixtures::{
     ATTACK_ID, ExpectedVal004Observation, FIXED_DEADLINE, FIXED_REVIEW_REQUEST_ID,
-    NonceExpectation, PendingApprovalFacts, PendingRecordExpectation, Val004Fixture,
-    before_tool_call_request, fixture_catalog,
+    NonceExpectation, PendingRecordExpectation, Val004Fixture, before_tool_call_request,
+    fixture_catalog,
 };
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum FakeApprovalPrecondition {
-    NoPendingRecord,
-    Existing(PendingApprovalFacts),
-}
-
-/// Test-only scenario state. It records inputs and does not implement approval
-/// persistence, lookup, transition, policy, or an observation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct FakeApprovalState {
-    precondition: FakeApprovalPrecondition,
-    approval_received: bool,
-}
-
-impl FakeApprovalState {
-    const fn no_pending_record() -> Self {
-        Self {
-            precondition: FakeApprovalPrecondition::NoPendingRecord,
-            approval_received: false,
-        }
-    }
-
-    const fn unanswered(pending: PendingApprovalFacts) -> Self {
-        Self {
-            precondition: FakeApprovalPrecondition::Existing(pending),
-            approval_received: false,
-        }
-    }
-}
 
 fn fixture(id: &str) -> Val004Fixture {
     fixture_catalog()
         .by_id(id)
         .unwrap_or_else(|| panic!("missing VAL-004 fixture {id}"))
         .clone()
-}
-
-fn pending(fixture: &Val004Fixture) -> PendingApprovalFacts {
-    fixture
-        .pending
-        .unwrap_or_else(|| panic!("{} must carry pending facts", fixture.id))
 }
 
 fn assert_escalated_expectation(fixture: &Val004Fixture) {
@@ -76,43 +42,57 @@ fn assert_escalated_expectation(fixture: &Val004Fixture) {
     );
 }
 
-fn assert_future_escalated_observation(
+fn assert_escalated_observation(
     observed: BeforeToolCallObservation,
+    fixture: &Val004Fixture,
     tool: &RecordingToolProbe,
-) {
+) -> ReviewRequestId {
     assert_eq!(
         tool.invocation_count(),
         0,
-        "ATK-06 RED: escalation reached the effectful probe"
+        "ATK-06 escalation reached the effectful probe"
     );
 
-    // `Escalated` is a founder-owned T0 observation variant and deliberately
-    // does not exist yet. The wildcard becomes reachable only after that
-    // variant is authored; every currently available terminal observation is
-    // explicitly rejected.
-    #[allow(unreachable_patterns)]
+    let expected_deadline = fixture
+        .pending
+        .unwrap_or_else(|| panic!("{} must carry pending facts", fixture.id))
+        .deadline;
+
     match observed {
-        BeforeToolCallObservation::Blocked { .. } => {
-            panic!("ATK-06 RED: the escalation moment was collapsed into Blocked")
+        BeforeToolCallObservation::Escalated {
+            review_request_id,
+            deadline,
+            authorization_issued: false,
+            effectful_invocations: 0,
+        } => {
+            assert_eq!(deadline, expected_deadline);
+            review_request_id
         }
-        BeforeToolCallObservation::Proceeded { .. } => {
-            panic!("ATK-06 RED: an unanswered approval request proceeded")
+        other => {
+            panic!("ATK-06 expected Escalated without authorization or effects, got {other:?}")
         }
-        BeforeToolCallObservation::GuardFault { .. } => {
-            panic!("ATK-06 RED: the escalation moment exposed a raw guard fault")
-        }
-        _ => {}
     }
 }
 
-fn founder_timeout_surface_pending(
-    state: FakeApprovalState,
-    now_unix_seconds: u64,
-    expected: ExpectedVal004Observation,
-) -> ! {
-    panic!(
-        "CORE-004 RED: founder R-3 timeout evaluator is absent; state={state:?}, now={now_unix_seconds}, expected={expected:?}"
-    )
+fn pending_approval_store() -> (S2ApprovalStore, ReviewRequestId, u64) {
+    let escalation = fixture("escalation-required");
+    let case = attack_by_id(ATTACK_ID).expect("ATK-06 is registered");
+    let request = before_tool_call_request(case, &escalation).expect("token-bearing escalation");
+    let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
+    let mut consumption_store = S2ConsumptionStore::open_in_memory().expect("consumption store");
+    let mut approval_store = S2ApprovalStore::open_in_memory().expect("approval store");
+    let mut tool = RecordingToolProbe::default();
+
+    let observed = adapter.before_tool_call(
+        &request,
+        escalation.clock.now_unix_seconds(),
+        &mut consumption_store,
+        &mut approval_store,
+        &mut tool,
+    );
+    let review_request_id = assert_escalated_observation(observed, &escalation, &tool);
+
+    (approval_store, review_request_id, FIXED_DEADLINE)
 }
 
 #[test]
@@ -122,12 +102,14 @@ fn below_threshold_control_retains_the_existing_consume_and_allow_path() {
     let request = before_tool_call_request(case, &fixture).expect("token-bearing control");
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
     let mut store = S2ConsumptionStore::open_in_memory().expect("store");
+    let mut approval_store = FailClosedApprovalStore;
     let mut tool = RecordingToolProbe::default();
 
     let observed = adapter.before_tool_call(
         &request,
         fixture.clock.now_unix_seconds(),
         &mut store,
+        &mut approval_store,
         &mut tool,
     );
 
@@ -143,21 +125,15 @@ fn below_threshold_control_retains_the_existing_consume_and_allow_path() {
 }
 
 #[test]
-#[ignore = "CORE-004-T0-boundary pending founder escalation authoring"]
 fn atk_06_above_threshold_before_tool_call_requires_escalation() {
     let fixture = fixture("escalation-required");
     let case = attack_by_id(ATTACK_ID).expect("ATK-06 is registered");
     let request = before_tool_call_request(case, &fixture).expect("token-bearing escalation");
-    let state = FakeApprovalState::no_pending_record();
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
     let mut store = S2ConsumptionStore::open_in_memory().expect("consumption store");
+    let mut approval_store = S2ApprovalStore::open_in_memory().expect("approval store");
     let mut tool = RecordingToolProbe::default();
 
-    assert_eq!(
-        state.precondition,
-        FakeApprovalPrecondition::NoPendingRecord
-    );
-    assert!(!state.approval_received);
     assert_eq!(
         fixture.pending_record_expectation,
         Some(PendingRecordExpectation::Recorded)
@@ -172,13 +148,15 @@ fn atk_06_above_threshold_before_tool_call_requires_escalation() {
         &request,
         fixture.clock.now_unix_seconds(),
         &mut store,
+        &mut approval_store,
         &mut tool,
     );
-    assert_future_escalated_observation(observed, &tool);
+    assert_escalated_observation(observed, &fixture, &tool);
+    let nonce = fixture.token.as_ref().expect("escalation token").nonce;
+    assert_eq!(store.consume(&nonce), ConsumeOutcome::Consumed);
 }
 
 #[test]
-#[ignore = "CORE-004-T0-boundary pending founder R-3 timeout evaluator"]
 fn atk_06_sequence_is_escalated_then_registry_derived_timeout_block() {
     let escalation = fixture("escalation-required");
     let timeout = fixture("timeout-deadline-plus-one");
@@ -215,41 +193,64 @@ fn atk_06_sequence_is_escalated_then_registry_derived_timeout_block() {
         ]
     );
 
-    founder_timeout_surface_pending(
-        FakeApprovalState::unanswered(pending(&timeout)),
+    let (mut approval_store, review_request_id, _) = pending_approval_store();
+    let observed = evaluate_approval_timeout(
+        &mut approval_store,
+        &review_request_id,
         timeout.clock.now_unix_seconds(),
-        timeout.expected,
+    );
+
+    assert_eq!(
+        observed,
+        Ok(GuardDecision::Deny {
+            outcome: expected_terminal,
+            denial_signal: "ATK-06 approval timed out",
+        })
     );
 }
 
 #[test]
-#[ignore = "CORE-004-T0-boundary pending founder R-3 timeout evaluator"]
 fn atk_06_timeout_boundary_preserves_id_and_deadline_until_strictly_after() {
     for id in ["timeout-deadline-minus-one", "timeout-at-deadline"] {
         let fixture = fixture(id);
-        let pending = pending(&fixture);
+        let (mut approval_store, review_request_id, deadline) = pending_approval_store();
 
-        assert_eq!(pending.review_request_id, FIXED_REVIEW_REQUEST_ID);
-        assert_eq!(pending.deadline, FIXED_DEADLINE);
-        assert!(fixture.clock.now_unix_seconds() <= pending.deadline);
+        assert_eq!(deadline, FIXED_DEADLINE);
+        assert!(fixture.clock.now_unix_seconds() <= deadline);
         assert_escalated_expectation(&fixture);
+
+        assert_eq!(
+            evaluate_approval_timeout(
+                &mut approval_store,
+                &review_request_id,
+                fixture.clock.now_unix_seconds(),
+            ),
+            Ok(GuardDecision::Escalate {
+                review_request_id,
+                deadline,
+            })
+        );
     }
 
     let timed_out = fixture("timeout-deadline-plus-one");
-    let pending = pending(&timed_out);
-    assert_eq!(pending.review_request_id, FIXED_REVIEW_REQUEST_ID);
-    assert_eq!(pending.deadline, FIXED_DEADLINE);
-    assert_eq!(timed_out.clock.now_unix_seconds(), pending.deadline + 1);
+    let (mut approval_store, review_request_id, deadline) = pending_approval_store();
+    assert_eq!(deadline, FIXED_DEADLINE);
+    assert_eq!(timed_out.clock.now_unix_seconds(), deadline + 1);
 
-    founder_timeout_surface_pending(
-        FakeApprovalState::unanswered(pending),
-        timed_out.clock.now_unix_seconds(),
-        timed_out.expected,
+    assert_eq!(
+        evaluate_approval_timeout(
+            &mut approval_store,
+            &review_request_id,
+            timed_out.clock.now_unix_seconds(),
+        ),
+        Ok(GuardDecision::Deny {
+            outcome: RequiredOutcome::EscalateThenDenyOnTimeout,
+            denial_signal: "ATK-06 approval timed out",
+        })
     );
 }
 
 #[test]
-#[ignore = "CORE-004-T0-boundary pending founder escalation authoring"]
 fn atk_06_re_presentation_keeps_original_pending_facts_and_unconsumed_nonce() {
     let catalog = fixture_catalog();
     let original = catalog
@@ -265,6 +266,7 @@ fn atk_06_re_presentation_keeps_original_pending_facts_and_unconsumed_nonce() {
         before_tool_call_request(case, repeated).expect("re-presented token presentation");
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
     let mut store = S2ConsumptionStore::open_in_memory().expect("consumption store");
+    let mut approval_store = S2ApprovalStore::open_in_memory().expect("approval store");
 
     assert_eq!(repeated.token, original.token);
     assert_eq!(repeated.pending, original.pending);
@@ -284,16 +286,21 @@ fn atk_06_re_presentation_keeps_original_pending_facts_and_unconsumed_nonce() {
         &original_request,
         original.clock.now_unix_seconds(),
         &mut store,
+        &mut approval_store,
         &mut first_tool,
     );
-    assert_future_escalated_observation(first, &first_tool);
+    let first_review_request_id = assert_escalated_observation(first, original, &first_tool);
 
     let mut second_tool = RecordingToolProbe::default();
     let second = adapter.before_tool_call(
         &repeated_request,
         repeated.clock.now_unix_seconds(),
         &mut store,
+        &mut approval_store,
         &mut second_tool,
     );
-    assert_future_escalated_observation(second, &second_tool);
+    let second_review_request_id = assert_escalated_observation(second, repeated, &second_tool);
+    assert_eq!(second_review_request_id, first_review_request_id);
+    let nonce = original.token.as_ref().expect("original token").nonce;
+    assert_eq!(store.consume(&nonce), ConsumeOutcome::Consumed);
 }
