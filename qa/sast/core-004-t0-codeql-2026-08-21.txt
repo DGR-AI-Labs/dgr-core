@@ -1,0 +1,39 @@
+CORE-004 T0 — CodeQL raw SAST evidence
+tool_version: CodeQL CLI 2.25.5
+scan_date_utc: 2026-08-21
+scanned_commit: 60febb08ac9c3e207d6f7a3563b6824374c5c93e
+working_directory: /tmp/core004-sast-unMRjk/repo
+language_module: rust (/home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/rust)
+query_pack: codeql/rust-queries@0.1.35
+database_create_command: CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=/tmp/core004-sast-unMRjk/cargo-target codeql database create /tmp/core004-sast-unMRjk/codeql-rust-db --language=rust --source-root=/tmp/core004-sast-unMRjk/repo --command="cargo check --manifest-path tests/bypass-rust/Cargo.toml --locked --all-targets" --overwrite
+database_create_exit_code: 0
+database_analyze_command: codeql database analyze /tmp/core004-sast-unMRjk/codeql-rust-db codeql/rust-queries@0.1.35 --format=sarif-latest --output=/tmp/core004-sast-unMRjk/codeql.sarif --threads=0
+database_analyze_exit_code: 0
+sarif_json_validation_exit_code: 0
+sarif_run_count: 1
+status: completed; 9 findings
+finding_count: 9
+execution_error_count: 0
+tracked_rust_file_count: 20
+extracted_with_errors: 0
+extracted_without_error: 20
+coverage_status: complete; CodeQL extracted 20 out of 20 tracked Rust files
+path_resolution_inconsistency_count: 7
+path_resolution_note: CodeQL Rust diagnostic metric; no extraction error, execution error, or lost file coverage resulted
+
+--- findings ---
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  126  hard-coded value used as a nonce
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  152  hard-coded value used as a nonce
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  169  hard-coded value used as a nonce
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  186  hard-coded value used as a nonce
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  204  hard-coded value used as a nonce
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  222  hard-coded value used as a nonce
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  339  hard-coded value used as a nonce
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_004_fixtures.rs  136  hard-coded value used as a nonce
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_004_fixtures.rs  143  hard-coded value used as a nonce
+
+--- database creation result ---
+Successfully created database at /tmp/core004-sast-unMRjk/codeql-rust-db.
+
+--- raw machine-readable result ---
+qa/sast/core-004-t0-codeql-2026-08-21.sarif

@@ -1,0 +1,32 @@
+CORE-004 T0 — Semgrep raw SAST evidence
+tool_version: 1.173.0
+scan_date_utc: 2026-08-21
+scanned_commit: 60febb08ac9c3e207d6f7a3563b6824374c5c93e
+working_directory: /tmp/core004-sast-unMRjk/repo
+scope: explicit git ls-files list of every tracked *.rs file
+ruleset: p/rust (11 Rust rules)
+command: semgrep scan --config p/rust --error --no-git-ignore --json --output semgrep.json "${rs_files[@]}"
+exit_code: 1
+status: completed; findings present
+finding_count: 1
+scan_error_count: 0
+tracked_rust_file_count: 20
+scanned_target_count: 20
+coverage_status: complete
+setup_note: auto-config directory runs that selected zero files were rejected as invalid; this accepted run passed all 20 tracked Rust paths explicitly and used the continuity p/rust ruleset
+
+--- complete Semgrep scan summary ---
+Scanning 20 files with 11 Code rules:
+Scanning 20 files with 11 rust rules.
+Targets scanned: 20
+Ran 11 rules on 20 files: 1 finding.
+
+--- findings ---
+rule_id: rust.lang.security.temp-dir.temp-dir
+path: tests/bypass-rust/tests/consumption_store.rs
+line: 19
+severity: INFO
+message: temp_dir should not be used for security operations. The temporary directory may be shared among users or processes with different privileges, so files and directories must use securely unique names.
+
+--- raw machine-readable result ---
+qa/sast/core-004-t0-semgrep-2026-08-21.json
