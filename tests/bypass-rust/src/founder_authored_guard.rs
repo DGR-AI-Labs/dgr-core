@@ -21,7 +21,9 @@ use crate::founder_token_verification::{
 
 use crate::founder_fail_closed::fail_closed_decision;
 
-use crate::founder_approval_store::{ApprovalStore, PendingApproval, ReviewRequestId};
+use crate::founder_approval_store::{
+    ApprovalStore, PendingApproval, RecordPendingOutcome, ReviewRequestId,
+};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct FounderAuthoredGuard;
@@ -56,7 +58,7 @@ impl GuardDecisionPort for FounderAuthoredGuard {
         request: &BeforeToolCallRequest<'_>,
         now_unix_seconds: u64,
         consumption_store: &mut dyn ConsumptionStore,
-        _approval_store: &mut dyn ApprovalStore,
+        approval_store: &mut dyn ApprovalStore,
     ) -> Result<GuardDecision, GuardFault> {
         match request.capability_token {
             None => Ok(GuardDecision::Deny {
@@ -113,6 +115,51 @@ impl GuardDecisionPort for FounderAuthoredGuard {
                         return Ok(GuardDecision::Deny {
                             outcome: RequiredOutcome::Deny,
                             denial_signal: "ATK-08/09/11 action commitment mismatch",
+                        });
+                    }
+
+                    let requires_approval =
+                        match canonical_amount_requires_approval(request.proposed_action.amount) {
+                            Some(requires_approval) => requires_approval,
+                            None => {
+                                return Ok(GuardDecision::Deny {
+                                    outcome: RequiredOutcome::Deny,
+                                    denial_signal: "CORE-004 non-canonical amount",
+                                });
+                            }
+                        };
+
+                    if requires_approval {
+                        let candidate = match pending_approval(&token, now_unix_seconds) {
+                            Ok(candidate) => candidate,
+                            Err(fault) => return fail_closed_decision(fault),
+                        };
+
+                        let stored = match approval_store.record_pending(candidate) {
+                            RecordPendingOutcome::Recorded(stored) => {
+                                if stored != candidate {
+                                    return fail_closed_decision(GuardFault::InternalError);
+                                }
+
+                                stored
+                            }
+                            RecordPendingOutcome::AlreadyPending(stored) => {
+                                if !same_pending_identity(&stored, &candidate)
+                                    || stored.deadline < stored.requested_at
+                                {
+                                    return fail_closed_decision(GuardFault::InternalError);
+                                }
+
+                                stored
+                            }
+                            RecordPendingOutcome::Faulted(fault) => {
+                                return fail_closed_decision(fault);
+                            }
+                        };
+
+                        return Ok(GuardDecision::Escalate {
+                            review_request_id: stored.review_request_id,
+                            deadline: stored.deadline,
                         });
                     }
 
@@ -178,6 +225,13 @@ fn pending_approval(
         requested_at,
         deadline,
     })
+}
+
+fn same_pending_identity(existing: &PendingApproval, candidate: &PendingApproval) -> bool {
+    existing.review_request_id == candidate.review_request_id
+        && existing.key_id == candidate.key_id
+        && existing.nonce == candidate.nonce
+        && existing.action_commitment == candidate.action_commitment
 }
 
 #[doc(hidden)]
