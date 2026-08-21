@@ -1,6 +1,6 @@
 # CORE-004 T0 founder review input
 
-**Status:** T0 authoring complete — exact-commit review gates pending
+**Status:** T0 authoring and exact-commit review gates complete — PR review and merge pending
 **Founder T0 base:** `7324cbb33be59595657a2df13c300aa388208d77`  
 **Branch:** `codex/core-004-t0-founder`
 
@@ -156,15 +156,28 @@ Record the final file/function ownership before editing:
 - **Patch SHA-256:** `71f051e24055cb0febd620d84a2703ea43d7277f5af4266feef8d03d0fbb9f1f`
   (`git diff --binary --full-index 7324cbb33be59595657a2df13c300aa388208d77..60febb08ac9c3e207d6f7a3563b6824374c5c93e`)
 - **Adversarial/regression evidence:** `qa/core-004-t3-green-report.md` — local
-  Rust gates pass; founder/human adjudication remains required.
-- **Independent human reviewer and stable reference:** `[HUMAN REVIEW REQUIRED]`
-- **Cross-model bundle/disposition:** `[CROSS-MODEL REVIEW REQUIRED]`
-- **Semgrep raw evidence and founder disposition:** `[SAST RUN AND FOUNDER DISPOSITION REQUIRED]`
-- **CodeQL raw evidence and founder disposition:** `[SAST RUN AND FOUNDER DISPOSITION REQUIRED]`
-- **cargo-deny raw evidence and founder disposition:** `[SAST/SCA RUN AND FOUNDER DISPOSITION REQUIRED]`
-- **Founder final decision:** `[FOUNDER SIGN-OFF REQUIRED AFTER ALL GATES]`
+  Rust gates pass; independent-human, cross-model, three-engine SAST/SCA, and
+  founder dispositions are recorded below.
+- **Independent human reviewer and stable reference:** Gaziz Nugmanov — PASS;
+  `qa/core-004-t0-independent-human-review-input.md`; [dgr-core PR #81](https://github.com/DGR-AI-Labs/dgr-core/pull/81)
+- **Cross-model bundle/disposition:** bundle SHA-256
+  `e23527b6adbdd7c8431cacfdb3ffc0ed682b33ee765f04f6febce380986b2bd0`;
+  `qa/core-004-post-authoring-claude-qa-disposition.md` — CONFIRMED, ready for
+  human gates.
+- **Semgrep raw evidence and founder disposition:**
+  `qa/sast/core-004-t0-semgrep-2026-08-21.txt` and `.json`; ACCEPT TEST-ONLY in
+  `qa/core-004-t0-founder-review-draft.md`.
+- **CodeQL raw evidence and founder disposition:**
+  `qa/sast/core-004-t0-codeql-2026-08-21.txt` and `.sarif`; ACCEPT TEST FIXTURES
+  WITH DIAGNOSTIC LIMITATION in `qa/core-004-t0-founder-review-draft.md`.
+- **cargo-deny raw evidence and founder disposition:**
+  `qa/sast/core-004-t0-cargo-deny-2026-08-21.txt`; ACCEPT in
+  `qa/core-004-t0-founder-review-draft.md`.
+- **Founder final decision:** APPROVE at `2026-08-21T17:19:00Z`;
+  `qa/core-004-t0-founder-review-draft.md`; [dgr-core PR #81](https://github.com/DGR-AI-Labs/dgr-core/pull/81).
 
 ATK-06 is active in the isolated suite at the reviewed commit: the dedicated
-two-surface target has five passing tests and no ignored cases. This local green
-state is not merge approval and does not satisfy the outstanding human,
-cross-model, or SAST gates by itself.
+two-surface target has five passing tests and no ignored cases. That local green
+state did not satisfy the human, cross-model, or SAST/SCA gates by itself; those
+gates and their dispositions are now recorded above. PR approval and merge
+remain pending.
