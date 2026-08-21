@@ -8,6 +8,7 @@
 pub mod before_tool_call;
 pub mod fixtures;
 pub mod founder_approval_store;
+pub mod founder_approval_timeout;
 pub mod founder_authored_guard;
 pub mod founder_consumption_store;
 pub mod founder_fail_closed;
