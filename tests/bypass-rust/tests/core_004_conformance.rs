@@ -11,8 +11,9 @@ use dgr_core_bypass_harness::attack_by_id;
 use dgr_core_bypass_harness::before_tool_call::{
     BeforeToolCallAdapter, BeforeToolCallObservation, EffectfulToolProbe,
 };
-use dgr_core_bypass_harness::fixtures::RecordingToolProbe;
+use dgr_core_bypass_harness::fixtures::{FailClosedApprovalStore, RecordingToolProbe};
 use dgr_core_bypass_harness::founder_authored_guard::FounderAuthoredGuard;
+use dgr_core_bypass_harness::founder_s2_approval_store::S2ApprovalStore;
 use dgr_core_bypass_harness::founder_s2_consumption_store::S2ConsumptionStore;
 use dgr_core_bypass_harness::val_002_fixtures::FixtureClock;
 use dgr_core_bypass_harness::val_004_fixtures::{
@@ -122,12 +123,14 @@ fn below_threshold_control_retains_the_existing_consume_and_allow_path() {
     let request = before_tool_call_request(case, &fixture).expect("token-bearing control");
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
     let mut store = S2ConsumptionStore::open_in_memory().expect("store");
+    let mut approval_store = FailClosedApprovalStore;
     let mut tool = RecordingToolProbe::default();
 
     let observed = adapter.before_tool_call(
         &request,
         fixture.clock.now_unix_seconds(),
         &mut store,
+        &mut approval_store,
         &mut tool,
     );
 
@@ -151,6 +154,7 @@ fn atk_06_above_threshold_before_tool_call_requires_escalation() {
     let state = FakeApprovalState::no_pending_record();
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
     let mut store = S2ConsumptionStore::open_in_memory().expect("consumption store");
+    let mut approval_store = S2ApprovalStore::open_in_memory().expect("approval store");
     let mut tool = RecordingToolProbe::default();
 
     assert_eq!(
@@ -172,6 +176,7 @@ fn atk_06_above_threshold_before_tool_call_requires_escalation() {
         &request,
         fixture.clock.now_unix_seconds(),
         &mut store,
+        &mut approval_store,
         &mut tool,
     );
     assert_future_escalated_observation(observed, &tool);
@@ -265,6 +270,7 @@ fn atk_06_re_presentation_keeps_original_pending_facts_and_unconsumed_nonce() {
         before_tool_call_request(case, repeated).expect("re-presented token presentation");
     let adapter = BeforeToolCallAdapter::new(FounderAuthoredGuard);
     let mut store = S2ConsumptionStore::open_in_memory().expect("consumption store");
+    let mut approval_store = S2ApprovalStore::open_in_memory().expect("approval store");
 
     assert_eq!(repeated.token, original.token);
     assert_eq!(repeated.pending, original.pending);
@@ -284,6 +290,7 @@ fn atk_06_re_presentation_keeps_original_pending_facts_and_unconsumed_nonce() {
         &original_request,
         original.clock.now_unix_seconds(),
         &mut store,
+        &mut approval_store,
         &mut first_tool,
     );
     assert_future_escalated_observation(first, &first_tool);
@@ -293,6 +300,7 @@ fn atk_06_re_presentation_keeps_original_pending_facts_and_unconsumed_nonce() {
         &repeated_request,
         repeated.clock.now_unix_seconds(),
         &mut store,
+        &mut approval_store,
         &mut second_tool,
     );
     assert_future_escalated_observation(second, &second_tool);

@@ -5,11 +5,12 @@ use dgr_core_bypass_harness::before_tool_call::{
     GuardDecision, GuardDecisionPort, GuardFault,
 };
 
+use dgr_core_bypass_harness::founder_approval_store::ApprovalStore;
 use dgr_core_bypass_harness::founder_consumption_store::ConsumptionStore;
 use dgr_core_bypass_harness::founder_s2_consumption_store::S2ConsumptionStore;
 
 use dgr_core_bypass_harness::fixtures::{
-    RecordingToolProbe, no_token_request, valid_token_request,
+    FailClosedApprovalStore, RecordingToolProbe, no_token_request, valid_token_request,
 };
 use dgr_core_bypass_harness::val_002_fixtures::FIXED_NOW_UNIX_SECONDS;
 
@@ -22,6 +23,7 @@ impl GuardDecisionPort for ScriptedDecision {
         _request: &BeforeToolCallRequest<'_>,
         _now_unix_seconds: u64,
         _store: &mut dyn ConsumptionStore,
+        _approval_store: &mut dyn ApprovalStore,
     ) -> Result<GuardDecision, GuardFault> {
         self.0
     }
@@ -35,12 +37,14 @@ fn adapter_does_not_invoke_tool_for_a_returned_deny() {
     })));
 
     let mut store = S2ConsumptionStore::open_in_memory().expect("store");
+    let mut approval_store = FailClosedApprovalStore;
     let mut tool = RecordingToolProbe::default();
 
     let observed = adapter.before_tool_call(
         &no_token_request(),
         FIXED_NOW_UNIX_SECONDS,
         &mut store,
+        &mut approval_store,
         &mut tool,
     );
 
@@ -62,12 +66,14 @@ fn adapter_invokes_probe_only_for_a_returned_allow() {
         authorization_reference: "scripted-test-authorization",
     })));
     let mut store = S2ConsumptionStore::open_in_memory().expect("store");
+    let mut approval_store = FailClosedApprovalStore;
     let mut tool = RecordingToolProbe::default();
 
     let observed = adapter.before_tool_call(
         &valid_token_request(),
         FIXED_NOW_UNIX_SECONDS,
         &mut store,
+        &mut approval_store,
         &mut tool,
     );
 
@@ -86,12 +92,14 @@ fn adapter_invokes_probe_only_for_a_returned_allow() {
 fn adapter_fail_closes_for_a_guard_fault() {
     let adapter = BeforeToolCallAdapter::new(ScriptedDecision(Err(GuardFault::InternalError)));
     let mut store = S2ConsumptionStore::open_in_memory().expect("store");
+    let mut approval_store = FailClosedApprovalStore;
     let mut tool = RecordingToolProbe::default();
 
     let observed = adapter.before_tool_call(
         &no_token_request(),
         FIXED_NOW_UNIX_SECONDS,
         &mut store,
+        &mut approval_store,
         &mut tool,
     );
 

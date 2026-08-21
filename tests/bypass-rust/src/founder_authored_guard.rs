@@ -21,7 +21,7 @@ use crate::founder_token_verification::{
 
 use crate::founder_fail_closed::fail_closed_decision;
 
-use crate::founder_approval_store::{PendingApproval, ReviewRequestId};
+use crate::founder_approval_store::{ApprovalStore, PendingApproval, ReviewRequestId};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct FounderAuthoredGuard;
@@ -55,7 +55,8 @@ impl GuardDecisionPort for FounderAuthoredGuard {
         &self,
         request: &BeforeToolCallRequest<'_>,
         now_unix_seconds: u64,
-        store: &mut dyn ConsumptionStore,
+        consumption_store: &mut dyn ConsumptionStore,
+        _approval_store: &mut dyn ApprovalStore,
     ) -> Result<GuardDecision, GuardFault> {
         match request.capability_token {
             None => Ok(GuardDecision::Deny {
@@ -115,7 +116,7 @@ impl GuardDecisionPort for FounderAuthoredGuard {
                         });
                     }
 
-                    match store.consume(&token.nonce) {
+                    match consumption_store.consume(&token.nonce) {
                         ConsumeOutcome::Consumed => Ok(GuardDecision::Allow {
                             authorization_reference: "CORE-002 authorized",
                         }),

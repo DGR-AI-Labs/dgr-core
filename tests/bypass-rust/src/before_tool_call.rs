@@ -5,7 +5,7 @@
 //! fail-closed floor for a reached boundary whose guard faults or unwinds.
 //! The effectful target remains a test probe, never a real tool.
 
-use crate::founder_approval_store::ReviewRequestId;
+use crate::founder_approval_store::{ApprovalStore, ReviewRequestId};
 
 use crate::founder_consumption_store::ConsumptionStore;
 use crate::{DecisionContext, ProposedAction, RequiredOutcome};
@@ -54,7 +54,8 @@ pub trait GuardDecisionPort {
         &self,
         request: &BeforeToolCallRequest<'_>,
         now_unix_seconds: u64,
-        store: &mut dyn ConsumptionStore,
+        consumption_store: &mut dyn ConsumptionStore,
+        approval_store: &mut dyn ApprovalStore,
     ) -> Result<GuardDecision, GuardFault>;
 }
 
@@ -115,18 +116,20 @@ where
         &self,
         request: &BeforeToolCallRequest<'_>,
         now_unix_seconds: u64,
-        store: &mut dyn ConsumptionStore,
+        consumption_store: &mut dyn ConsumptionStore,
+        approval_store: &mut dyn ApprovalStore,
         tool: &mut T,
     ) -> BeforeToolCallObservation
     where
         T: EffectfulToolProbe,
     {
         // `AssertUnwindSafe` is deliberately bounded to this invocation. If `decide`
-        // unwinds, this method does not inspect or reuse `store` and returns fail-closed
-        // immediately. This does not certify the store's invariants for reuse by a
-        // later invocation.
+        // unwinds, this method does not inspect or reuse either store and returns
+        // fail-closed immediately. This does not certify either store's invariants
+        // for reuse by a later invocation.
         let decision = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.guard.decide(request, now_unix_seconds, store)
+            self.guard
+                .decide(request, now_unix_seconds, consumption_store, approval_store)
         }));
 
         match decision {
