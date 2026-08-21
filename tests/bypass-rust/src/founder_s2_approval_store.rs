@@ -5,10 +5,11 @@
 
 use crate::before_tool_call::GuardFault;
 use crate::founder_approval_store::{
-    ApprovalStore, PendingApproval, RecordPendingOutcome, ReviewRequestId,
+    ApprovalStore, EvaluatePendingOutcome, PendingApproval, RecordPendingOutcome, ReviewRequestId,
 };
 use rusqlite::{
-    Connection, Error as SqliteError, ErrorCode, OptionalExtension, TransactionBehavior, params,
+    Connection, Error as SqliteError, ErrorCode, OptionalExtension, Transaction,
+    TransactionBehavior, params,
 };
 use std::path::Path;
 
@@ -66,6 +67,18 @@ struct ExistingPendingRow {
     status: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ApprovalStatus {
+    Requested,
+    DeniedOnTimeout,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct StoredApproval {
+    pending: PendingApproval,
+    status: ApprovalStatus,
+}
+
 fn sqlite_fault(error: SqliteError) -> GuardFault {
     match error {
         SqliteError::SqliteFailure(error, _)
@@ -96,11 +109,7 @@ fn decode_existing(
     row: ExistingPendingRow,
     key_id: [u8; 16],
     nonce: [u8; 16],
-) -> Result<PendingApproval, GuardFault> {
-    if !matches!(row.status.as_str(), "requested" | "denied_on_timeout") {
-        return Err(GuardFault::InternalError);
-    }
-
+) -> Result<StoredApproval, GuardFault> {
     let requested_at = u64::try_from(row.requested_at).map_err(|_| GuardFault::InternalError)?;
     let deadline = u64::try_from(row.deadline).map_err(|_| GuardFault::InternalError)?;
 
@@ -108,13 +117,22 @@ fn decode_existing(
         return Err(GuardFault::InternalError);
     }
 
-    Ok(PendingApproval {
-        review_request_id: ReviewRequestId::from_bytes(fixed_bytes(row.review_request_id)?),
-        key_id,
-        nonce,
-        action_commitment: fixed_bytes(row.action_commitment)?,
-        requested_at,
-        deadline,
+    let status = match row.status.as_str() {
+        "requested" => ApprovalStatus::Requested,
+        "denied_on_timeout" => ApprovalStatus::DeniedOnTimeout,
+        _ => return Err(GuardFault::InternalError),
+    };
+
+    Ok(StoredApproval {
+        pending: PendingApproval {
+            review_request_id: ReviewRequestId::from_bytes(fixed_bytes(row.review_request_id)?),
+            key_id,
+            nonce,
+            action_commitment: fixed_bytes(row.action_commitment)?,
+            requested_at,
+            deadline,
+        },
+        status,
     })
 }
 
@@ -122,7 +140,7 @@ fn load_by_identity(
     conn: &Connection,
     key_id: &[u8; 16],
     nonce: &[u8; 16],
-) -> Result<Option<PendingApproval>, GuardFault> {
+) -> Result<Option<StoredApproval>, GuardFault> {
     let row = conn
         .query_row(
             "SELECT review_request_id,
@@ -150,20 +168,41 @@ fn load_by_identity(
         .transpose()
 }
 
-fn review_request_id_exists(
+fn load_by_review_request_id(
     conn: &Connection,
     review_request_id: &ReviewRequestId,
-) -> Result<bool, GuardFault> {
-    conn.query_row(
-        "SELECT 1
-         FROM pending_approvals
-         WHERE review_request_id = ?1",
-        params![&review_request_id.as_bytes()[..]],
-        |row| row.get::<_, i64>(0),
-    )
-    .optional()
-    .map(|value| value.is_some())
-    .map_err(sqlite_fault)
+) -> Result<Option<StoredApproval>, GuardFault> {
+    let row = conn
+        .query_row(
+            "SELECT key_id,
+                    nonce,
+                    review_request_id,
+                    action_commitment,
+                    requested_at,
+                    deadline,
+                    status
+             FROM pending_approvals
+             WHERE review_request_id = ?1",
+            params![&review_request_id.as_bytes()[..]],
+            |row| {
+                Ok((
+                    row.get::<_, Vec<u8>>(0)?,
+                    row.get::<_, Vec<u8>>(1)?,
+                    ExistingPendingRow {
+                        review_request_id: row.get(2)?,
+                        action_commitment: row.get(3)?,
+                        requested_at: row.get(4)?,
+                        deadline: row.get(5)?,
+                        status: row.get(6)?,
+                    },
+                ))
+            },
+        )
+        .optional()
+        .map_err(sqlite_fault)?;
+
+    row.map(|(key_id, nonce, row)| decode_existing(row, fixed_bytes(key_id)?, fixed_bytes(nonce)?))
+        .transpose()
 }
 
 fn checked_sql_times(pending: &PendingApproval) -> Result<(i64, i64), GuardFault> {
@@ -183,6 +222,16 @@ fn same_committed_request(existing: &PendingApproval, candidate: &PendingApprova
         && existing.key_id == candidate.key_id
         && existing.nonce == candidate.nonce
         && existing.action_commitment == candidate.action_commitment
+}
+
+fn commit_evaluation(
+    transaction: Transaction<'_>,
+    outcome: EvaluatePendingOutcome,
+) -> EvaluatePendingOutcome {
+    match transaction.commit() {
+        Ok(()) => outcome,
+        Err(error) => EvaluatePendingOutcome::Faulted(sqlite_fault(error)),
+    }
 }
 
 impl ApprovalStore for S2ApprovalStore {
@@ -206,19 +255,19 @@ impl ApprovalStore for S2ApprovalStore {
         };
 
         if let Some(existing) = existing {
-            if !same_committed_request(&existing, &pending) {
+            if !same_committed_request(&existing.pending, &pending) {
                 return RecordPendingOutcome::Faulted(GuardFault::InternalError);
             }
 
             return match transaction.commit() {
-                Ok(()) => RecordPendingOutcome::AlreadyPending(existing),
+                Ok(()) => RecordPendingOutcome::AlreadyPending(existing.pending),
                 Err(error) => RecordPendingOutcome::Faulted(sqlite_fault(error)),
             };
         }
 
-        match review_request_id_exists(&transaction, &pending.review_request_id) {
-            Ok(false) => {}
-            Ok(true) => {
+        match load_by_review_request_id(&transaction, &pending.review_request_id) {
+            Ok(None) => {}
+            Ok(Some(_)) => {
                 return RecordPendingOutcome::Faulted(GuardFault::InternalError);
             }
             Err(fault) => return RecordPendingOutcome::Faulted(fault),
@@ -253,6 +302,63 @@ impl ApprovalStore for S2ApprovalStore {
         match transaction.commit() {
             Ok(()) => RecordPendingOutcome::Recorded(pending),
             Err(error) => RecordPendingOutcome::Faulted(sqlite_fault(error)),
+        }
+    }
+    fn evaluate_pending(
+        &mut self,
+        review_request_id: &ReviewRequestId,
+        now_unix_seconds: u64,
+    ) -> EvaluatePendingOutcome {
+        let now = match i64::try_from(now_unix_seconds) {
+            Ok(now) => now,
+            Err(_) => {
+                return EvaluatePendingOutcome::Faulted(GuardFault::InternalError);
+            }
+        };
+
+        let transaction = match self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+        {
+            Ok(transaction) => transaction,
+            Err(error) => return EvaluatePendingOutcome::Faulted(sqlite_fault(error)),
+        };
+
+        let stored = match load_by_review_request_id(&transaction, review_request_id) {
+            Ok(Some(stored)) => stored,
+            Ok(None) => {
+                return commit_evaluation(transaction, EvaluatePendingOutcome::NotFound);
+            }
+            Err(fault) => return EvaluatePendingOutcome::Faulted(fault),
+        };
+
+        match stored.status {
+            ApprovalStatus::DeniedOnTimeout => commit_evaluation(
+                transaction,
+                EvaluatePendingOutcome::TimedOut(stored.pending),
+            ),
+            ApprovalStatus::Requested if now_unix_seconds <= stored.pending.deadline => {
+                commit_evaluation(transaction, EvaluatePendingOutcome::Pending(stored.pending))
+            }
+            ApprovalStatus::Requested => {
+                let updated = transaction.execute(
+                    "UPDATE pending_approvals
+                         SET status = 'denied_on_timeout'
+                         WHERE review_request_id = ?1
+                           AND status = 'requested'
+                           AND deadline < ?2",
+                    params![&review_request_id.as_bytes()[..], now],
+                );
+
+                match updated {
+                    Ok(1) => commit_evaluation(
+                        transaction,
+                        EvaluatePendingOutcome::TimedOut(stored.pending),
+                    ),
+                    Ok(_) => EvaluatePendingOutcome::Faulted(GuardFault::InternalError),
+                    Err(error) => EvaluatePendingOutcome::Faulted(sqlite_fault(error)),
+                }
+            }
         }
     }
 }
