@@ -28,34 +28,76 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Ensure rustfmt is installed
-        run: rustup component add rustfmt
       - name: Check Rust formatting
         run: cargo fmt --manifest-path tests/bypass-rust/Cargo.toml --all -- --check
       - name: Build Rust bypass harness
         run: cargo build --manifest-path tests/bypass-rust/Cargo.toml --all-targets --locked
+      - name: Check Rust lints
+        run: cargo clippy --manifest-path tests/bypass-rust/Cargo.toml --all-targets --locked -- -D warnings
       - name: Test Rust bypass harness
         run: cargo test --manifest-path tests/bypass-rust/Cargo.toml --all-targets --locked
+      - name: Test ignored-set comparison logic
+        run: node scripts/check-ignored-attacks.test.mjs
+      - name: Verify exact deferred and external attack set
+        run: node scripts/check-ignored-attacks.mjs
 
   # ---------------------------------------------------------------------------
-  # PHASE 1 PLACEHOLDER — DO NOT IMPLEMENT NOW.
-  #
-  # Per Constitution P8, T0 (enforcement-critical) code requires >=3 SAST tools.
-  # The matrix below is a commented-out TODO to be wired up in Phase 1 alongside
-  # real enforcement. It is intentionally NOT enabled here.
-  #
-  # sast:
-  #   name: SAST (>=3 tools) [Phase 1 — TODO]
-  #   runs-on: ubuntu-latest
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       tool:
-  #         - "[FILL: SAST tool #1, e.g., CodeQL]"
-  #         - "[FILL: SAST tool #2, e.g., Semgrep]"
-  #         - "[FILL: SAST tool #3, e.g., a third independent scanner]"
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Run ${{ matrix.tool }}
-  #       run: echo "TODO(Phase 1): wire up ${{ matrix.tool }} for T0 enforcement code"
+  # INFORMATIONAL ONLY. These jobs are deliberately non-blocking and must not be
+  # configured as required status checks. The blocking T0 gate remains FND-7's
+  # exact-commit, founder-dispositioned Semgrep, CodeQL, and cargo-deny evidence.
+  # Known reviewed output: Semgrep test-only temp-dir; CodeQL deterministic
+  # fixture nonces plus diagnostic-only path-resolution notes; cargo-deny clean
+  # with two reviewed duplicate-version skips and no advisory ignores.
+  # No baseline or suppression policy may be introduced without founder review.
   # ---------------------------------------------------------------------------
+
+  informational-semgrep:
+    name: Informational SAST / Semgrep (non-blocking)
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned Semgrep
+        run: python -m pip install semgrep==1.173.0
+      - name: Scan the Rust harness
+        run: semgrep scan --config p/rust --error --no-git-ignore tests/bypass-rust
+
+  informational-codeql:
+    name: Informational SAST / CodeQL (non-blocking)
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Initialize CodeQL for Rust
+        uses: github/codeql-action/init@v3
+        with:
+          languages: rust
+          queries: security-extended
+      - name: Build the Rust harness for CodeQL
+        run: cargo build --manifest-path tests/bypass-rust/Cargo.toml --all-targets --locked
+      - name: Analyze with CodeQL
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:rust"
+
+  informational-cargo-deny:
+    name: Informational SCA / cargo-deny (non-blocking)
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check advisories, licenses, bans, and sources
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          rust-version: "1.94.1"
+          manifest-path: tests/bypass-rust/Cargo.toml
+          command: check
+          arguments: --config deny.toml --locked
+          command-arguments: --show-stats
