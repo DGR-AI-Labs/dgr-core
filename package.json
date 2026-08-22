@@ -12,5 +12,5 @@
     "check:structure": "node scripts/check-structure.mjs",
     "test:bypass": "node --test tests/bypass"
   },
-  "//": "Phase 0 — spine only. No product/enforcement dependencies. TypeScript tooling is deferred to a later phase; tests use Node's built-in node:test runner (zero deps)."
+  "//": "Phase 1 enforcement proof. The Rust bypass harness is canonical and its active conformance tests are expected green; the zero-dependency Node test script is retained only for the legacy scaffold."
 }
