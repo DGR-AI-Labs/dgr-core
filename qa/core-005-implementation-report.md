@@ -6,6 +6,7 @@
 - **Base:** `b75efef49f278ac2828a9a341c88d56c15430ccb`
 - **Precondition reconciliation commit:** `7695e44d1f2514eb3e9c7b1ee26ed34259a803b9`
 - **CI implementation commit:** `d7c78e410f84139109075f3f9f2baf308e3ce8d9`
+- **Semgrep coverage correction:** `1fc9b4ed5bf10dbe0ebf8329a3815a738cf639fc`
 - **Scope:** T3 CI/governance wiring only; no T0 enforcement, attack outcome, test expectation, or `#[ignore]` change
 - **Parent status:** In Progress until the founder applies and verifies the branch-protection settings
 
@@ -72,7 +73,7 @@ No `#[ignore]`, Rust source, Rust test, outcome, or expectation changed between 
 
 ## D. Informational SAST/SCA
 
-`.github/workflows/ci.yml:44-103` replaces the stale placeholder with three deliberately non-blocking jobs:
+`.github/workflows/ci.yml:44-112` replaces the stale placeholder with three deliberately non-blocking jobs:
 
 - Semgrep `1.173.0`, scanning the Rust harness with the Rust ruleset;
 - CodeQL Rust with `security-extended` queries and a locked all-target build;
@@ -80,7 +81,9 @@ No `#[ignore]`, Rust source, Rust test, outcome, or expectation changed between 
 
 The workflow comments state the controlling policy: informational only; the blocking T0 gate remains the exact-commit, founder-dispositioned three-engine evidence (FND-7). None of these job contexts is proposed as required, and no baseline or suppression file was introduced.
 
-Known reviewed findings are recorded in the workflow so routine output is not mistaken for a new regression: Semgrep's test-only `temp-dir`; CodeQL's deterministic fixture nonces plus diagnostic-only path-resolution notes; and cargo-deny's two reviewed duplicate-version skips with an empty advisory-ignore list. The exact local cargo-deny policy command passed in 1.11 s with 0 errors and 0 warnings (2 bans notes, 54 license notes). The Semgrep registry ruleset fetch could not be repeated inside the agent sandbox because its injected proxy URI is invalid; the CI job remains the intended networked execution environment, and prior exact-commit raw evidence is unchanged.
+Known reviewed findings are recorded in the workflow so routine output is not mistaken for a new regression: Semgrep's test-only `temp-dir`; CodeQL's deterministic fixture nonces plus diagnostic-only path-resolution notes; and cargo-deny's two reviewed duplicate-version skips with an empty advisory-ignore list. The exact local cargo-deny policy command passed in 1.11 s with 0 errors and 0 warnings (2 bans notes, 54 license notes).
+
+The first PR run revealed that a directory target allowed Semgrep to report success after scanning zero files. Commit `1fc9b4ed5bf10dbe0ebf8329a3815a738cf639fc` corrected the job to enumerate every tracked Rust file explicitly and fail when that list is empty. [GitHub Actions run 32586793301](https://github.com/DGR-AI-Labs/dgr-core/actions/runs/32586793301) then recorded 20 tracked Rust targets, 20 targets scanned, 11 Rust rules, and the one known test-only `temp-dir` finding. The scan step failed on that finding while the job remained nonblocking as designed. In the same run, the required structural and Rust contexts passed, CodeQL completed successfully, and cargo-deny passed with 0 errors/0 warnings, 2 ban notes, and 54 license notes.
 
 ## E. Founder-owned GitHub settings
 
