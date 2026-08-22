@@ -24,10 +24,17 @@ The following remain **T0, founder-led, and review-only once implemented**:
 - audit/hash-chain construction or verification; and
 - any implementation that can authorize or block a consequential action.
 
-The founder-owned CORE-002 units and the founder-owned CORE-003 boundary
-method are listed in the repository-root `T0-AUTHORS.md`. They contain
-founder-authored enforcement but remain pending the applicable T0 review gates.
-CORE-005 may wire conformance into required CI only after those human gates.
+The founder-owned CORE-002 units, CORE-003 boundary method, and CORE-004
+surfaces are listed in the repository-root `T0-AUTHORS.md`. Their applicable T0
+human gates are complete: CORE-002 Step 5 was accepted through implementation
+PR #68, review-record PR #70, and
+`qa/core-002-step5-governance-disposition.md`; CORE-003 was accepted through PR
+#73 and the signed records indexed by `qa/core-003-t0-review-readiness.md`; and
+CORE-004 was accepted through implementation PR #81, evidence PR #82, and the
+signed founder and independent-human dispositions under `qa/`. This satisfies
+the T0-review precondition for CORE-005 to wire the currently active
+conformance suite into required CI. It does not activate deferred attacks or
+broaden the isolation claim.
 
 Agents must not make a test pass by adding or changing enforcement behavior in
 the founder-owned units. If an attack requires unresolved gate internals,
@@ -82,8 +89,11 @@ absence must never be the enforcement signal.
 
 ATK-06 is active in the isolated conformance suite after founder-authored T0
 behavior turned the reviewed RED tests green without changing the
-registry-derived expectation. Merge remains gated by the complete T0 human,
-cross-model, adversarial-test, and three-engine SAST review. Real human approval delivery and wait, live restart/retry,
+registry-derived expectation. Its complete T0 human, cross-model,
+adversarial-test, and three-engine SAST/SCA review was accepted through PR #81,
+evidence PR #82, `qa/core-004-t0-founder-review-draft.md`, and
+`qa/core-004-t0-independent-human-review-input.md`. Real human approval
+delivery and wait, live restart/retry,
 cross-instance pending state, and approval-path route-around/non-bypassability
 remain in the deferred runtime-integration epic; their exact runtime item is
 recorded by the canonical backlog and does not activate before CORE-005 Done
