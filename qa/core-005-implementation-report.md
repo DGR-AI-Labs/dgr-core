@@ -2,6 +2,7 @@
 
 - **Date:** 2026-08-22
 - **Branch:** `codex/core-005-implementation`
+- **Review:** [dgr-core PR #84](https://github.com/DGR-AI-Labs/dgr-core/pull/84) (draft; founder review and merge required)
 - **Base:** `b75efef49f278ac2828a9a341c88d56c15430ccb`
 - **Precondition reconciliation commit:** `7695e44d1f2514eb3e9c7b1ee26ed34259a803b9`
 - **CI implementation commit:** `d7c78e410f84139109075f3f9f2baf308e3ce8d9`
