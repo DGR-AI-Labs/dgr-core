@@ -1,8 +1,10 @@
-// Structural / governance check — Phase 0.
+// Structural / governance check — Phase 1 enforcement proof.
 //
-// This is the CI job that is EXPECTED TO PASS. It verifies the governance
-// spine is present and that the README carries the required Phase 0 disclaimers.
-// It does NOT run the bypass suite (that job is expected to be red by design).
+// This CI job is expected to pass. It verifies that the governance spine is
+// present and that the README retains the required project disclaimers. The
+// separate Rust job runs the currently active conformance suite, which is
+// expected green and is being prepared as a required merge gate by CORE-005.
+// This script intentionally does not run or redefine that suite.
 import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -35,7 +37,7 @@ for (const rel of requiredPaths) {
   if (!existsSync(join(root, rel))) problems.push(`missing required file: ${rel}`);
 }
 
-// README must carry the Phase 0 disclaimers (matched case-insensitively).
+// README must retain the project disclaimers (matched case-insensitively).
 const readmePath = join(root, "README.md");
 if (existsSync(readmePath)) {
   const readme = readFileSync(readmePath, "utf8").toLowerCase();

@@ -52,11 +52,17 @@ or denied semantics is T0 until the founder records a narrower classification.
 
 The CORE-002 units named above, the CORE-003
 `BeforeToolCallAdapter::before_tool_call` boundary, and the CORE-004 surfaces
-contain founder-authored T0 enforcement pending the applicable T0 review gates. The default
-`ConsumptionStore` implementation still returns `FounderImplementationRequired`
-explicitly so an absent concrete store fails closed. The S2 unit exposes an
-in-memory constructor for isolated conformance tests and a file-backed
-constructor for restart-durable local consumption.
+contain founder-authored T0 enforcement. Their applicable T0 gates are
+complete: CORE-002 Step 5 was accepted through PRs #68/#70 and
+`qa/core-002-step5-governance-disposition.md`; CORE-003 through PR #73 and the
+signed records indexed by `qa/core-003-t0-review-readiness.md`; and CORE-004
+through PRs #81/#82 and the signed founder and independent-human dispositions
+under `qa/`. This completed state does not relax the ownership boundary or
+claim that deferred attacks are implemented. The default `ConsumptionStore`
+implementation still returns `FounderImplementationRequired` explicitly so an
+absent concrete store fails closed. The S2 unit exposes an in-memory constructor
+for isolated conformance tests and a file-backed constructor for
+restart-durable local consumption.
 
 This state record does not relax the authorship boundary. An agent must not
 replace, complete, refactor, or route around any founder-authored unit.
