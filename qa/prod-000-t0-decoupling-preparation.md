@@ -1,10 +1,14 @@
 # PROD-000 T0 decoupling preparation
 
-**Status:** STOPPED at founder observation-type decision; review material only  
-**Baseline commit:** `ca6493408c5bf0cdd58e2f234d12feed22b161c8`  
-**Prepared:** 2026-08-28  
-**Authority:** ADR-13 Amendment A is supplied as `pending-founder-merge`; this report does not
-treat ADR-13 as active and does not authorize PROD-001 extraction.
+**Status:** READY FOR FOUNDER T0 AUTHORING; agent stopped before implementation
+
+**Baseline commit:** `ca6493408c5bf0cdd58e2f234d12feed22b161c8`
+
+**Prepared:** 2026-08-28
+
+**Authority:** The founder approved ADR-13 Amendment A, R5.2a's library-outcome/semantic-identity
+model, and authorship option (c). The canonical active records are pinned at dgr-internal source
+commit `104dbe651a869f198f2c76a58d7b2682bb82fbd6`. This report does not authorize PROD-001 extraction.
 
 ## Scope and boundary
 
@@ -192,9 +196,10 @@ The harness file would import those five types and the floor function, then map 
 two existing ATK-07 tests at `tests/bypass-rust/tests/attack_set.rs:251-287` must remain textually
 unchanged and pass through that delegation.
 
-### Blocking observation-type finding
+### Resolved observation-type finding
 
-No exact R5.2 patch can satisfy all supplied requirements without a founder ownership decision:
+The preparation identified that no exact R5.2 patch could satisfy all original requirements without
+a founder ownership decision:
 
 1. A Rust library cannot construct a type owned by a downstream harness. If
    `BeforeToolCallObservation` remains harness-bound, the library floor cannot return
@@ -213,21 +218,32 @@ No exact R5.2 patch can satisfy all supplied requirements without a founder owne
 5. Returning a fail-closed `GuardDecision::Deny` is the cleanest library boundary, but it changes
    the enforcement expression and makes identity semantic/test-proven rather than byte-identical.
 
-Consequently, producing an “exact” R5.2 diff now would silently decide one of these ownership and
-proof-model choices. The prompt's Task 2.3 and hard stop prohibit that. No R5.2 patch is emitted or
-applied until the founder chooses one of:
+The founder resolved the question through Amendment A R5.2a:
 
-- **Library outcome:** keep `BeforeToolCallObservation` in T3; approve a new library-owned outcome
-  (or `GuardDecision`) and accept semantic identity established by unchanged ATK-07 tests plus
-  byte identity for the retained `catch_unwind` block, rather than byte identity of the old
-  observation constructor.
-- **Library observation:** reclassify/move `BeforeToolCallObservation`—and resolve the probe/count
-  coupling—as part of the T0 library surface, amending R5.2's ownership statement.
-- **Different founder design:** provide a function signature and ownership partition that keeps
-  both the library dependency direction and the required T0 construction.
+- `BeforeToolCallOutcome::{Blocked, Escalated, Authorized}` is library-owned;
+- `BeforeToolCallObservation` and invocation/authorization counters remain T3;
+- the harness invokes its probe only after `Authorized`;
+- identity is semantic because the constructor necessarily changes, with the `catch_unwind`
+  boundary, bounded `AssertUnwindSafe` reasoning, dropped payloads, unwind-only limitation,
+  `FailClosed` value, and denial signal retained as explicit proof obligations; and
+- the unchanged ATK-07 tests and complete active/ignored sets provide behavioral evidence.
 
-After that decision, the exact founder-authored new-file and adapter-delegation diff can be prepared
-without the agent choosing architecture by implication.
+### Authorship option (c) handoff
+
+The binding boundary is now:
+
+1. **Founder first:** author the complete new T0 boundary module, including the product outcome,
+   relocated floor, R5.1 constant/control-flow change, and import-only edits inside founder-owned
+   files. Commit that work without an agent-authored T0 stub.
+2. **Agent second:** after the founder commit exists, author only the T3 facade/re-exports, adapter
+   conversion and probe invocation, folded registry-mirror assertion, and ownership documentation.
+3. **Exact-commit gate:** run the unchanged conformance sets, both required contexts, fresh
+   Semgrep/CodeQL/cargo-deny, cross-model review, independent-human review, and founder disposition
+   against the final combined commit before human merge.
+
+This report intentionally does not add a ready-to-paste R5.2 T0 implementation. The founder should
+relocate the existing floor from the founder's own source and author the new consequential outcome
+surface directly. The agent remains stopped until that founder-authored module is present.
 
 ## Untouched baseline verification
 
@@ -259,13 +275,12 @@ change. This preparation report changes none of them.
 
 STOP. The founder must:
 
-1. merge ADR-13 Amendment A so its resolutions become canonical;
-2. author the R5.1 T0 patch and then allow the T3 mirror assertion to land with it;
-3. decide the R5.2 observation/outcome ownership and proof model;
-4. author the resulting R5.2 T0 split;
-5. bind fresh three-engine SAST, cross-model review, independent-human review, byte-level founder
+1. merge the active ADR-13 and Amendment A documentation branches through human review;
+2. author the R5.1 T0 patch and complete R5.2 T0 module under option (c);
+3. hand the exact founder commit back for the T3-only follow-up;
+4. bind fresh three-engine SAST, cross-model review, independent-human review, byte-level founder
    review, and the unchanged conformance suite to the exact resulting commit; and
-6. merge PROD-000 before PROD-001 extraction begins.
+5. merge PROD-000 before PROD-001 extraction begins.
 
 No extraction, runtime work, enforcement claim expansion, or T0 code change is authorized by this
 report.
