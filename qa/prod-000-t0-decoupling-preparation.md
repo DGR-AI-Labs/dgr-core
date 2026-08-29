@@ -245,6 +245,17 @@ This report intentionally does not add a ready-to-paste R5.2 T0 implementation. 
 relocate the existing floor from the founder's own source and author the new consequential outcome
 surface directly. The agent remains stopped until that founder-authored module is present.
 
+Founder authoring and evidence should be recorded in these five documentation-only templates:
+
+1. `qa/prod-000-authoring/01-founder-boundary-module.md`
+2. `qa/prod-000-authoring/02-floor-relocation-semantic-identity.md`
+3. `qa/prod-000-authoring/03-old-floor-removal-and-handoff.md`
+4. `qa/prod-000-authoring/04-module-registration-and-dependency-boundary.md`
+5. `qa/prod-000-authoring/05-founder-import-rewrite-ledger.md`
+
+The templates contain no implementation body or temporary T0 stub. They become exact-commit
+evidence only after the founder fills and signs them against the authored commit.
+
 ## Untouched baseline verification
 
 Executed at `ca6493408c5bf0cdd58e2f234d12feed22b161c8` before preparing this report:
