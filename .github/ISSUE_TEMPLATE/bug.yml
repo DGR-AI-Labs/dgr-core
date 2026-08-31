@@ -1,95 +1,104 @@
-name: Bug report
-description: Report a bug, bypass, or other defect in dgr-core.
-title: "[BUG] <short summary>"
-labels: ["bug"]
+name: Public bug report
+description: Report a reproducible, non-security defect in the public code.
+title: "[Bug]: "
+labels:
+  - "public:bug"
+  - "status:triage"
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for filing. **Any confirmed Bypass is automatically S0-Critical and blocks
-        release** (Constitution P1/P7). Provide enough evidence to reproduce and triage.
+        This report will be public. Do not include secrets, customer data, private plans, or security-sensitive details.
 
-  - type: textarea
-    id: summary
+        If the issue involves a suspected vulnerability, bypass, authorization or token weakness, replay, fail-closed behavior, secret exposure, or supply-chain risk, stop here and use the repository's **Security** tab to submit a private vulnerability report.
+
+  - type: input
+    id: revision
     attributes:
-      label: Summary
-      description: One or two sentences describing the issue.
+      label: Affected version or commit
+      description: Provide the release, tag, or full commit SHA where you reproduced the defect.
+      placeholder: e.g. v0.1.0 or 0123456789abcdef...
     validations:
       required: true
 
   - type: dropdown
-    id: class
+    id: installation
     attributes:
-      label: Class
+      label: Installation method
       options:
-        - Bypass
-        - Security
-        - Correctness
-        - Regression
-        - UX
+        - Source checkout
+        - Published package or release artifact
+        - Container image
+        - Other public installation method
     validations:
       required: true
 
   - type: dropdown
-    id: severity
+    id: area
     attributes:
-      label: Severity
-      description: "Note: any confirmed Bypass = S0-Critical and blocks release."
+      label: Affected area
       options:
-        - S0-Critical
-        - S1
-        - S2
-        - S3
-    validations:
-      required: true
-
-  - type: dropdown
-    id: component_tier
-    attributes:
-      label: Component / Tier
-      description: Consequence tier of the affected code (Constitution P8).
-      options:
-        - T0 — enforcement-critical
-        - T1 — adjacent to enforcement
-        - T2 — supporting / limited blast radius
-        - T3 — non-consequential (docs/tooling/scaffolding)
+        - Build or installation
+        - Public API or types
+        - Runtime behavior (non-security)
+        - Test or conformance tooling (non-security)
+        - Compatibility regression
+        - Other public code
     validations:
       required: true
 
   - type: textarea
-    id: steps
+    id: environment
     attributes:
-      label: Steps to reproduce
-      description: Minimal, deterministic steps.
+      label: Environment
+      description: Include relevant operating system, architecture, runtime/compiler, and dependency versions.
+      placeholder: Ubuntu 24.04, x86_64, Rust 1.x, ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest complete sequence that reproduces the defect using public code and data.
       placeholder: |
-        1. ...
-        2. ...
-        3. ...
+        1. Check out commit ...
+        2. Run ...
+        3. Observe ...
     validations:
       required: true
 
   - type: textarea
     id: expected
     attributes:
-      label: Expected
-      description: What the secure / correct outcome should have been.
+      label: Expected behavior
     validations:
       required: true
 
   - type: textarea
     id: actual
     attributes:
-      label: Actual
-      description: What actually happened.
+      label: Actual behavior
     validations:
       required: true
 
   - type: textarea
-    id: evidence
+    id: logs
     attributes:
-      label: Evidence
-      description: >
-        Failing test name / log excerpt / SAST or threat-model finding /
-        which model flagged it (for cross-model review). Attach what you have.
-    validations:
-      required: true
+      label: Redacted logs or other public evidence
+      description: Optional. Remove credentials, tokens, customer information, private repository names, and other sensitive data.
+      render: shell
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Public-report confirmations
+      options:
+        - label: I searched existing public issues and did not find a duplicate.
+          required: true
+        - label: I reproduced this against the identified public version or commit.
+          required: true
+        - label: This is not a security, bypass, authorization, token, replay, fail-closed, secret-exposure, or supply-chain report.
+          required: true
+        - label: This report contains no secrets, customer data, or private planning information.
+          required: true

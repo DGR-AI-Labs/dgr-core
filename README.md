@@ -26,6 +26,12 @@ runtime gate—and nothing here should be relied upon as production enforcement.
 
 [Apache-2.0](LICENSE).
 
+## Contributing and security
+
+Public issues are limited to reproducible public-code defects, build or compatibility regressions, and public documentation corrections. See [CONTRIBUTING.md](CONTRIBUTING.md) before submitting an issue or pull request.
+
+Do not disclose suspected vulnerabilities or bypasses publicly. Follow [SECURITY.md](SECURITY.md) and use the repository's Security tab to report them privately.
+
 ---
 
 This project is not announced anywhere — **please do not share.**

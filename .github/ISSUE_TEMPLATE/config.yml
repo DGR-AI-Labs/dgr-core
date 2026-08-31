@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability privately
+    url: https://github.com/DGR-AI-Labs/dgr-core/security/advisories/new
+    about: Do not disclose suspected vulnerabilities or bypasses in a public issue.
+  - name: Read the project status and scope
+    url: https://github.com/DGR-AI-Labs/dgr-core#readme
+    about: Review the public project documentation before opening an issue.
