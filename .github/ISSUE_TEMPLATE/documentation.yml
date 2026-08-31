@@ -1,0 +1,57 @@
+name: Documentation correction
+description: Report an error or ambiguity in the public documentation.
+title: "[Docs]: "
+labels:
+  - "public:documentation"
+  - "status:triage"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This report will be public. Do not include secrets, customer data, private plans, or security-sensitive details. Use the repository's **Security** tab for any suspected vulnerability or bypass.
+
+  - type: input
+    id: location
+    attributes:
+      label: Document location
+      description: Link to the public page or provide the repository path and section heading.
+      placeholder: README.md — Quick start
+    validations:
+      required: true
+
+  - type: input
+    id: revision
+    attributes:
+      label: Version or commit
+      description: Identify the documentation revision you reviewed.
+      placeholder: e.g. main at 0123456789abcdef...
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is incorrect or unclear?
+      description: Describe the public documentation problem and its effect on a reader.
+    validations:
+      required: true
+
+  - type: textarea
+    id: correction
+    attributes:
+      label: Suggested correction
+      description: Describe the smallest correction that would resolve the problem.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Public-report confirmations
+      options:
+        - label: I searched existing public issues and did not find a duplicate.
+          required: true
+        - label: This report concerns public documentation, not a feature request, roadmap question, or private plan.
+          required: true
+        - label: This report contains no security-sensitive details, secrets, customer data, or private planning information.
+          required: true
