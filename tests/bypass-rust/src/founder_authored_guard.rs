@@ -4,7 +4,7 @@
 //! and fail-closed handling have separate founder-owned units beside this one.
 //! Absence, invalidity, or internal error must deny.
 
-use crate::before_tool_call::{
+use crate::founder_before_tool_call_floor::{
     BeforeToolCallRequest, GuardDecision, GuardDecisionPort, GuardFault,
 };
 

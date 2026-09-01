@@ -4,12 +4,16 @@
 //! capability token and cannot issue authorization or invoke a tool.
 
 use crate::RequiredOutcome;
-use crate::attack_by_id;
-use crate::before_tool_call::{GuardDecision, GuardFault};
 use crate::founder_approval_store::{
     ApprovalStore, EvaluatePendingOutcome, PendingApproval, ReviewRequestId,
 };
+use crate::founder_before_tool_call_floor::{GuardDecision, GuardFault};
 use crate::founder_fail_closed::fail_closed_decision;
+
+const ATK_06_TIMEOUT_OUTCOME: RequiredOutcome = RequiredOutcome::EscalateThenDenyOnTimeout;
+
+#[doc(hidden)]
+pub const CONFORMANCE_ATK_06_TIMEOUT_OUTCOME: RequiredOutcome = ATK_06_TIMEOUT_OUTCOME;
 
 fn matching_pending(
     review_request_id: &ReviewRequestId,
@@ -44,13 +48,8 @@ pub fn evaluate_approval_timeout(
                 return fail_closed_decision(fault);
             }
 
-            let outcome = match attack_by_id("ATK-06") {
-                Some(case) => case.expected,
-                None => return fail_closed_decision(GuardFault::InternalError),
-            };
-
             Ok(GuardDecision::Deny {
-                outcome,
+                outcome: ATK_06_TIMEOUT_OUTCOME,
                 denial_signal: "ATK-06 approval timed out",
             })
         }

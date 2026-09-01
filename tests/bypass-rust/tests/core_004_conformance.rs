@@ -11,7 +11,9 @@ use dgr_core_bypass_harness::before_tool_call::{
 };
 use dgr_core_bypass_harness::fixtures::{FailClosedApprovalStore, RecordingToolProbe};
 use dgr_core_bypass_harness::founder_approval_store::ReviewRequestId;
-use dgr_core_bypass_harness::founder_approval_timeout::evaluate_approval_timeout;
+use dgr_core_bypass_harness::founder_approval_timeout::{
+    CONFORMANCE_ATK_06_TIMEOUT_OUTCOME, evaluate_approval_timeout,
+};
 use dgr_core_bypass_harness::founder_authored_guard::FounderAuthoredGuard;
 use dgr_core_bypass_harness::founder_consumption_store::{ConsumeOutcome, ConsumptionStore};
 use dgr_core_bypass_harness::founder_s2_approval_store::S2ApprovalStore;
@@ -163,6 +165,7 @@ fn atk_06_sequence_is_escalated_then_registry_derived_timeout_block() {
     let case = attack_by_id(ATTACK_ID).expect("ATK-06 is registered");
     let expected_terminal = case.expected;
 
+    assert_eq!(CONFORMANCE_ATK_06_TIMEOUT_OUTCOME, expected_terminal);
     assert_eq!(
         expected_terminal,
         RequiredOutcome::EscalateThenDenyOnTimeout
