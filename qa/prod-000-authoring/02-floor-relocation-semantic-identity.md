@@ -1,7 +1,7 @@
 # PROD-000 template 2 — floor relocation and semantic identity
 
-**Purpose:** Prove the founder-authored reached-boundary floor preserves the approved semantics
-while changing from a harness observation constructor to a product outcome constructor.
+**Purpose:** Prove the supervised agent-authored reached-boundary floor preserves the approved
+semantics while changing from a harness observation constructor to a product outcome constructor.
 
 ## Baseline evidence
 
@@ -12,12 +12,12 @@ while changing from a harness observation constructor to a product outcome const
 
 ## Destination evidence
 
-| Field | Founder entry |
+| Field | Implementation entry |
 |---|---|
 | New floor function name | `<fill>` |
 | Destination line range | `<fill>` |
 | Destination region SHA-256 | `<fill>` |
-| Founder commit | `<fill after commit>` |
+| Agent implementation commit | `<fill after commit>` |
 
 ## Semantic-identity ledger
 
@@ -68,3 +68,11 @@ Founder signature/name: `<fill>`
 
 UTC timestamp: `<fill>`
 
+## Agent completeness attestation
+
+> I recorded every non-verbatim line, constructor change, and semantic equivalence in this ledger.
+> I did not infer byte identity where only semantic or behavioral evidence exists.
+
+Agent product/model/session: `<fill>`
+
+UTC timestamp: `<fill>`

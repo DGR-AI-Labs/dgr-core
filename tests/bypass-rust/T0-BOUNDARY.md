@@ -16,7 +16,7 @@ reached. It does not claim protection from `panic=abort`, process termination,
 OOM abort, a hook that never fires, or a route around the hook. It also does not
 certify a store's post-panic invariants for later reuse.
 
-The following remain **T0, founder-led, and review-only once implemented**:
+The following remain **T0, human-led, and review-gated once implemented**:
 
 - capability-token minting or verification;
 - the policy decision point;
@@ -36,10 +36,24 @@ the T0-review precondition for CORE-005 to wire the currently active
 conformance suite into required CI. It does not activate deferred attacks or
 broaden the isolation claim.
 
-Agents must not make a test pass by adding or changing enforcement behavior in
-the founder-owned units. If an attack requires unresolved gate internals,
-record the dependency and stop. Founder changes remain subject to the T0
-process recorded in the repository constitution.
+Agents must not make a test pass by weakening or changing an expectation. Outside ADR-13
+Amendment B's exact PROD-000 scope, they also must not add or change enforcement behavior in the
+founder-owned units. If an attack requires unresolved gate internals or a broader T0 change, record
+the dependency and stop. All consequential changes remain subject to the T0 process recorded in the
+repository constitution.
+
+## PROD-000 supervised-agent exception
+
+ADR-13 Amendment B supersedes only Amendment A R5.3 authorship option (c). After the pointer,
+templates, and backlog prerequisites merge and the pre-existing founder draft is checkpointed or
+explicitly discarded, an agent may author the bounded PROD-000 T0/T3 partition under founder design
+authority, line-by-line review, exact-commit finding disposition, and founder-only merge.
+
+The resulting evidence must distinguish existing founder source, agent-relocated founder source,
+agent-authored T0, T3, and founder review. The complete result must not be described as
+founder-authored. This exception does not authorize a permissive stub, a changed conformance
+expectation, a second active floor, real tool integration, PROD-001 extraction, or any T0 change
+outside Amendment B's exact file and symbol scope.
 
 CORE-003 covers ATK-07 only: the boundary was reached, but its guard/verifier
 returned a fault or panicked. A hook that never fires, a route around the hook,
