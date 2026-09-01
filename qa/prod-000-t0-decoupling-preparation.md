@@ -1,18 +1,27 @@
 # PROD-000 T0 decoupling preparation
 
-**Status:** READY FOR FOUNDER T0 AUTHORING; agent stopped before implementation
+**Status:** GOVERNANCE UPDATE; implementation blocked pending merged pointer/templates, backlog,
+and founder-draft disposition
 
 **Baseline commit:** `ca6493408c5bf0cdd58e2f234d12feed22b161c8`
 
 **Prepared:** 2026-08-28
 
-**Authority:** The founder approved ADR-13 Amendment A, R5.2a's library-outcome/semantic-identity
-model, and authorship option (c). The canonical active records are pinned at dgr-internal source
-commit `104dbe651a869f198f2c76a58d7b2682bb82fbd6`. This report does not authorize PROD-001 extraction.
+**Authority:** The founder approved ADR-13 Amendment A and R5.2a's
+library-outcome/semantic-identity model. ADR-13 Amendment B supersedes only Amendment A R5.3
+authorship option (c) and authorizes supervised agent authorship of the bounded PROD-000 T0 diff.
+The canonical active records are pinned at dgr-internal source commit
+`891607c20ba65c31b024c59f29f09744f8a62b26`. This report does not authorize PROD-001 extraction.
+
+**Implementation hold:** This document and the five evidence templates are governance inputs only.
+No T0 implementation may begin until their dgr-core PR and the canonical backlog update are
+human-reviewed and merged and the pre-existing uncommitted founder draft is explicitly
+checkpointed or discarded.
 
 ## Scope and boundary
 
-This report prepares the two founder-authored R5 changes without applying either one. No
+This report prepares the two R5 changes without applying either one. Amendment B now permits the
+bounded implementation to be agent-authored under founder design authority and review. No
 `{FOUNDER-AUTHORS}` unit, enforcement expression, test, Cargo manifest, lockfile, `deny.toml`, or
 CI workflow was changed. The proposed patches below are review material, not patches authored into
 the working tree.
@@ -60,7 +69,7 @@ The proposed private-constant/public-mirror shape follows:
   `tests/bypass-rust/src/founder_token_verification.rs:5-9`, mirroring the private registered key
   constants at lines 25-29.
 
-### Exact founder-authored proposal — do not apply as agent
+### Approved R5.1 proposal — do not apply before the Amendment-B prerequisites merge
 
 ```diff
 diff --git a/tests/bypass-rust/src/founder_approval_timeout.rs b/tests/bypass-rust/src/founder_approval_timeout.rs
@@ -99,7 +108,7 @@ The enforcement expression that changes is exactly the timed-out arm's source of
 `match attack_by_id("ATK-06")` becomes the founder-owned `ATK_06_TIMEOUT_OUTCOME`. No other match
 arm, deadline comparison, store call, signal, or returned decision is proposed to change.
 
-### Exact T3 test-side proposal — do not apply before the founder constant exists
+### Exact T3 test-side proposal — do not apply before the T0 constant exists
 
 The equality assertion is folded into the existing
 `atk_06_sequence_is_escalated_then_registry_derived_timeout_block` test so the total remains 52
@@ -228,24 +237,26 @@ The founder resolved the question through Amendment A R5.2a:
   `FailClosed` value, and denial signal retained as explicit proof obligations; and
 - the unchanged ATK-07 tests and complete active/ignored sets provide behavioral evidence.
 
-### Authorship option (c) handoff
+### Amendment-B supervised-agent handoff
 
-The binding boundary is now:
+Amendment B supersedes the former option-(c) partition. The binding sequence is now:
 
-1. **Founder first:** author the complete new T0 boundary module, including the product outcome,
-   relocated floor, R5.1 constant/control-flow change, and import-only edits inside founder-owned
-   files. Commit that work without an agent-authored T0 stub.
-2. **Agent second:** after the founder commit exists, author only the T3 facade/re-exports, adapter
-   conversion and probe invocation, folded registry-mirror assertion, and ownership documentation.
-3. **Exact-commit gate:** run the unchanged conformance sets, both required contexts, fresh
-   Semgrep/CodeQL/cargo-deny, cross-model review, independent-human review, and founder disposition
-   against the final combined commit before human merge.
+1. **Governance first:** merge the Amendment-B pointer, ownership language, and five replacement
+   templates, then merge the canonical backlog update.
+2. **Draft disposition:** checkpoint the pre-existing founder draft unchanged with commit/hash/range
+   provenance, or explicitly discard it. An unresolved draft blocks implementation.
+3. **Agent implementation:** on a dedicated branch, author only Amendment B's enumerated T0/T3
+   surfaces. Record existing founder source, agent-relocated founder source, agent-authored T0, and
+   T3 separately; founder review never changes those authorship classifications.
+4. **Exact-commit gate:** run the unchanged conformance sets, both required contexts, fresh
+   Semgrep/CodeQL/cargo-deny, non-author cross-model review, independent-human review, and founder
+   disposition against the final commit before founder-only merge.
 
-This report intentionally does not add a ready-to-paste R5.2 T0 implementation. The founder should
-relocate the existing floor from the founder's own source and author the new consequential outcome
-surface directly. The agent remains stopped until that founder-authored module is present.
+This report intentionally does not add a ready-to-paste R5.2 T0 implementation. The implementation
+agent must relocate from the recorded baseline, justify every non-verbatim line, and stop on any
+scope expansion or baseline-hash mismatch.
 
-Founder authoring and evidence should be recorded in these five documentation-only templates:
+Supervised authorship and evidence must be recorded in these five documentation-only templates:
 
 1. `qa/prod-000-authoring/01-founder-boundary-module.md`
 2. `qa/prod-000-authoring/02-floor-relocation-semantic-identity.md`
@@ -286,12 +297,14 @@ change. This preparation report changes none of them.
 
 STOP. The founder must:
 
-1. merge the active ADR-13 and Amendment A documentation branches through human review;
-2. author the R5.1 T0 patch and complete R5.2 T0 module under option (c);
-3. hand the exact founder commit back for the T3-only follow-up;
-4. bind fresh three-engine SAST, cross-model review, independent-human review, byte-level founder
-   review, and the unchanged conformance suite to the exact resulting commit; and
-5. merge PROD-000 before PROD-001 extraction begins.
+1. merge this Amendment-B pointer/template update and the canonical backlog update through human
+   review;
+2. explicitly checkpoint or discard the pre-existing uncommitted founder draft;
+3. authorize implementation only on the dedicated bounded PROD-000 branch;
+4. bind fresh three-engine SAST, non-author cross-model review, independent-human review,
+   line-level provenance review, and the unchanged conformance suite to the exact final commit;
+5. disposition every finding and authorship classification; and
+6. founder-merge PROD-000 before PROD-001 extraction begins.
 
 No extraction, runtime work, enforcement claim expansion, or T0 code change is authorized by this
 report.

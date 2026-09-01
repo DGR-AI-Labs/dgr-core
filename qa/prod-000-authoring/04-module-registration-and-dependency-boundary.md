@@ -5,13 +5,13 @@ added.
 
 ## Registration record
 
-| Field | Founder entry |
+| Field | Implementation entry |
 |---|---|
 | Module name | `<fill>` |
 | Declaration location in `src/lib.rs` | `<fill>` |
 | Visibility | `<fill>` |
 | First product consumer for each public item | `<fill or link>` |
-| Founder commit | `<fill after commit>` |
+| Agent implementation commit | `<fill after commit>` |
 
 ## Required dependency graph
 
@@ -56,3 +56,4 @@ Founder signature/name: `<fill>`
 
 UTC timestamp: `<fill>`
 
+Agent product/model/session: `<fill>`

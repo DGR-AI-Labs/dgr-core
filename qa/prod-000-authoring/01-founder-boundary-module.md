@@ -1,43 +1,64 @@
-# PROD-000 template 1 — founder boundary-module authorship
+# PROD-000 template 1 — supervised-agent boundary-module authorship
 
-**Purpose:** Record direct founder authorship of the new T0 boundary module without supplying an
-implementation skeleton.
+**Purpose:** Record agent authorship, source provenance, and founder review of the new T0 boundary
+module without supplying an implementation skeleton.
 
 **Target:** `tests/bypass-rust/src/founder_before_tool_call_floor.rs`
 
 ## Preconditions
 
-- [ ] ADR-13 and Amendment A are merged and active.
+- [ ] ADR-13 and Amendments A and B are merged and active.
 - [ ] The dgr-core ADR-13 pointer is merged at the active source pin.
+- [ ] The Amendment-B versions of all five evidence templates are merged.
+- [ ] The canonical PROD-000 backlog update is merged.
+- [ ] The pre-existing founder draft has a recorded checkpoint-or-discard disposition.
 - [ ] The author has read `T0-AUTHORS.md`, `tests/bypass-rust/T0-BOUNDARY.md`, and the repository
       constitution.
 - [ ] The author is working on the PROD-000 branch, not `main`.
-- [ ] No agent-authored T0 stub or generated implementation is present.
+- [ ] The baseline hashes in the preparation have been recomputed and dispositioned.
+- [ ] No permissive stub or unrelated implementation is present.
 
 ## Authorship record
 
-| Field | Founder entry |
+| Field | Implementation entry |
 |---|---|
-| Founder name | `<fill>` |
+| Implementing agent product/model | `<fill>` |
+| Agent session/task identifier, if available | `<fill>` |
+| Founder authorization reference | `ADR-13-AMENDMENT-B` |
 | UTC start time | `<fill>` |
 | Branch | `<fill>` |
 | Base commit | `<fill>` |
-| ADR-13 source pin | `104dbe651a869f198f2c76a58d7b2682bb82fbd6` |
+| ADR-13 source pin | `891607c20ba65c31b024c59f29f09744f8a62b26` |
 | Editor/environment | `<fill>` |
 | Destination file SHA-256 after authoring | `<fill>` |
+| Agent implementation commit | `<fill after commit>` |
+
+## Pre-existing founder-draft disposition
+
+Exactly one disposition must be completed before implementation:
+
+| Field | Entry |
+|---|---|
+| Disposition | `<checkpoint / discard>` |
+| Founder authorization | `<commit, signed record, or explicit review reference>` |
+| If checkpointed: founder commit | `<fill / not applicable>` |
+| If checkpointed: complete-file SHA-256 | `<fill / not applicable>` |
+| If checkpointed: exact founder-authored ranges | `<fill / not applicable>` |
+| If discarded: exact discarded path and hash | `<fill / not applicable>` |
+| Implementing agent verified clean baseline | `<yes/no; commit>` |
 
 ## Source provenance
 
-Author from the founder's existing source in `tests/bypass-rust/src/before_tool_call.rs`, not from
-an agent-produced module body.
+Relocate from the existing founder source in `tests/bypass-rust/src/before_tool_call.rs`. Classify
+verbatim relocation separately from transformed or new agent-authored T0.
 
-| Existing source surface | Baseline location | Founder disposition |
+| Existing source surface | Baseline location | Implementation classification |
 |---|---|---|
-| `OpaqueCapabilityToken` | lines 13–17 | `<relocated / intentionally changed>` |
-| `BeforeToolCallRequest` | lines 19–25 | `<relocated / intentionally changed>` |
-| `GuardDecision` | lines 27–41 | `<relocated / intentionally changed>` |
-| `GuardFault` | lines 43–49 | `<relocated / intentionally changed>` |
-| `GuardDecisionPort` | lines 51–60 | `<relocated / intentionally changed>` |
+| `OpaqueCapabilityToken` | lines 13–17 | `<verbatim agent relocation / agent-authored transformation>` |
+| `BeforeToolCallRequest` | lines 19–25 | `<verbatim agent relocation / agent-authored transformation>` |
+| `GuardDecision` | lines 27–41 | `<verbatim agent relocation / agent-authored transformation>` |
+| `GuardFault` | lines 43–49 | `<verbatim agent relocation / agent-authored transformation>` |
+| `GuardDecisionPort` | lines 51–60 | `<verbatim agent relocation / agent-authored transformation>` |
 
 Baseline complete-file SHA-256:
 `5e44f9d6c4451bbe80c7821a6587663110b1144a6895a4dd2f8548d0e0de049d`.
@@ -47,7 +68,7 @@ Baseline complete-file SHA-256:
 Record the exact fields authored for each product outcome. This table is the review contract, not
 code.
 
-| Outcome | Required information | Forbidden information | Founder line(s) |
+| Outcome | Required information | Forbidden information | Agent-authored line(s) |
 |---|---|---|---|
 | `Blocked` | `RequiredOutcome`, denial signal | authorization/test counters, probe state | `<fill>` |
 | `Escalated` | original review-request ID, original deadline | authorization/test counters, probe state | `<fill>` |
@@ -65,13 +86,30 @@ code.
 - [ ] The module contains no real tool invocation.
 - [ ] No public item was added without a recorded first consumer.
 
-## Founder attestation
+## Agent authorship attestation
 
-> I authored the target T0 module directly from the existing founder-authored source and the active
-> ADR invariants. I did not paste an agent-drafted enforcement implementation. Every consequential
-> outcome and fault mapping in this module is my authored decision.
+> I authored or relocated the target T0 module under ADR-13 Amendment B. I classified every changed
+> region truthfully, identified every transformation of existing founder source, and introduced no
+> implementation outside the authorized PROD-000 scope.
 
-Founder signature/name: `<fill>`
+Agent product/model/session: `<fill>`
 
 UTC completion time: `<fill>`
 
+## Founder review disposition
+
+Exact reviewed commit: `<fill>`
+
+Non-author cross-model review record: `<fill path and reviewed commit>`
+
+Independent-human review record: `<fill path and reviewed commit>`
+
+Three-engine SAST/SCA evidence record: `<fill path and reviewed commit>`
+
+Decision: `<PASS / FAIL>`
+
+Finding disposition and line-level provenance corrections: `<fill>`
+
+Founder signature/name: `<fill>`
+
+UTC timestamp: `<fill>`

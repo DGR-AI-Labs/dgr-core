@@ -1,7 +1,7 @@
-# PROD-000 template 5 — founder import-rewrite ledger
+# PROD-000 template 5 — supervised-agent import-rewrite ledger
 
-**Purpose:** Prove module-path edits inside founder-owned files are import-only and do not conceal
-an enforcement change.
+**Purpose:** Prove agent-authored module-path edits inside founder-owned files are import-only and
+do not conceal an enforcement change.
 
 ## Scope rule
 
@@ -57,14 +57,23 @@ reviewed R5.1 disposition. No other non-import change is permitted.
 | R5.1 diff artifact/path | `<fill>` |
 | Unexpected changed line count | `<must be 0>` |
 
-## Founder attestation
+## Agent attestation
 
-> I reviewed every changed line in the eight founder-owned consumers. Except for the separately
-> dispositioned R5.1 timeout change, the changes are restricted to import/module paths and do not
-> alter an enforcement expression, constant, SQL statement, store operation, returned decision, or
-> denial signal.
+> I authored and classified every changed line in the eight founder-owned consumers. Except for the
+> separately dispositioned R5.1 timeout change, the changes are restricted to import/module paths
+> and do not alter an enforcement expression, constant, SQL statement, store operation, returned
+> decision, or denial signal.
+
+Agent product/model/session: `<fill>`
+
+UTC timestamp: `<fill>`
+
+## Founder disposition
+
+Exact reviewed commit: `<fill>`
+
+Decision and finding disposition: `<PASS / FAIL; fill>`
 
 Founder signature/name: `<fill>`
 
 UTC timestamp: `<fill>`
-
