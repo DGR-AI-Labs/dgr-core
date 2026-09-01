@@ -106,7 +106,9 @@ Non-author cross-model review record: **PENDING**
 
 Independent-human review record: **PENDING**
 
-Three-engine SAST/SCA evidence record: **PENDING**
+Three-engine SAST/SCA evidence record: **AVAILABLE** —
+`qa/prod-000-exact-commit-validation.md`; findings remain pending independent-human and founder
+disposition
 
 Decision: **PENDING**
 

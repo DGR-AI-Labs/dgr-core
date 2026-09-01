@@ -1,0 +1,33 @@
+PROD-000 — Semgrep raw SAST evidence
+tool_version: 1.173.0
+scan_date_utc: 2026-09-01
+scanned_commit: 425d7718ecf83086776de8fc09caec26c728df92
+working_directory: dedicated PROD-000 implementation worktree
+scope: explicit git ls-files list of every tracked *.rs file
+ruleset: p/rust (11 Rust rules)
+command: semgrep scan --config p/rust --error --no-git-ignore --metrics=off --json-output qa/sast/prod-000-semgrep-2026-09-01.json --text-output qa/sast/prod-000-semgrep-2026-09-01.txt "${prod000_rust_files[@]}"
+exit_code: 1
+status: completed; findings present
+finding_count: 1
+scan_error_count: 0
+tracked_rust_file_count: 21
+scanned_target_count: 21
+coverage_status: complete
+finding_disposition: PENDING independent-human and founder review
+
+--- complete Semgrep scan summary ---
+Scanning 21 files with 11 Code rules.
+Scanning 21 files with 11 rust rules.
+Targets scanned: 21
+Parsed lines: approximately 100 percent
+Ran 11 rules on 21 files: 1 finding.
+
+--- findings ---
+rule_id: rust.lang.security.temp-dir.temp-dir
+path: tests/bypass-rust/tests/consumption_store.rs
+line: 19
+severity: INFO in machine-readable output; blocking under --error
+message: temp_dir should not be used for security operations because a shared temporary directory requires securely unique file or directory creation.
+
+--- raw machine-readable result ---
+qa/sast/prod-000-semgrep-2026-09-01.json

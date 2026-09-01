@@ -1,7 +1,7 @@
 # PROD-000 T0 decoupling preparation
 
-**Status:** IMPLEMENTATION CHECKPOINT CREATED; exact-commit review stack and founder disposition
-pending
+**Status:** IMPLEMENTATION AND FRESH EXACT-INPUT EVIDENCE CREATED; cross-model, independent-human,
+and founder dispositions pending
 
 **Baseline commit:** `ca6493408c5bf0cdd58e2f234d12feed22b161c8`
 
@@ -17,7 +17,9 @@ The canonical active records are pinned at dgr-internal source commit
 canonical backlog update merged through dgr-backlog PR #26, and the founder explicitly authorized
 discarding the pre-existing zero-byte placeholder. OpenAI Codex created the bounded implementation
 checkpoint `40b713039a5612831df415cdd785271a7342be74`. This is not a founder approval or merge
-authorization; the exact-commit review stack remains open.
+authorization. Fresh functional gates and three-engine evidence were run at its non-Rust
+provenance descendant `425d7718ecf83086776de8fc09caec26c728df92`; the independent-human,
+cross-model, finding-disposition, and founder review gates remain open.
 
 ## Scope and boundary
 

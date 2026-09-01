@@ -98,3 +98,29 @@ report seven path-resolution inconsistencies, but all 20 tracked Rust files
 were extracted without error and the analysis produced no execution errors.
 Every finding and diagnostic still requires explicit founder disposition for
 this exact-commit gate.
+
+## PROD-000 supervised-agent T0 partition
+
+**Scanned commit:** `425d7718ecf83086776de8fc09caec26c728df92`
+
+**Agent implementation commit:** `40b713039a5612831df415cdd785271a7342be74`
+
+**Cargo.lock SHA-256:**
+`59c1a398c6a3405a6a895da2e794b7ed7cb0d6970ac74840cbd698c40b0f39ad`
+
+The scanned commit is a documentation-only descendant of the implementation commit. The evidence
+commit is a non-Rust descendant of the scanned input. Founder approval must name the final PR head.
+
+| Engine | Raw artifact | SHA-256 | Result |
+|---|---|---|---|
+| Semgrep | `prod-000-semgrep-2026-09-01.txt` | `8b7eb9e3b62066c8dfe6d82bde0fec634ca5577f3a26657fd4ba6ba4d318fcbe` | 21/21 targets, 0 scan errors, 1 finding, exit 1 under `--error` |
+| Semgrep | `prod-000-semgrep-2026-09-01.json` | `cc84acaf9645f48605fd84ad48558930f9276082d72649c106260ecaf44950c7` | machine-readable raw result |
+| CodeQL | `prod-000-codeql-2026-09-01.txt` | `3c6b73865eee28839dea7ac3e7681a767c2365665e36dc087b2e8d21ed2e9c20` | 21/21 tracked Rust files scanned, 9 findings, one generated dependency-output extraction warning |
+| CodeQL | `prod-000-codeql-2026-09-01.sarif` | `4c22554bbda1637966303d722bfc450aa651f1ded79eaec7539f2161797c76b7` | valid SARIF, one run |
+| cargo-deny | `prod-000-cargo-deny-2026-09-01.txt` | `13acf718133ce67aa84c0780632fe0f444eee6f20063256012485a272ad7ef8a` | exit 0; no blocking diagnostics |
+
+The Semgrep and CodeQL findings are the same temporary-path and deterministic-fixture-nonce
+surfaces present in the fresh CORE-004 scan. No finding touches the new
+`founder_before_tool_call_floor.rs` module or the R5.1 timeout ownership change. That comparison is
+context only: every result, plus CodeQL's generated `libsqlite3-sys` extraction warning, remains
+undispositioned until independent-human and founder review of this exact PROD-000 PR.

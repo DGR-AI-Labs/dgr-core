@@ -45,7 +45,7 @@ progress, but no review commit may contain a permissive stub or unexplained red 
 | Expected compile status | Green at committed implementation checkpoint |
 | If red, exact compiler error summary | Not applicable; no red state was committed |
 | Why the error belongs to the bounded T3 completion | Not applicable |
-| Final exact-commit status | Green at `40b7130...`; final PR-head validation pending |
+| Final exact-input status | Green at scanned descendant `425d771...`; final PR-head founder review pending |
 
 ## Boundary inspection
 
@@ -63,8 +63,8 @@ Record results after founder removal:
 | Field | Entry |
 |---|---|
 | Agent implementation commit SHA | `40b713039a5612831df415cdd785271a7342be74` |
-| Exact final review commit SHA | **PENDING after evidence commit** |
-| Working tree clean after final commit | **PENDING** |
+| Exact final review commit SHA | **PENDING final PR head; founder must name it in disposition** |
+| Working tree clean after final commit | **PENDING evidence commit** |
 | T0 regions classified | New module; R5.1 timeout change; eight direct import rewrites; `lib.rs` registration |
 | T3 regions classified | Compatibility re-exports; outcome conversion/probe invocation; registry-mirror assertion |
 | UTC completion time | `2026-09-01T21:12:17Z` |
