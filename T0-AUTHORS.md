@@ -103,6 +103,13 @@ transformations. `BeforeToolCallOutcome`, the R5.1 constant/control-flow change,
 rewrites were also authored by the agent. This checkpoint is not founder-approved or merge-ready
 until the exact-commit review stack is complete and every finding is founder-dispositioned.
 
+The first non-author cross-model review at `qa/prod-000-cross-model-review.md` returned
+`CHANGES REQUIRED`. Replacement commit `b19f33ae16698a81b993e6cc5a751360b6109577` addresses its
+source, classification, and evidence findings without expanding the Amendment-B T0 scope. Commit
+`587585cf476431f078efe587c5dbcc052389cdad` then changes only the T3 enumeration guard and its unit
+tests so deletion or ignoring of the ATK-06 T0/registry equality test fails required CI. Neither
+commit is founder approval; a fresh cross-model addendum and the remaining human gates are pending.
+
 ## Agent-authored supporting units
 
 The following are outside the founder implementation surface:

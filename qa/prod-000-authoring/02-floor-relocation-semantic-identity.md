@@ -18,6 +18,7 @@ semantics while changing from a harness observation constructor to a product out
 | Destination line range | `founder_before_tool_call_floor.rs:77-126` |
 | Destination region SHA-256 after cross-model remediation | `b46374c66dd4acbe3210546f40ccc73d8b3ca8b894f24045258745ed36319bd5` |
 | Agent implementation commit | `40b713039a5612831df415cdd785271a7342be74` |
+| Cross-model remediation source commit | `b19f33ae16698a81b993e6cc5a751360b6109577` |
 
 ## Semantic-identity ledger
 

@@ -21,6 +21,11 @@ authorization. Fresh functional gates and three-engine evidence were run at its 
 provenance descendant `425d7718ecf83086776de8fc09caec26c728df92`; the independent-human,
 cross-model, finding-disposition, and founder review gates remain open.
 
+The first cross-model review subsequently returned `CHANGES REQUIRED`. Replacement source commit
+`b19f33ae16698a81b993e6cc5a751360b6109577` and T3 assertion-guard commit
+`587585cf476431f078efe587c5dbcc052389cdad` are the current resubmission inputs. The original
+checkpoint and review remain preserved as history; neither replacement commit completes a human gate.
+
 ## Scope and boundary
 
 This report prepares the two R5 changes without applying either one. Amendment B now permits the

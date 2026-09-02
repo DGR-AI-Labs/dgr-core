@@ -124,3 +124,27 @@ surfaces present in the fresh CORE-004 scan. No finding touches the new
 `founder_before_tool_call_floor.rs` module or the R5.1 timeout ownership change. That comparison is
 context only: every result, plus CodeQL's generated `libsqlite3-sys` extraction warning, remains
 undispositioned until independent-human and founder review of this exact PROD-000 PR.
+
+### Cross-model remediation scan
+
+**Scanned replacement source commit:** `b19f33ae16698a81b993e6cc5a751360b6109577`
+
+**Scanned tree:** `12fadecee74b6387095977980fb215ddc7fe3c1c`
+
+The fresh scan follows the first Claude review and the source/document corrections responding to
+it. A later T3-only guard commit, `587585cf476431f078efe587c5dbcc052389cdad`, changes only the two
+JavaScript ignored/active-test enumeration files. No Rust, Cargo, lockfile, deny policy, or workflow
+change follows the scanned tree.
+
+| Engine | Raw artifact | SHA-256 | Result |
+|---|---|---|---|
+| Semgrep | `prod-000-remediation-semgrep-2026-09-02.txt` | recorded by the resubmission manifest | wrapper and command binding |
+| Semgrep | `prod-000-remediation-semgrep-2026-09-02.raw.txt` | `ee610b6a9fe897650b14845c3032100ab819abe0edf2d1877493c43c205e6d6c` | unaltered tool text |
+| Semgrep | `prod-000-remediation-semgrep-2026-09-02.json` | `a3b5138d02b4801a332a3d2786b7567ceaa0494cd38c848495b96911604a315b` | 21/21 Rust targets, one INFO finding, zero scan errors |
+| CodeQL | `prod-000-remediation-codeql-2026-09-02.txt` | recorded by the resubmission manifest | wrapper, command, coverage, and diagnostic binding |
+| CodeQL | `prod-000-remediation-codeql-2026-09-02.sarif` | `a8c08a09592603f38b266959cef875a06240e25ecc952e606f3d0c367e88b82c` | 21/21 tracked Rust files, nine fixture findings, one generated-file warning, no error-level notification |
+| cargo-deny | `prod-000-remediation-cargo-deny-2026-09-02.txt` | recorded by the resubmission manifest | exit 0; no blocking diagnostic |
+
+The finding identities are unchanged from the first PROD-000 scan. The fresh records do not
+self-disposition them. Rust-only scanner scope is explicit; the T3 JavaScript guard is covered by
+syntax, unit, and live libtest-enumeration checks rather than a claimed JavaScript SAST leg.

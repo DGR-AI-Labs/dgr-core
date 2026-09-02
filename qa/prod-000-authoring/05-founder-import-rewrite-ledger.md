@@ -55,6 +55,8 @@ diff, and no other semantic change is permitted.
 |---|---|
 | Baseline commit | `e9c8f585809c15d2464b3d45bc2ce26d716c8673` |
 | Agent implementation commit | `40b713039a5612831df415cdd785271a7342be74` |
+| Cross-model remediation source commit | `b19f33ae16698a81b993e6cc5a751360b6109577` |
+| Non-droppable T3 assertion guard commit | `587585cf476431f078efe587c5dbcc052389cdad` |
 | Eight-consumer diff artifact/path | `qa/prod-000-review-evidence/eight-consumer.diff` with an explicit eight-file path list; no wildcard |
 | R5.1 diff artifact/path | `qa/prod-000-review-evidence/r5-1-timeout.diff` plus template 2/preparation |
 | Complete implementation diff artifact/path | `qa/prod-000-review-evidence/full-implementation.diff` |

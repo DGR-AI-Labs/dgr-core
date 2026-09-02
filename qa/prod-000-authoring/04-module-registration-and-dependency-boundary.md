@@ -12,6 +12,7 @@ T3 compatibility facade.
 | Visibility | public module; explicit public boundary symbols listed below |
 | First product consumer for each public item | Direct founder-unit imports and T3 facade/adapter recorded below |
 | Agent implementation commit | `40b713039a5612831df415cdd785271a7342be74` |
+| Cross-model remediation source commit | `b19f33ae16698a81b993e6cc5a751360b6109577` |
 
 ## Required dependency graph
 

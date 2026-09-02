@@ -63,6 +63,7 @@ Record results after founder removal:
 | Field | Entry |
 |---|---|
 | Agent implementation commit SHA | `40b713039a5612831df415cdd785271a7342be74` |
+| Cross-model remediation source commit | `b19f33ae16698a81b993e6cc5a751360b6109577` |
 | Exact final review commit SHA | **PENDING final PR head; founder must name it in disposition** |
 | Working tree clean after final commit | **PENDING evidence commit** |
 | T0 regions classified | New module; R5.1 timeout change; eight direct import rewrites; `lib.rs` registration |

@@ -57,6 +57,11 @@ OpenAI Codex authored the bounded PROD-000 T0/T3 partition at implementation che
 `40b713039a5612831df415cdd785271a7342be74` under founder design authority. Line-by-line review,
 exact-commit finding disposition, independent-human review, and founder-only merge remain pending.
 
+After the first Claude review returned `CHANGES REQUIRED`, replacement source commit
+`b19f33ae16698a81b993e6cc5a751360b6109577` corrected the bounded source/document findings. T3-only
+commit `587585cf476431f078efe587c5dbcc052389cdad` makes the ATK-06 T0/registry equality test
+non-droppable through the required libtest-enumeration guard. These are review inputs, not approval.
+
 The resulting evidence must distinguish existing founder source, agent-relocated founder source,
 agent-authored T0, T3, and founder review. The complete result must not be described as
 founder-authored. This exception does not authorize a permissive stub, a changed conformance

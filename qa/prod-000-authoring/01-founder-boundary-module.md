@@ -32,6 +32,7 @@ module without supplying an implementation skeleton.
 | Editor/environment | Codex desktop shared workspace; WSL/Linux Rust toolchain |
 | Destination file SHA-256 after cross-model remediation | `d1c98dedbf544ab1e27d3d9e12055f96e8a5d5b76b2c63edb76e4df4ff0b542f` |
 | Agent implementation commit | `40b713039a5612831df415cdd785271a7342be74` |
+| Cross-model remediation source commit | `b19f33ae16698a81b993e6cc5a751360b6109577` |
 
 ## Pre-existing founder-draft disposition
 
