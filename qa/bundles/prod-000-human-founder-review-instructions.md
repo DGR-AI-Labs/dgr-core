@@ -64,6 +64,10 @@ executable remediation must repeat affected tests/scans and both independent rev
 
 Begin only after a passing independent-human record is committed.
 
+Use `qa/bundles/prod-000-founder-line-by-line-review-instructions.md` for the complete source-range,
+provenance-template, analyzer, residual-finding, and final-head procedure. The steps below are only
+a summary and do not replace that runbook.
+
 1. Note the resulting pre-disposition PR head SHA.
 2. Give the founder the sanitized public bundle, access to the canonical internal authority, and
    the completed independent-human record.
