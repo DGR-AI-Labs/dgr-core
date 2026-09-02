@@ -30,10 +30,19 @@ Reviewer-completed fields:
 ## 2. Integrity checks
 
 - [ ] I verified the review bundle's `MANIFEST.sha256` before relying on its contents.
-- [ ] I verified the baseline and reviewed snapshot tree identities.
+- [ ] I verified the baseline, executable, and safe evidence-source commit-to-tree mappings using
+      the public repository object database. I understand that `dgr-core/review-source/` is a
+      selected evidence set and is not represented as a complete reconstruction of any Git tree.
+- [ ] I verified `metadata/selected-file-inventory.sha256` and all four bundle-local evidence
+      sidecars: critical baseline, critical executable, cross-model records, and canonical scanner
+      artifacts.
+- [ ] I verified `metadata/external-authorities.sha256` separately against an authorized canonical
+      `dgr-internal` checkout; I did not copy internal authority text into a public artifact.
 - [ ] I recomputed the baseline-to-reviewed patch digest above.
-- [ ] I confirmed every post-`587585c...` change is documentation, evidence, or a review record;
-      no Rust, Cargo, lockfile, dependency policy, workflow, or script changed.
+- [ ] I inspected the stored post-executable drift through the safe evidence source and independently
+      confirmed against the current PR head that every post-`587585c...` change is documentation,
+      evidence, review, or bundle transport; no Rust source, test expectation, Cargo input,
+      lockfile, dependency policy, workflow, package manifest, or executable script changed.
 - [ ] I verified Amendment B is active and mandates the bounded scope and exact floor filename.
 
 ## 3. Complete source and provenance review

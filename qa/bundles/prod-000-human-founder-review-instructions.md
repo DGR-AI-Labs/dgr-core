@@ -6,30 +6,55 @@ again unless a later change touches executable code, test expectations, scripts,
 dependency policy, workflow behavior, or a claim that Claude relied on. N13–N15 were explicitly
 non-blocking and have been addressed or bounded without executable changes.
 
-The public ZIP is intentionally sanitized. It contains all public implementation and evidence
+The R2 public ZIP is intentionally sanitized. It contains all public implementation and evidence
 needed for code review, but no internal ADR body. Authorized reviewers must read ADR-13 and active
 Amendments A/B from `dgr-internal` when checking authority conformance. Never re-export those texts
 to GitHub or to another public artifact.
+
+`dgr-core/baseline-critical/` is an eight-file baseline subset and
+`dgr-core/review-source/` is a selected public evidence set. Neither is a complete repository
+snapshot. Verify whole commit-to-tree mappings from a public Git clone; verify selected bytes with
+the package sidecars.
 
 ## Step 1 — independent-human review
 
 Reviewer eligibility: a human who did not author the PROD-000 implementation or remediation. The
 founder may not substitute Codex or Claude for this person.
 
-1. Give the reviewer the sanitized public ZIP and ask them to verify `MANIFEST.sha256` first.
+1. Give the reviewer the R2 sanitized public ZIP and ask them to verify `MANIFEST.sha256` first.
 2. Separately grant the reviewer authorized read access to the canonical ADR-13 and active
    Amendments A/B in `dgr-internal`; do not send copies through public channels.
-3. Direct them to `review/prod-000-independent-human-review-input.md`.
-4. Require review of the entire `metadata/baseline-to-executable.diff`, not only the new floor.
-5. Require line-by-line inspection of `metadata/r5-1-timeout-semantic.diff` and direct inspection of
+3. From the package root, require all entries in `MANIFEST.sha256`,
+   `metadata/selected-file-inventory.sha256`, `metadata/critical-baseline.sha256`,
+   `metadata/critical-executable.sha256`, `metadata/cross-model-records.sha256`, and
+   `metadata/canonical-scanner-artifacts.sha256` to verify successfully.
+4. From the root of the authorized canonical `dgr-internal` checkout, run
+   `sha256sum -c <absolute-package-path>/metadata/external-authorities.sha256`. Its `specs/adr/...`
+   paths intentionally do not resolve inside the sanitized package; a digest mismatch against the
+   internal source is not acceptable.
+5. In a public clone, verify the three mappings in `metadata/commit-tree-identities.txt` with:
+
+   ```text
+   git rev-parse 'e9c8f585809c15d2464b3d45bc2ce26d716c8673^{tree}'
+   git rev-parse '587585cf476431f078efe587c5dbcc052389cdad^{tree}'
+   git rev-parse '46da707b8b84dfa599c4e27e5fbb2dc005e9e0e4^{tree}'
+   ```
+
+   Do not attempt to reconstruct a full tree from either selected package directory.
+6. Direct the reviewer to `review/prod-000-independent-human-review-input.md`.
+7. Require review of the entire `metadata/baseline-to-executable.diff`, not only the new floor.
+8. Require line-by-line inspection of `metadata/r5-1-timeout-semantic.diff` and direct inspection of
    the ATK-06 equality assertion body; the name guard does not prove body integrity.
-6. Require inspection of the raw Semgrep JSON, CodeQL SARIF including the complete diagnostic
+9. Require inspection of the raw Semgrep JSON, CodeQL SARIF including the complete diagnostic
    array, and cargo-deny output.
-7. Require the reviewer to write their own identity, findings, verdict, rationale, attestation, and
+10. Require inspection of the stored drift through the safe evidence source and an independent
+    name/status diff from `587585c...` through the full 40-character current PR head before
+    decision.
+11. Require the reviewer to write their own identity, findings, verdict, rationale, attestation, and
    UTC timestamp. Prewritten suggested language is not a review.
-8. Save the response unchanged as `qa/prod-000-independent-human-review.md`; do not overwrite the
+12. Save the response unchanged as `qa/prod-000-independent-human-review.md`; do not overwrite the
    input template.
-9. Commit that record and push it to PR #90. An agent may perform the mechanical commit/push only
+13. Commit that record and push it to PR #90. An agent may perform the mechanical commit/push only
    after the human supplies the completed record; the human remains its author/reviewer.
 
 If the verdict is `CHANGES REQUIRED` or `REJECT`, stop. Do not begin founder approval. Any

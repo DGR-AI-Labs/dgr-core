@@ -1,6 +1,6 @@
 # PROD-000 sanitized public evidence package
 
-This package supports the remaining independent-human and founder reviews for
+This R2 package supports the remaining independent-human and founder reviews for
 `DGR-AI-Labs/dgr-core#90` without publishing internal ADR texts.
 
 Start with `MANIFEST.sha256`, then read:
@@ -11,16 +11,23 @@ Start with `MANIFEST.sha256`, then read:
 4. the complete `metadata/baseline-to-executable.diff` and relevant source under
    `dgr-core/review-source/`.
 
-The exact executable review input remains
+R2 corrects the verifier paths and missing metadata in the superseded first
+sanitized package. The exact executable review input remains
 `587585cf476431f078efe587c5dbcc052389cdad`, with tree
 `89e5de51d23ead98d24bbbe1b4cd57db343b2dc4`. Later public files are review,
 evidence, or instruction records and do not change that executable input.
+
+The package contains `dgr-core/baseline-critical/`, an eight-file critical
+pre-image subset, and `dgr-core/review-source/`, a selected public evidence set.
+Neither directory is represented as a complete Git-tree reconstruction. Verify
+the declared commit-to-tree mappings from a public clone as directed by the
+review instructions.
 
 ## Authority handling
 
 The package deliberately excludes the `dgr-internal` repository and the bodies
 of ADR-13 and Amendments A/B. Authorized reviewers must consult the canonical
-internal repository directly. `metadata/authorities.sha256` provides identity
+internal repository directly. `metadata/external-authorities.sha256` provides identity
 digests only; it is not a substitute for the authority text.
 
 Do not add internal ADR copies to this package, PR #90, GitHub comments, or any

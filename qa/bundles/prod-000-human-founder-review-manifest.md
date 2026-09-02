@@ -1,8 +1,9 @@
-# PROD-000 sanitized public review bundle manifest
+# PROD-000 sanitized public review bundle manifest — R2
 
 ## Identity
 
 - Bundle date: 2026-09-02.
+- Bundle revision: R2; supersedes the first sanitized public package.
 - Repository/PR: `DGR-AI-Labs/dgr-core#90`.
 - Classification: public; internal ADR authority texts are deliberately omitted.
 - Baseline: `e9c8f585809c15d2464b3d45bc2ce26d716c8673`.
@@ -17,14 +18,28 @@
 
 ## Public bundle contents
 
+- `dgr-core/baseline-critical/` — eight exact critical-file pre-images selected from the baseline
+  commit. This is not a complete baseline snapshot.
 - `dgr-core/review-source/` — public source, tests, workflow inputs, scanner outputs,
-  provenance templates, review records, and unsigned human/founder forms selected from the safe
-  evidence source head.
+  provenance templates, and review records selected from the safe evidence source head. This is
+  not a complete Git-tree reconstruction. The current unsigned forms ship only under `review/` to
+  avoid stale duplicates.
 - `metadata/baseline-to-executable.diff` — complete binary/full-index review patch.
 - `metadata/r5-1-timeout.diff` and `metadata/r5-1-timeout-semantic.diff` — raw and
   EOL-insensitive founder-file evidence.
-- `metadata/` — commit/tree identities, selected-file inventory, drift, authority hashes, scanner
-  hashes, and critical hashes.
+- `metadata/commit-tree-identities.txt` — public commit-to-tree bindings and selection limits.
+- `metadata/selected-file-inventory.sha256` — digest inventory for every selected review-source
+  file.
+- `metadata/post-executable-drift.name-status` and
+  `metadata/post-executable-drift-assessment.md` — stored drift through the safe evidence source and
+  its scope assessment.
+- `metadata/original-bundle-path-map.md` — mapping from the immutable Claude record's private-bundle
+  paths to this sanitized layout.
+- `metadata/critical-baseline.sha256`, `metadata/critical-executable.sha256`,
+  `metadata/cross-model-records.sha256`, and `metadata/canonical-scanner-artifacts.sha256` —
+  bundle-local verifiers whose paths must all resolve from the package root.
+- `metadata/external-authorities.sha256` — identity digests that intentionally resolve only against
+  an authorized canonical `dgr-internal` checkout.
 - `review/` — remaining-gate instructions plus independent-human and founder input forms.
 - `MANIFEST.sha256` — SHA-256 over every other bundled file.
 
@@ -36,9 +51,9 @@ in the internal governance repository. An authorized reviewer who must compare i
 the full authority text must obtain that text from `dgr-internal`; it must not be copied back into
 this repository, a GitHub comment, or a public review artifact.
 
-The public authority pointer and recorded hashes remain available for identity checking. Their
+The public authority pointer and external hashes remain available for identity checking. Their
 presence does not substitute for the authorized reviewer's direct access to the governed internal
-source.
+source. The external authority sidecar is the only intentionally non-bundle-local verifier.
 
 ## Gate state
 
