@@ -6,23 +6,30 @@ again unless a later change touches executable code, test expectations, scripts,
 dependency policy, workflow behavior, or a claim that Claude relied on. N13–N15 were explicitly
 non-blocking and have been addressed or bounded without executable changes.
 
+The public ZIP is intentionally sanitized. It contains all public implementation and evidence
+needed for code review, but no internal ADR body. Authorized reviewers must read ADR-13 and active
+Amendments A/B from `dgr-internal` when checking authority conformance. Never re-export those texts
+to GitHub or to another public artifact.
+
 ## Step 1 — independent-human review
 
 Reviewer eligibility: a human who did not author the PROD-000 implementation or remediation. The
 founder may not substitute Codex or Claude for this person.
 
-1. Give the reviewer this complete ZIP and ask them to verify `MANIFEST.sha256` first.
-2. Direct them to `review/prod-000-independent-human-review-input.md`.
-3. Require review of the entire `metadata/baseline-to-executable.diff`, not only the new floor.
-4. Require line-by-line inspection of `metadata/r5-1-timeout-semantic.diff` and direct inspection of
+1. Give the reviewer the sanitized public ZIP and ask them to verify `MANIFEST.sha256` first.
+2. Separately grant the reviewer authorized read access to the canonical ADR-13 and active
+   Amendments A/B in `dgr-internal`; do not send copies through public channels.
+3. Direct them to `review/prod-000-independent-human-review-input.md`.
+4. Require review of the entire `metadata/baseline-to-executable.diff`, not only the new floor.
+5. Require line-by-line inspection of `metadata/r5-1-timeout-semantic.diff` and direct inspection of
    the ATK-06 equality assertion body; the name guard does not prove body integrity.
-5. Require inspection of the raw Semgrep JSON, CodeQL SARIF including the complete diagnostic
+6. Require inspection of the raw Semgrep JSON, CodeQL SARIF including the complete diagnostic
    array, and cargo-deny output.
-6. Require the reviewer to write their own identity, findings, verdict, rationale, attestation, and
+7. Require the reviewer to write their own identity, findings, verdict, rationale, attestation, and
    UTC timestamp. Prewritten suggested language is not a review.
-7. Save the response unchanged as `qa/prod-000-independent-human-review.md`; do not overwrite the
+8. Save the response unchanged as `qa/prod-000-independent-human-review.md`; do not overwrite the
    input template.
-8. Commit that record and push it to PR #90. An agent may perform the mechanical commit/push only
+9. Commit that record and push it to PR #90. An agent may perform the mechanical commit/push only
    after the human supplies the completed record; the human remains its author/reviewer.
 
 If the verdict is `CHANGES REQUIRED` or `REJECT`, stop. Do not begin founder approval. Any
@@ -33,7 +40,8 @@ executable remediation must repeat affected tests/scans and both independent rev
 Begin only after a passing independent-human record is committed.
 
 1. Note the resulting pre-disposition PR head SHA.
-2. Give the founder this same bundle plus the completed independent-human record.
+2. Give the founder the sanitized public bundle, access to the canonical internal authority, and
+   the completed independent-human record.
 3. Use `review/prod-000-founder-review-input.md` as the checklist.
 4. The founder personally reviews every consequential line, removed branch, public item, five
    provenance templates, original Claude review, passing addendum, and human findings.
@@ -73,4 +81,4 @@ assumption and reopens affected gates. PROD-001 remains unauthorized until PR #9
 - Patch SHA-256: `c08919d86a1f060cce9a05b3143140a5f011b9349f243475dad4f4ec1b40cf99`.
 - Cross-model addendum SHA-256:
   `534ce4164067aef339b9f35a176de1b39e6f1573834e52cdc3d533fad7e634db`.
-- Evidence/instruction head before this bundle: `e4fdda5969493a83e2b1b0bdffff26a837d999d1`.
+- Safe evidence source head: `46da707b8b84dfa599c4e27e5fbb2dc005e9e0e4`.
