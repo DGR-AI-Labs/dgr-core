@@ -3,7 +3,9 @@ import test from "node:test";
 
 import {
   EXPECTED_IGNORED_ATTACKS,
+  REQUIRED_ACTIVE_CONFORMANCE_TESTS,
   compareIgnoredAttacks,
+  compareRequiredActiveTests,
   parseIgnoredTests,
 } from "./check-ignored-attacks.mjs";
 
@@ -42,4 +44,28 @@ test("normalizes terse libtest enumeration", () => {
     "atk_04_missing_justification",
     "atk_14_cross_tenant_use",
   ]);
+});
+
+test("accepts the required conformance test only when listed and active", () => {
+  assert.deepEqual(compareRequiredActiveTests(REQUIRED_ACTIVE_CONFORMANCE_TESTS, []), {
+    missing: [],
+    ignored: [],
+  });
+});
+
+test("rejects a missing required conformance test", () => {
+  assert.deepEqual(compareRequiredActiveTests([], []), {
+    missing: REQUIRED_ACTIVE_CONFORMANCE_TESTS,
+    ignored: [],
+  });
+});
+
+test("rejects an ignored required conformance test", () => {
+  assert.deepEqual(
+    compareRequiredActiveTests(REQUIRED_ACTIVE_CONFORMANCE_TESTS, REQUIRED_ACTIVE_CONFORMANCE_TESTS),
+    {
+      missing: [],
+      ignored: REQUIRED_ACTIVE_CONFORMANCE_TESTS,
+    },
+  );
 });
