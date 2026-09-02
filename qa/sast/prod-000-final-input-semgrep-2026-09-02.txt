@@ -1,0 +1,28 @@
+PROD-000 final executable input — Semgrep raw SAST evidence wrapper
+tool_version: 1.173.0
+scan_date_utc: 2026-09-02
+scanned_commit: 587585cf476431f078efe587c5dbcc052389cdad
+scanned_tree: 89e5de51d23ead98d24bbbe1b4cd57db343b2dc4
+source_materialization: git archive of scanned_commit at /tmp/prod000-final-input.fM7ZCw
+scope: every one of the 21 tracked Rust files in the immutable archive
+ruleset: p/rust (11 Rust rules)
+command: semgrep scan --config p/rust --error --no-git-ignore --metrics=off --json-output <evidence>/prod-000-final-input-semgrep-2026-09-02.json --text-output <evidence>/prod-000-final-input-semgrep-2026-09-02.raw.txt "${prod000_files[@]}"
+exit_code: 1
+status: completed successfully; findings present
+finding_count: 1
+scan_error_count: 0
+tracked_rust_file_count: 21
+scanned_target_count: 21
+coverage_status: complete for tracked Rust; no JavaScript SAST coverage is claimed
+finding_disposition: PENDING independent-human and founder review
+
+--- finding ---
+rule_id: rust.lang.security.temp-dir.temp-dir
+path: tests/bypass-rust/tests/consumption_store.rs
+line: 19
+severity: INFO in JSON; blocking under --error
+scope observation: pre-existing conformance-test helper; not a disposition
+
+--- raw artifacts ---
+qa/sast/prod-000-final-input-semgrep-2026-09-02.json
+qa/sast/prod-000-final-input-semgrep-2026-09-02.raw.txt

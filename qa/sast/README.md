@@ -148,3 +148,23 @@ change follows the scanned tree.
 The finding identities are unchanged from the first PROD-000 scan. The fresh records do not
 self-disposition them. Rust-only scanner scope is explicit; the T3 JavaScript guard is covered by
 syntax, unit, and live libtest-enumeration checks rather than a claimed JavaScript SAST leg.
+
+### Canonical final-executable-input scan
+
+**Exact scanned commit:** `587585cf476431f078efe587c5dbcc052389cdad`
+
+**Exact scanned tree:** `89e5de51d23ead98d24bbbe1b4cd57db343b2dc4`
+
+This is the canonical PROD-000 resubmission scan. It was run from an immutable `git archive` of the
+commit that contains both the replacement Rust source and the T3 non-droppable-assertion guard.
+
+| Engine | Raw artifact | SHA-256 | Result |
+|---|---|---|---|
+| Semgrep | `prod-000-final-input-semgrep-2026-09-02.raw.txt` | `ee610b6a9fe897650b14845c3032100ab819abe0edf2d1877493c43c205e6d6c` | unaltered text output |
+| Semgrep | `prod-000-final-input-semgrep-2026-09-02.json` | `a6ba26f5d90f716c48b2199a802a534accdd6119cb72a0c270a3c86b2f5aebd3` | 21/21 Rust targets, one result, zero scan errors |
+| CodeQL | `prod-000-final-input-codeql-2026-09-02.sarif` | `37947d2ec95a60b120664413ccc009b6c15ebf240ae84eb253cdac8556402c10` | 21/21 tracked Rust files extracted without error, nine results, zero extraction warnings |
+| cargo-deny | `prod-000-final-input-cargo-deny-2026-09-02.txt` | recorded by the bundle manifest | exit 0; no error or warning |
+
+The wrappers adjacent to these artifacts record exact commands and the archive materialization.
+The earlier `prod-000-remediation-*` run is retained as intermediate audit evidence and is not the
+canonical exact-input scan.

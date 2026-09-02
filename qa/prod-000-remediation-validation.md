@@ -8,10 +8,10 @@
 - T3 guard tree: `89e5de51d23ead98d24bbbe1b4cd57db343b2dc4`.
 - Baseline: `e9c8f585809c15d2464b3d45bc2ce26d716c8673`.
 
-The three-engine scan ran against the replacement Rust source commit. The subsequent guard commit
-changes only `scripts/check-ignored-attacks.mjs` and `scripts/check-ignored-attacks.test.mjs`; no
-Rust source, Cargo input, dependency policy, or workflow changed. Those two JavaScript files were
-then validated at the guard commit together with the unchanged Rust tree.
+The first remediation scan ran against the replacement Rust source commit. To remove any ambiguity
+about its relationship to the subsequent JavaScript guard hardening, the canonical three-engine run
+was repeated from an immutable `git archive` of exact executable commit `587585c...`. The evidence
+commit and review-bundle commits are documentation/artifact-only descendants.
 
 ## Functional and policy gate
 
@@ -30,9 +30,9 @@ then validated at the guard commit together with the unchanged Rust tree.
 
 | Engine | Exact scanned input | Result |
 |---|---|---|
-| Semgrep 1.173.0 / `p/rust` | `b19f33a...`, all 21 tracked Rust files | COMPLETE: one existing test-only temp-dir finding, zero scan errors; exit 1 under `--error` |
-| CodeQL 2.25.5 / `codeql/rust-queries@0.1.35` | `b19f33a...`, all 21 tracked Rust files | COMPLETE: nine deterministic fixture-nonce findings; no error-level notification; one retained generated `bindgen.rs` warning |
-| cargo-deny 0.20.2 | `b19f33a...`, unchanged lock/policy | PASS: zero errors and warnings; two bans notes and 54 license notes |
+| Semgrep 1.173.0 / `p/rust` | `587585c...`, all 21 tracked Rust files | COMPLETE: one existing test-only temp-dir finding, zero scan errors; exit 1 under `--error` |
+| CodeQL 2.25.5 / `codeql/rust-queries@0.1.35` | `587585c...`, all 21 tracked Rust files | COMPLETE: nine deterministic fixture-nonce findings; 21/21 extracted without error; zero extraction warnings and zero error-level notifications |
+| cargo-deny 0.20.2 | `587585c...`, unchanged lock/policy | PASS: zero errors and warnings; two bans notes and 54 license notes |
 
 No scanner finding touches the replacement floor, adapter, R5.1 timeout change, or the T3 guard.
 This observation is not a disposition. Every finding and the complete CodeQL diagnostic array remain
