@@ -59,8 +59,10 @@ exact-commit finding disposition, independent-human review, and founder-only mer
 
 After the first Claude review returned `CHANGES REQUIRED`, replacement source commit
 `b19f33ae16698a81b993e6cc5a751360b6109577` corrected the bounded source/document findings. T3-only
-commit `587585cf476431f078efe587c5dbcc052389cdad` makes the ATK-06 T0/registry equality test
-non-droppable through the required libtest-enumeration guard. These are review inputs, not approval.
+commit `587585cf476431f078efe587c5dbcc052389cdad` makes deletion, rename, or ignoring of the named
+ATK-06 T0/registry equality test fail the required libtest-enumeration guard. The guard does not
+prove the test body remains unchanged; source and human review must verify the assertion. These are
+review inputs, not approval.
 
 The resulting evidence must distinguish existing founder source, agent-relocated founder source,
 agent-authored T0, T3, and founder review. The complete result must not be described as
