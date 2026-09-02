@@ -6,16 +6,16 @@ This is an agent-prepared review form. It is not a founder decision, signature, 
 authorship record. The founder must personally inspect the exact final PR head and write every
 selection and rationale. Do not accept suggested language as an automatic disposition.
 
-## 1. Founder identity and exact-head binding
+## 1. Founder identity and review-input binding
 
 - Founder name:
 - UTC review start:
-- Final PR head SHA:
-- Final PR tree SHA:
+- Reviewed pre-disposition PR head SHA (the head containing the completed independent-human record):
+- Reviewed pre-disposition tree SHA:
 - PR: [DGR-AI-Labs/dgr-core#90](https://github.com/DGR-AI-Labs/dgr-core/pull/90).
-- Confirmation that `Structural / governance check` passes on the final head:
-- Confirmation that `Rust format / build / test` passes on the final head:
-- Confirmation that the final-head drift from executable commit `587585c...` contains only
+- Confirmation that `Structural / governance check` passes on the reviewed head:
+- Confirmation that `Rust format / build / test` passes on the reviewed head:
+- Confirmation that drift from executable commit `587585c...` contains only
   documentation, evidence, completed review records, and bundle artifacts:
 
 ## 2. Required prior records
@@ -109,13 +109,15 @@ Canonical artifact: `qa/sast/prod-000-final-input-cargo-deny-2026-09-02.txt`.
 - [ ] I confirm founder review does not convert agent-authored or agent-transformed lines into
       founder-authored lines.
 
-## 9. Founder final decision
+## 9. Founder disposition before final GitHub approval
 
 Select exactly one and supply rationale:
 
-- [ ] **APPROVE EXACT FINAL HEAD** — all gates complete; PR #90 may be founder-merged.
-- [ ] **APPROVE WITH RECORDED NON-BLOCKING FINDINGS** — all findings are dispositioned; PR #90 may
-      be founder-merged.
+- [ ] **APPROVE REVIEWED HEAD** — all review gates complete; commit this disposition, then approve
+      the resulting final PR head on GitHub after its required contexts pass.
+- [ ] **APPROVE REVIEWED HEAD WITH RECORDED NON-BLOCKING FINDINGS** — all findings are
+      dispositioned; commit this record, then approve the resulting final PR head on GitHub after
+      its required contexts pass.
 - [ ] **CHANGES REQUIRED** — do not merge; identify affected gates to repeat.
 - [ ] **REJECT** — do not merge.
 
@@ -129,9 +131,9 @@ Founder rationale:
 
 ```text
 I, <founder name>, personally reviewed and dispositioned the complete PROD-000 change and evidence
-at final PR head <40-character SHA>. I reviewed every consequential changed line, removed branch,
+at reviewed pre-disposition PR head <40-character SHA>. I reviewed every consequential changed line, removed branch,
 public item, provenance claim, independent-human and cross-model record, and every SAST/SCA result
-and CodeQL diagnostic. I confirm the required GitHub contexts pass on that exact head.
+and CodeQL diagnostic. I confirm the required GitHub contexts pass on that exact reviewed head.
 Decision: <exact decision>.
 This is founder review of agent-authored/transformed T0; it is not a claim of founder authorship.
 ```
@@ -139,3 +141,19 @@ This is founder review of agent-authored/transformed T0; it is not a claim of fo
 - Founder signature/name:
 - Stable approval reference:
 - UTC decision time:
+
+## 11. Required final GitHub action after this record is committed
+
+Committing a review record necessarily creates a new head that the record cannot self-name. After
+this completed disposition is committed:
+
+1. wait for both required contexts on the resulting head;
+2. inspect the drift from the reviewed pre-disposition head and require it to contain only this
+   completed review record and mechanical bundle updates, if any;
+3. submit a founder GitHub **Approve** review explicitly bound by GitHub to that resulting head;
+4. record the GitHub review URL as the stable final-head approval reference; and
+5. only then perform the founder-only merge.
+
+The GitHub approval, not an impossible self-referential SHA inside this file, binds the final PR
+head. Any executable change after the reviewed input invalidates this sequence and reopens affected
+tests, scans, cross-model review, and independent-human review.
