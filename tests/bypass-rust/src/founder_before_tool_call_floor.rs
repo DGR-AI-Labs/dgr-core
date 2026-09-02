@@ -78,8 +78,8 @@ pub enum BeforeToolCallOutcome {
 /// unwinding panics as a product-level fail-closed block.
 ///
 /// This containment covers Rust unwinding panics after the boundary is reached.
-/// It does not cover `panic=abort`, process termination, OOM abort, or a hook
-/// that is never invoked.
+/// It does not cover `panic=abort`, process termination, OOM abort, a hook
+/// that is never invoked, or a route around the hook.
 pub fn before_tool_call_floor<G>(
     guard: &G,
     request: &BeforeToolCallRequest<'_>,

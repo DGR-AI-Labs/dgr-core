@@ -30,7 +30,7 @@ module without supplying an implementation skeleton.
 | Base commit | `e9c8f585809c15d2464b3d45bc2ce26d716c8673` |
 | ADR-13 source pin | `891607c20ba65c31b024c59f29f09744f8a62b26` |
 | Editor/environment | Codex desktop shared workspace; WSL/Linux Rust toolchain |
-| Destination file SHA-256 after authoring | `edc342844cabc11ba399bb80c20e59b785cd7ce6909895c059ac83148cd1d122` |
+| Destination file SHA-256 after cross-model remediation | `d1c98dedbf544ab1e27d3d9e12055f96e8a5d5b76b2c63edb76e4df4ff0b542f` |
 | Agent implementation commit | `40b713039a5612831df415cdd785271a7342be74` |
 
 ## Pre-existing founder-draft disposition
@@ -50,17 +50,19 @@ Exactly one disposition must be completed before implementation:
 ## Source provenance
 
 Relocate the existing type shapes from the former mixed-tier
-`tests/bypass-rust/src/before_tool_call.rs`. Those shapes were previously T3 supporting code, not
-founder-authored enforcement. Their T0 relocation/transformation is agent-authored T0. The floor
-transformation is recorded separately in template 2 with its founder-source provenance.
+`tests/bypass-rust/src/before_tool_call.rs`. These shared request/decision/fault/port shapes were
+not founder-authored, but they encoded consequential authorization semantics and therefore were
+T0 by consequence even while physically located in the mixed-tier adapter. Their relocation and
+documentation changes are agent-authored T0 transformations. The floor transformation is recorded
+separately in template 2 with its founder-source provenance.
 
 | Existing source surface | Baseline location | Implementation classification |
 |---|---|---|
-| `OpaqueCapabilityToken` | lines 13–17 | Agent-authored T0 relocation; shape preserved at destination lines 12–16, doc wording changed |
-| `BeforeToolCallRequest` | lines 19–25 | Agent-authored T0 relocation; shape preserved at destination lines 18–24, doc wording changed |
-| `GuardDecision` | lines 27–41 | Agent-authored T0 relocation; shape preserved at destination lines 26–40, doc wording changed |
-| `GuardFault` | lines 43–49 | Agent-authored T0 relocation; shape preserved at destination lines 42–48 |
-| `GuardDecisionPort` | lines 51–60 | Agent-authored T0 relocation; signature preserved at destination lines 50–59, doc wording changed |
+| `OpaqueCapabilityToken` | lines 13–17 | Pre-existing non-founder T0-by-consequence type; agent-relocated/transformed; shape preserved at destination lines 12–16, doc wording changed |
+| `BeforeToolCallRequest` | lines 19–25 | Pre-existing non-founder T0-by-consequence type; agent-relocated/transformed; shape preserved at destination lines 18–24, doc wording changed |
+| `GuardDecision` | lines 27–41 | Pre-existing non-founder T0-by-consequence type; agent-relocated/transformed; shape preserved at destination lines 26–40, doc wording changed |
+| `GuardFault` | lines 43–49 | Pre-existing non-founder T0-by-consequence type; agent-relocated/transformed; shape preserved at destination lines 42–48 |
+| `GuardDecisionPort` | lines 51–60 | Pre-existing non-founder T0-by-consequence type; agent-relocated/transformed; signature preserved at destination lines 50–59, doc wording changed |
 
 Baseline complete-file SHA-256:
 `5e44f9d6c4451bbe80c7821a6587663110b1144a6895a4dd2f8548d0e0de049d`.
@@ -72,7 +74,7 @@ code.
 
 | Outcome | Required information | Forbidden information | Agent-authored line(s) |
 |---|---|---|---|
-| `Blocked` | `RequiredOutcome`, denial signal | authorization/test counters, probe state | lines 63–67 |
+| `Blocked` | `RequiredOutcome`, denial signal | authorization/test counters, probe state | lines 64–67 |
 | `Escalated` | original review-request ID, original deadline | authorization/test counters, probe state | lines 68–71 |
 | `Authorized` | authorization reference | claim that a tool executed, probe state | lines 72–74 |
 

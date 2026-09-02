@@ -15,7 +15,7 @@ import-only.
 | Founder-owned file | Old path line(s) | New path line(s) | Before SHA-256 | After SHA-256 | Non-import diff? |
 |---|---|---|---|---|---|
 | `founder_approval_store.rs` | 6 | 6 | `35277b1e836c505f7a8a6c7a85752428ba57dd01e8b1572aa0d9cc35b8c212a0` | `92b4bc4716725569e9dbf3834d9fd6d72128918f0937a31a9e7bfd5282dde7ec` | no |
-| `founder_approval_timeout.rs` | 8 | 10 | `989ae1df102c1a78638b28354e1cbcbd37e7cc3565292703840b2e7222f2c9b7` | `1e2d5c9ec440180d9e7d373f225f464e9195f044dc8ad95aa2643c5f0282571f` | yes — R5.1 only |
+| `founder_approval_timeout.rs` | 8 | 9 | `989ae1df102c1a78638b28354e1cbcbd37e7cc3565292703840b2e7222f2c9b7` | `14cb21fbb11ac0a0216ae31150f292e9a9e1995ad332acf75b661116c8b6d0c2` | yes — R5.1 plus file-wide CRLF→LF normalization |
 | `founder_authored_guard.rs` | 7–9 | 7–9 | `f2f1351d387c9a4fca1d76f9d171b7ddf47322e9e88bb8880c4788726ee866cf` | `cf6f32d5d37ad990dfa04cf6ef18c86661c61e0d6236be48d287261e3ff808e1` | no |
 | `founder_consumption_store.rs` | 6 | 6 | `ebf568985ecb17e460268d2b15a2ac33ee908c00fb354f3527a9ae8d64d5c1f9` | `813ca93068f9d81ae84d79b7b52ecd4aa15fd7e894b7ca599b30472375ac157c` | no |
 | `founder_fail_closed.rs` | 4 | 4 | `5cbd452b9db4a3d8b1799cf0605e3391898e5960e8ed44b7d45800f07b8e08d1` | `fba6071de88417e1c551fc1793f7d6a77a6547cce438c34648d88dfd9bc8c3fc` | no |
@@ -38,7 +38,9 @@ For every file except `founder_approval_timeout.rs`, confirm no changed line tou
 - [x] visibility or ownership classification
 
 For `founder_approval_timeout.rs`, classify each non-import changed line under the separately
-reviewed R5.1 disposition. No other non-import change is permitted.
+reviewed R5.1 disposition. The replacement review commit also normalizes the complete file from
+CRLF/mixed line endings to consistent LF; `--ignore-space-at-eol` isolates the same R5.1 semantic
+diff, and no other semantic change is permitted.
 
 ## Dependency-direction check
 
@@ -53,8 +55,9 @@ reviewed R5.1 disposition. No other non-import change is permitted.
 |---|---|
 | Baseline commit | `e9c8f585809c15d2464b3d45bc2ce26d716c8673` |
 | Agent implementation commit | `40b713039a5612831df415cdd785271a7342be74` |
-| Import-only diff artifact/path | `git diff e9c8f58...40b7130 -- tests/bypass-rust/src/founder_*.rs` plus this ledger |
-| R5.1 diff artifact/path | `founder_approval_timeout.rs` diff in `40b7130...` and template 2/preparation |
+| Eight-consumer diff artifact/path | `qa/prod-000-review-evidence/eight-consumer.diff` with an explicit eight-file path list; no wildcard |
+| R5.1 diff artifact/path | `qa/prod-000-review-evidence/r5-1-timeout.diff` plus template 2/preparation |
+| Complete implementation diff artifact/path | `qa/prod-000-review-evidence/full-implementation.diff` |
 | Unexpected changed line count | 0 |
 
 ## Agent attestation

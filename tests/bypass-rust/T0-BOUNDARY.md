@@ -13,6 +13,11 @@ relay behavior. `Err(GuardFault)` and an unwinding panic from `decide` produce a
 `Blocked` with `RequiredOutcome::FailClosed`; the adapter records no authorization and no effectful
 invocation.
 
+`ATK_06_TIMEOUT_OUTCOME` is authoritative for T0 enforcement after PROD-000. The CORE-001 attack
+registry remains the T3 conformance representation. The equality assertion added to the existing
+`atk_06_sequence_is_escalated_then_registry_derived_timeout_block` test detects drift from T0 to
+the registry; it is not a second source of enforcement policy.
+
 The unwind guarantee is bounded to Rust unwinding panics after the boundary is
 reached. It does not claim protection from `panic=abort`, process termination,
 OOM abort, a hook that never fires, or a route around the hook. It also does not
@@ -62,6 +67,11 @@ CORE-003 covers ATK-07 only: the boundary was reached, but its guard/verifier
 returned a fault or panicked. A hook that never fires, a route around the hook,
 a missing plugin, or operator bypass is runtime-integration scope retained by
 RUNTIME-003/004, not simulated by this isolation harness.
+
+`src/gate.mjs` is a deliberately failing Phase-0 scaffold, not an active or authoritative
+enforcement floor. PROD-000 and its three-engine evidence cover the Rust T0/T3 partition. The
+JavaScript scaffold neither competes with nor bypasses the Rust isolation harness, and the
+Rust-only SAST evidence does not claim security coverage for unrelated JavaScript.
 
 ## CORE-004 ownership and bounded claim
 

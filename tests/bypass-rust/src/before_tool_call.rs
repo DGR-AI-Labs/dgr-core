@@ -8,9 +8,10 @@ use crate::founder_approval_store::{ApprovalStore, ReviewRequestId};
 use crate::founder_consumption_store::ConsumptionStore;
 use crate::{ProposedAction, RequiredOutcome};
 
+use crate::founder_before_tool_call_floor::before_tool_call_floor;
 pub use crate::founder_before_tool_call_floor::{
     BeforeToolCallOutcome, BeforeToolCallRequest, GuardDecision, GuardDecisionPort, GuardFault,
-    OpaqueCapabilityToken, before_tool_call_floor,
+    OpaqueCapabilityToken,
 };
 
 /// A fake effectful boundary used only to observe whether execution occurred.
@@ -39,6 +40,7 @@ pub enum BeforeToolCallObservation {
         authorization_issued: bool,
         effectful_invocations: u32,
     },
+    /// Negative-conformance sentinel: ATK-07 rejects this raw-fault shape if it is ever observed.
     GuardFault {
         fault: GuardFault,
         authorization_issued: bool,

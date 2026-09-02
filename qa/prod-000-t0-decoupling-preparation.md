@@ -139,9 +139,13 @@ diff --git a/tests/bypass-rust/tests/core_004_conformance.rs b/tests/bypass-rust
          RequiredOutcome::EscalateThenDenyOnTimeout
 ```
 
-The dependency is test → T0 mirror. A later registry change still fails this test. Applying this T3
-diff before the founder creates the mirror would intentionally break compilation, so it remains
-review material in this preparation branch.
+The dependency is test → T0 mirror. A later registry change still fails this test. The assertion
+was added to the pre-existing test function after the agent-authored Amendment-B T0 mirror existed;
+it did not add or replace a test expectation.
+
+After PROD-000, `ATK_06_TIMEOUT_OUTCOME` is authoritative for T0 enforcement. The CORE-001 registry
+is the T3 conformance representation, and the assertion added to the pre-existing test function
+detects drift from T0 to that registry. The registry is not a second source of enforcement policy.
 
 ## R5.2 — fail-closed floor relocation
 

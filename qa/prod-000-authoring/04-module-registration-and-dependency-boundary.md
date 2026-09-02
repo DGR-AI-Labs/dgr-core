@@ -17,8 +17,8 @@ T3 compatibility facade.
 
 | From | To | Allowed? | Actual evidence |
 |---|---|---:|---|
-| Existing founder T0 units | New Amendment-B boundary module | yes | Eight direct imports under `tests/bypass-rust/src/founder_*.rs` |
-| T3 facade/adapter | New Amendment-B boundary module | yes, after handoff | `before_tool_call.rs:11-14,80-115` |
+| Existing founder T0 units | New Amendment-B boundary module | yes | Direct imports in the eight explicitly named consumers in template 5 |
+| T3 facade/adapter | New Amendment-B boundary module | yes, after handoff | private floor import and public type re-exports at `before_tool_call.rs:11-15`; delegation at lines 82–117 |
 | New Amendment-B boundary module | Founder stores/domain types | yes | `founder_before_tool_call_floor.rs:8-10,55-57,86-88` |
 | New Amendment-B boundary module | T3 facade/adapter | no | zero imports or references |
 | New Amendment-B boundary module | fixtures/probes/observations | no | zero imports or references |

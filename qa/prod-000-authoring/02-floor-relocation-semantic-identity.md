@@ -16,7 +16,7 @@ semantics while changing from a harness observation constructor to a product out
 |---|---|
 | New floor function name | `before_tool_call_floor` |
 | Destination line range | `founder_before_tool_call_floor.rs:77-126` |
-| Destination region SHA-256 | `8509f437a338edfa215f82f78aaa7656ec146dba4b7167eb941e573ef54f8720` |
+| Destination region SHA-256 after cross-model remediation | `b46374c66dd4acbe3210546f40ccc73d8b3ca8b894f24045258745ed36319bd5` |
 | Agent implementation commit | `40b713039a5612831df415cdd785271a7342be74` |
 
 ## Semantic-identity ledger
@@ -37,7 +37,7 @@ an Amendment-A-authorized constructor change.
 | Fault/unwind outcome | `RequiredOutcome::FailClosed` | 121–123 | Preserved exactly |
 | Fault/unwind signal | `CORE-003 boundary fail-closed` | 123 | Preserved exactly |
 | Constructor | harness `Blocked` becomes product `Blocked` | 104–108, 121–124 | Amendment-A-authorized semantic change |
-| Tool behavior | floor never invokes a tool | entire module; adapter 105–114 | Probe type absent from T0; T3 invokes only after `Authorized` |
+| Tool behavior | floor never invokes a tool | entire module; adapter 107–116 | Probe type absent from T0; T3 invokes only after `Authorized` |
 
 ## Non-claim check
 

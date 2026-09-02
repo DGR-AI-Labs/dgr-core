@@ -9,12 +9,12 @@ Target: `tests/bypass-rust/src/before_tool_call.rs`.
 
 | Surface | Required action | Agent line/diff reference |
 |---|---|---|
-| `OpaqueCapabilityToken` | remove after agent-authored T0 relocation | `40b7130...`; old lines 13–17 removed, T3 re-export at lines 11–14 |
-| `BeforeToolCallRequest` | remove after agent-authored T0 relocation | `40b7130...`; old lines 19–25 removed, T3 re-export at lines 11–14 |
-| `GuardDecision` | remove after agent-authored T0 relocation | `40b7130...`; old lines 27–41 removed, T3 re-export at lines 11–14 |
-| `GuardFault` | remove after agent-authored T0 relocation | `40b7130...`; old lines 43–49 removed, T3 re-export at lines 11–14 |
-| `GuardDecisionPort` | remove after agent-authored T0 relocation | `40b7130...`; old lines 51–60 removed, T3 re-export at lines 11–14 |
-| Old founder floor/method body | remove after agent-authored transformation | `40b7130...`; old lines 126–170 replaced by T3 delegation at lines 80–115 |
+| `OpaqueCapabilityToken` | remove after agent relocation of the pre-existing non-founder T0-by-consequence type | `40b7130...`; old lines 13–17 removed, T3 compatibility re-export retained |
+| `BeforeToolCallRequest` | remove after agent relocation of the pre-existing non-founder T0-by-consequence type | `40b7130...`; old lines 19–25 removed, T3 compatibility re-export retained |
+| `GuardDecision` | remove after agent relocation of the pre-existing non-founder T0-by-consequence type | `40b7130...`; old lines 27–41 removed, T3 compatibility re-export retained |
+| `GuardFault` | remove after agent relocation of the pre-existing non-founder T0-by-consequence type | `40b7130...`; old lines 43–49 removed, T3 compatibility re-export retained |
+| `GuardDecisionPort` | remove after agent relocation of the pre-existing non-founder T0-by-consequence type | `40b7130...`; old lines 51–60 removed, T3 compatibility re-export retained |
+| Old founder floor/method body | remove after agent-authored transformation | `40b7130...`; old lines 126–170 replaced by T3 delegation, now at lines 82–117 |
 
 ## T3 surfaces intentionally retained
 

@@ -81,7 +81,9 @@ bounded PROD-000 implementation checkpoint at
 
 - the new `founder_before_tool_call_floor.rs` boundary module and its `lib.rs` registration;
 - Amendment A R5.1's timeout constant, conformance mirror, and now-impossible missing-row removal;
-- module-path-only rewrites in the eight founder-owned consumers named by Amendment B;
+- module-path rewrites in exactly eight founder-owned consumers named by Amendment B; seven files
+  contain no other semantic change, while `founder_approval_timeout.rs` separately contains the
+  Amendment-A R5.1 change already listed above;
 - removal of the relocated T0 definitions and old floor from the mixed T3 file;
 - the T3 facade, adapter conversion/probe invocation, and registry-mirror assertion; and
 - ownership, boundary, preparation, review, and evidence documentation.
@@ -91,11 +93,15 @@ agent-authored T0, or T3. Founder review, approval, or merge must be recorded se
 never be presented as founder authorship of agent-written or agent-transformed lines. Any change
 outside the enumerated scope is a hard stop requiring a new founder decision.
 
-At the checkpoint, `founder_before_tool_call_floor.rs` is agent-authored T0. Its transformed
-fault/unwind floor retains identified founder-source provenance; its T0 type surface and
-`BeforeToolCallOutcome` are agent-authored. The R5.1 constant/control-flow change and all module-path
-rewrites were applied by the agent. This checkpoint is not founder-approved or merge-ready until
-the exact-commit review stack is complete and every finding is founder-dispositioned.
+At the checkpoint, `founder_before_tool_call_floor.rs` is agent-authored T0. Amendment B requires
+this exact filename; the `{AGENT-AUTHORS}` marker and this ownership record are authoritative and
+prevent the `founder_` path prefix from being misread as an authorship claim. Its transformed
+fault/unwind floor retains identified founder-source provenance. The five request/decision/fault/
+port shapes pre-date PROD-000 and were non-founder T0-by-consequence even while physically located
+in the mixed-tier adapter; their relocation and documentation changes are agent-authored T0
+transformations. `BeforeToolCallOutcome`, the R5.1 constant/control-flow change, and all module-path
+rewrites were also authored by the agent. This checkpoint is not founder-approved or merge-ready
+until the exact-commit review stack is complete and every finding is founder-dispositioned.
 
 ## Agent-authored supporting units
 
