@@ -1,0 +1,16 @@
+repository=DGR-AI-Labs/dgr-core
+pull_request=https://github.com/DGR-AI-Labs/dgr-core/pull/90
+
+baseline_commit=e9c8f585809c15d2464b3d45bc2ce26d716c8673
+baseline_tree=837bef46997d5c8a9db946d2a87c1d4b6ce5aced
+
+exact_executable_commit=587585cf476431f078efe587c5dbcc052389cdad
+exact_executable_tree=89e5de51d23ead98d24bbbe1b4cd57db343b2dc4
+
+safe_evidence_source_commit=46da707b8b84dfa599c4e27e5fbb2dc005e9e0e4
+safe_evidence_source_tree=16b5812cf3bdfce585a9e04da720ab99b0bcac29
+
+selection_limit=dgr-core/baseline-critical is an eight-file pre-image subset
+selection_limit=dgr-core/review-source is a selected public evidence set
+verification_rule=verify commit-to-tree mappings from the public Git object database
+non_claim=neither selected package directory reconstructs a complete Git tree

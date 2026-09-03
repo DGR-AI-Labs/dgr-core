@@ -1,0 +1,38 @@
+PROD-000 — CodeQL raw SAST evidence
+tool_version: CodeQL CLI 2.25.5
+scan_date_utc: 2026-09-01
+scanned_commit: 425d7718ecf83086776de8fc09caec26c728df92
+working_directory: dedicated PROD-000 implementation worktree
+language_module: rust (/home/khazret/.local/share/codeql-bundle-v2.25.5/codeql/rust)
+query_pack: codeql/rust-queries@0.1.35
+analysis_prerequisite: rust-src installed for repository-pinned toolchain 1.94.1
+database_create_command: CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=/tmp/prod000-codeql-complete.azwQjg/cargo-target codeql database create /tmp/prod000-codeql-complete.azwQjg/db --language=rust --source-root=<dedicated-worktree> --command="cargo check --manifest-path tests/bypass-rust/Cargo.toml --locked --all-targets"
+database_create_exit_code: 0
+database_analyze_command: codeql database analyze /tmp/prod000-codeql-complete.azwQjg/db codeql/rust-queries@0.1.35 --format=sarif-latest --output=qa/sast/prod-000-codeql-2026-09-01.sarif --sarif-category=rust --sarif-add-baseline-file-info --threads=0 --verbose
+database_analyze_exit_code: 0
+sarif_json_validation_exit_code: 0
+sarif_run_count: 1
+status: completed; 9 findings
+finding_count: 9
+execution_error_count: 0
+tracked_rust_file_count: 21
+tracked_rust_files_scanned: 21
+tracked_rust_files_extracted_without_error: 21
+generated_file_extraction_warning_count: 1
+generated_file_extraction_warning: libsqlite3-sys generated bindgen.rs was not included in files loaded from the manifest; semantic macro expansion for that generated output was skipped
+coverage_status: all 21 tracked Rust files scanned; generated dependency output warning retained
+finding_disposition: PENDING independent-human and founder review
+
+--- findings ---
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  126  hard-coded value used as a nonce
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  152  hard-coded value used as a nonce
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  169  hard-coded value used as a nonce
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  186  hard-coded value used as a nonce
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  204  hard-coded value used as a nonce
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  222  hard-coded value used as a nonce
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  339  hard-coded value used as a nonce
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_004_fixtures.rs  136  hard-coded value used as a nonce
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_004_fixtures.rs  143  hard-coded value used as a nonce
+
+--- raw machine-readable result ---
+qa/sast/prod-000-codeql-2026-09-01.sarif

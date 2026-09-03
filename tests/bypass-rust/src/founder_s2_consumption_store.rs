@@ -3,7 +3,7 @@
 //! One persistent SQLite connection is created per store instance and reused
 //! for every consumption attempt.
 
-use crate::before_tool_call::GuardFault;
+use crate::founder_before_tool_call_floor::GuardFault;
 use crate::founder_consumption_store::{ConsumeOutcome, ConsumptionStore};
 use rusqlite::{Connection, params};
 use std::path::Path;

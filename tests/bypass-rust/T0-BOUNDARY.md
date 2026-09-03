@@ -5,11 +5,18 @@ founder-owned T0 units listed in the repository-root `T0-AUTHORS.md`. It is not
 the deployed DGR gate and must never become an alternate production enforcement
 path. `before_tool_call.rs` can invoke only a test probe, never a real tool.
 
-`BeforeToolCallAdapter::before_tool_call` now contains the founder-authored
-CORE-003 T0 floor. Returned `Ok(Deny | Allow)` decisions retain their established
-relay behavior. `Err(GuardFault)` and an unwinding panic from `decide` produce
-`BeforeToolCallObservation::Blocked` with `RequiredOutcome::FailClosed`, no
-authorization, and zero effectful invocations.
+`founder_before_tool_call_floor.rs` now contains the Amendment-B agent-authored CORE-003 T0 floor,
+with identified founder-source provenance for the transformed fault/unwind logic. The T3
+`BeforeToolCallAdapter` converts the product outcome to a harness observation and invokes the probe
+only after `Authorized`. Returned `Deny`, `Escalate`, and `Allow` decisions retain their established
+relay behavior. `Err(GuardFault)` and an unwinding panic from `decide` produce a product-level
+`Blocked` with `RequiredOutcome::FailClosed`; the adapter records no authorization and no effectful
+invocation.
+
+`ATK_06_TIMEOUT_OUTCOME` is authoritative for T0 enforcement after PROD-000. The CORE-001 attack
+registry remains the T3 conformance representation. The equality assertion added to the existing
+`atk_06_sequence_is_escalated_then_registry_derived_timeout_block` test detects drift from T0 to
+the registry; it is not a second source of enforcement policy.
 
 The unwind guarantee is bounded to Rust unwinding panics after the boundary is
 reached. It does not claim protection from `panic=abort`, process termination,
@@ -24,7 +31,7 @@ The following remain **T0, human-led, and review-gated once implemented**:
 - audit/hash-chain construction or verification; and
 - any implementation that can authorize or block a consequential action.
 
-The founder-owned CORE-002 units, CORE-003 boundary method, and CORE-004
+The founder-owned CORE-002 units, historical CORE-003 boundary source, and CORE-004
 surfaces are listed in the repository-root `T0-AUTHORS.md`. Their applicable T0
 human gates are complete: CORE-002 Step 5 was accepted through implementation
 PR #68, review-record PR #70, and
@@ -44,10 +51,18 @@ repository constitution.
 
 ## PROD-000 supervised-agent exception
 
-ADR-13 Amendment B supersedes only Amendment A R5.3 authorship option (c). After the pointer,
-templates, and backlog prerequisites merge and the pre-existing founder draft is checkpointed or
-explicitly discarded, an agent may author the bounded PROD-000 T0/T3 partition under founder design
-authority, line-by-line review, exact-commit finding disposition, and founder-only merge.
+ADR-13 Amendment B supersedes only Amendment A R5.3 authorship option (c). The pointer, templates,
+and backlog prerequisites are merged, and the founder explicitly discarded the zero-byte draft.
+OpenAI Codex authored the bounded PROD-000 T0/T3 partition at implementation checkpoint
+`40b713039a5612831df415cdd785271a7342be74` under founder design authority. Line-by-line review,
+exact-commit finding disposition, independent-human review, and founder-only merge remain pending.
+
+After the first Claude review returned `CHANGES REQUIRED`, replacement source commit
+`b19f33ae16698a81b993e6cc5a751360b6109577` corrected the bounded source/document findings. T3-only
+commit `587585cf476431f078efe587c5dbcc052389cdad` makes deletion, rename, or ignoring of the named
+ATK-06 T0/registry equality test fail the required libtest-enumeration guard. The guard does not
+prove the test body remains unchanged; source and human review must verify the assertion. These are
+review inputs, not approval.
 
 The resulting evidence must distinguish existing founder source, agent-relocated founder source,
 agent-authored T0, T3, and founder review. The complete result must not be described as
@@ -60,13 +75,19 @@ returned a fault or panicked. A hook that never fires, a route around the hook,
 a missing plugin, or operator bypass is runtime-integration scope retained by
 RUNTIME-003/004, not simulated by this isolation harness.
 
+`src/gate.mjs` is a deliberately failing Phase-0 scaffold, not an active or authoritative
+enforcement floor. PROD-000 and its three-engine evidence cover the Rust T0/T3 partition. The
+JavaScript scaffold neither competes with nor bypasses the Rust isolation harness, and the
+Rust-only SAST evidence does not claim security coverage for unrelated JavaScript.
+
 ## CORE-004 ownership and bounded claim
 
-CORE-004 covers ATK-06's timeout-only isolation contract. Its
-`Escalated` observation, durable pending-store behavior, escalation and
-timeout decisions, R-3 timeout-evaluation path, and adapter behavior that
-emits `Escalated` are founder-authored T0. In particular, `Escalated` is not an
-authorization and must not invoke the effectful probe.
+CORE-004 covers ATK-06's timeout-only isolation contract. Its `Escalated` observation, durable
+pending-store behavior, escalation and timeout decisions, R-3 timeout-evaluation path, and adapter
+behavior that emits `Escalated` retain founder-authored T0 provenance. PROD-000's R5.1
+constant/dependency reversal, module-path rewrites, and outcome conversion are agent-authored
+changes pending founder review. `Escalated` is not an authorization and must not invoke the
+effectful probe.
 
 The R-3 timeout moment is distinct from token-bearing `before_tool_call`: it
 evaluates an existing pending record against the trusted injected clock
@@ -101,9 +122,10 @@ evaluated by comparing the stored deadline at read time. SQLite cleanup,
 DynamoDB TTL, or another reaper may reclaim storage only; record expiry or
 absence must never be the enforcement signal.
 
-ATK-06 is active in the isolated conformance suite after founder-authored T0
-behavior turned the reviewed RED tests green without changing the
-registry-derived expectation. Its complete T0 human, cross-model,
+ATK-06 became active in the isolated conformance suite through the pre-PROD-000 founder-authored T0
+behavior. PROD-000's agent-authored R5.1 constant/dependency reversal preserves the expected value
+and adds a T3 equality assertion; its exact-commit review is pending. The original CORE-004 T0
+human, cross-model,
 adversarial-test, and three-engine SAST/SCA review was accepted through PR #81,
 evidence PR #82, `qa/core-004-t0-founder-review-draft.md`, and
 `qa/core-004-t0-independent-human-review-input.md`. Real human approval

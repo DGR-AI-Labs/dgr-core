@@ -1,7 +1,7 @@
 //! {FOUNDER-AUTHORS}: T0 fail-closed decision unit.
 
 use crate::RequiredOutcome;
-use crate::before_tool_call::{GuardDecision, GuardFault};
+use crate::founder_before_tool_call_floor::{GuardDecision, GuardFault};
 
 pub fn fail_closed_decision(fault: GuardFault) -> Result<GuardDecision, GuardFault> {
     let denial_signal = match fault {

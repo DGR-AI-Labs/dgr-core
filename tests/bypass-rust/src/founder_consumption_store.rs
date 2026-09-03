@@ -3,7 +3,7 @@
 //! The default implementation fails closed until a concrete store supplies
 //! durable single-use consumption.
 
-use crate::before_tool_call::GuardFault;
+use crate::founder_before_tool_call_floor::GuardFault;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ConsumeOutcome {

@@ -10,7 +10,7 @@ pub const CONFORMANCE_K2_PUBLIC_KEY: [u8; 32] = REGISTERED_K2_PUBLIC_KEY;
 
 use ed25519_dalek::{Signature, VerifyingKey};
 
-use crate::before_tool_call::GuardFault;
+use crate::founder_before_tool_call_floor::GuardFault;
 
 const FORMAT_VERSION: u8 = 1;
 const TOKEN_WIRE_LENGTH: usize = 145;

@@ -3,10 +3,10 @@
 //! One persistent SQLite connection is created per store instance and reused
 //! for pending-request recording and atomic timeout evaluation.
 
-use crate::before_tool_call::GuardFault;
 use crate::founder_approval_store::{
     ApprovalStore, EvaluatePendingOutcome, PendingApproval, RecordPendingOutcome, ReviewRequestId,
 };
+use crate::founder_before_tool_call_floor::GuardFault;
 use rusqlite::{
     Connection, Error as SqliteError, ErrorCode, OptionalExtension, Transaction,
     TransactionBehavior, params,

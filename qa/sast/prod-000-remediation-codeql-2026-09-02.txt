@@ -1,0 +1,44 @@
+PROD-000 cross-model remediation — CodeQL raw SAST evidence wrapper
+tool_version: CodeQL CLI 2.25.5
+scan_date_utc: 2026-09-02
+scanned_commit: b19f33ae16698a81b993e6cc5a751360b6109577
+scanned_tree: 12fadecee74b6387095977980fb215ddc7fe3c1c
+language_module: rust
+query_pack: codeql/rust-queries@0.1.35
+analysis_prerequisite: rust-src installed for repository-pinned toolchain 1.94.1
+temporary_root: /tmp/prod000-remediation-codeql.i0JYzp
+database_create_command: CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=/tmp/prod000-remediation-codeql.i0JYzp/cargo-target codeql database create /tmp/prod000-remediation-codeql.i0JYzp/db --language=rust --source-root=<dedicated-worktree> --command="cargo check --manifest-path tests/bypass-rust/Cargo.toml --locked --all-targets"
+database_create_exit_code: 0
+database_analyze_command: codeql database analyze /tmp/prod000-remediation-codeql.i0JYzp/db codeql/rust-queries@0.1.35 --format=sarif-latest --output=qa/sast/prod-000-remediation-codeql-2026-09-02.sarif --sarif-category=rust --sarif-add-baseline-file-info --threads=0 --verbose
+database_analyze_exit_code: 0
+sarif_run_count: 1
+status: completed; 9 findings
+finding_count: 9
+execution_error_count: 0
+tracked_rust_file_count: 21
+tracked_rust_files_scanned: 21
+tracked_rust_files_extracted_without_error: 21
+generated_file_extraction_warning_count: 1
+generated_file_extraction_warning: generated libsqlite3-sys bindgen.rs had no semantic analyzer because it was not included in files loaded from the manifest
+coverage_status: all 21 tracked Rust files scanned; generated dependency-output warning retained; no JavaScript coverage is claimed
+finding_disposition: PENDING independent-human and founder review
+
+--- findings ---
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  126
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  152
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  169
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  186
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  204
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  222
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  339
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_004_fixtures.rs  136
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_004_fixtures.rs  143
+
+--- diagnostic scope ---
+The SARIF contains the nine security-query results above and the full diagnostic notification
+array. It records one generated-file extraction warning, no error-level notifications, 21 tracked
+Rust files extracted without error, and 22 Rust artifacts including the generated bindgen file.
+Independent-human and founder review must inspect the SARIF diagnostics, not only this summary.
+
+--- raw machine-readable result ---
+qa/sast/prod-000-remediation-codeql-2026-09-02.sarif

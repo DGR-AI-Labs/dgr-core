@@ -1,0 +1,169 @@
+diff --git a/scripts/check-ignored-attacks.mjs b/scripts/check-ignored-attacks.mjs
+index c97ef8305e4c25041a7295ba5051fca514cb23e9..973125c21a86f6b3f5d00bcd78541d388b0c062c 100644
+--- a/scripts/check-ignored-attacks.mjs
++++ b/scripts/check-ignored-attacks.mjs
+@@ -15,6 +15,12 @@ export const EXPECTED_IGNORED_ATTACKS = Object.freeze([
+   "atk_15_deploy_role_data_access",
+ ]);
+ 
++// This active conformance test is the T3 drift detector for the authoritative
++// T0 ATK-06 timeout outcome. Deleting or ignoring it must fail required CI.
++export const REQUIRED_ACTIVE_CONFORMANCE_TESTS = Object.freeze([
++  "atk_06_sequence_is_escalated_then_registry_derived_timeout_block",
++]);
++
+ export function compareIgnoredAttacks(actualNames) {
+   const expected = new Set(EXPECTED_IGNORED_ATTACKS);
+   const actual = new Set(actualNames);
+@@ -34,40 +40,62 @@ export function parseIgnoredTests(output) {
+     .sort();
+ }
+ 
+-function main() {
+-  const result = spawnSync(
++export function compareRequiredActiveTests(listedNames, ignoredNames) {
++  const listed = new Set(listedNames);
++  const ignored = new Set(ignoredNames);
++
++  return {
++    missing: REQUIRED_ACTIVE_CONFORMANCE_TESTS.filter((name) => !listed.has(name)),
++    ignored: REQUIRED_ACTIVE_CONFORMANCE_TESTS.filter((name) => ignored.has(name)),
++  };
++}
++
++function enumerateTests(testTarget, extraArgs = []) {
++  return spawnSync(
+     "cargo",
+     [
+       "test",
+       "--manifest-path",
+       "tests/bypass-rust/Cargo.toml",
+       "--test",
+-      "attack_set",
++      testTarget,
+       "--locked",
+       "--",
+       "--list",
+-      "--ignored",
++      ...extraArgs,
+       "--format",
+       "terse",
+     ],
+     { encoding: "utf8" },
+   );
++}
+ 
++function requireEnumeration(result, label) {
+   if (result.error) {
+-    console.error(`ignored-set enumeration could not start: ${result.error.message}`);
+-    process.exitCode = 1;
+-    return;
++    console.error(`${label} enumeration could not start: ${result.error.message}`);
++    return null;
+   }
+ 
+   if (result.status !== 0) {
+     process.stderr.write(result.stderr);
+-    console.error(`ignored-set enumeration failed with exit code ${result.status}`);
++    console.error(`${label} enumeration failed with exit code ${result.status}`);
++    return null;
++  }
++
++  return parseIgnoredTests(result.stdout);
++}
++
++function main() {
++  const ignoredAttacks = requireEnumeration(
++    enumerateTests("attack_set", ["--ignored"]),
++    "ignored-set",
++  );
++  if (ignoredAttacks === null) {
+     process.exitCode = 1;
+     return;
+   }
+ 
+-  const actual = parseIgnoredTests(result.stdout);
+-  const { unexpected, missing } = compareIgnoredAttacks(actual);
++  const { unexpected, missing } = compareIgnoredAttacks(ignoredAttacks);
+ 
+   if (unexpected.length > 0 || missing.length > 0) {
+     if (unexpected.length > 0) {
+@@ -80,7 +108,35 @@ function main() {
+     return;
+   }
+ 
+-  console.log(`ignored-set guard passed: ${actual.join(", ")}`);
++  const listedConformance = requireEnumeration(
++    enumerateTests("core_004_conformance"),
++    "required-active-test",
++  );
++  const ignoredConformance = requireEnumeration(
++    enumerateTests("core_004_conformance", ["--ignored"]),
++    "required-active-test ignored-state",
++  );
++  if (listedConformance === null || ignoredConformance === null) {
++    process.exitCode = 1;
++    return;
++  }
++
++  const activeComparison = compareRequiredActiveTests(listedConformance, ignoredConformance);
++  if (activeComparison.missing.length > 0 || activeComparison.ignored.length > 0) {
++    if (activeComparison.missing.length > 0) {
++      console.error(`required active tests missing: ${activeComparison.missing.join(", ")}`);
++    }
++    if (activeComparison.ignored.length > 0) {
++      console.error(`required active tests are ignored: ${activeComparison.ignored.join(", ")}`);
++    }
++    process.exitCode = 1;
++    return;
++  }
++
++  console.log(`ignored-set guard passed: ${ignoredAttacks.join(", ")}`);
++  console.log(
++    `required active conformance guard passed: ${REQUIRED_ACTIVE_CONFORMANCE_TESTS.join(", ")}`,
++  );
+ }
+ 
+ const invokedPath = process.argv[1] ? resolve(process.argv[1]) : "";
+diff --git a/scripts/check-ignored-attacks.test.mjs b/scripts/check-ignored-attacks.test.mjs
+index cc1027bfdf3c5c3d4f564ea0d9b2128449300b4b..f105c12c6f87b73294b8c6a08793a9feaded9fd2 100644
+--- a/scripts/check-ignored-attacks.test.mjs
++++ b/scripts/check-ignored-attacks.test.mjs
+@@ -3,7 +3,9 @@ import test from "node:test";
+ 
+ import {
+   EXPECTED_IGNORED_ATTACKS,
++  REQUIRED_ACTIVE_CONFORMANCE_TESTS,
+   compareIgnoredAttacks,
++  compareRequiredActiveTests,
+   parseIgnoredTests,
+ } from "./check-ignored-attacks.mjs";
+ 
+@@ -43,3 +45,27 @@ test("normalizes terse libtest enumeration", () => {
+     "atk_14_cross_tenant_use",
+   ]);
+ });
++
++test("accepts the required conformance test only when listed and active", () => {
++  assert.deepEqual(compareRequiredActiveTests(REQUIRED_ACTIVE_CONFORMANCE_TESTS, []), {
++    missing: [],
++    ignored: [],
++  });
++});
++
++test("rejects a missing required conformance test", () => {
++  assert.deepEqual(compareRequiredActiveTests([], []), {
++    missing: REQUIRED_ACTIVE_CONFORMANCE_TESTS,
++    ignored: [],
++  });
++});
++
++test("rejects an ignored required conformance test", () => {
++  assert.deepEqual(
++    compareRequiredActiveTests(REQUIRED_ACTIVE_CONFORMANCE_TESTS, REQUIRED_ACTIVE_CONFORMANCE_TESTS),
++    {
++      missing: [],
++      ignored: REQUIRED_ACTIVE_CONFORMANCE_TESTS,
++    },
++  );
++});

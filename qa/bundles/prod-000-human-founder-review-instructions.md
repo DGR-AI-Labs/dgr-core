@@ -1,0 +1,113 @@
+# PROD-000 remaining-gate instructions
+
+The non-author cross-model gate is satisfied by
+`qa/prod-000-cross-model-review-addendum.md`. Do not ask Claude to review the same executable commit
+again unless a later change touches executable code, test expectations, scripts, Cargo inputs,
+dependency policy, workflow behavior, or a claim that Claude relied on. N13–N15 were explicitly
+non-blocking and have been addressed or bounded without executable changes.
+
+The R2 public ZIP is intentionally sanitized. It contains all public implementation and evidence
+needed for code review, but no internal ADR body. Authorized reviewers must read ADR-13 and active
+Amendments A/B from `dgr-internal` when checking authority conformance. Never re-export those texts
+to GitHub or to another public artifact.
+
+`dgr-core/baseline-critical/` is an eight-file baseline subset and
+`dgr-core/review-source/` is a selected public evidence set. Neither is a complete repository
+snapshot. Verify whole commit-to-tree mappings from a public Git clone; verify selected bytes with
+the package sidecars.
+
+## Step 1 — independent-human review
+
+Reviewer eligibility: a human who did not author the PROD-000 implementation or remediation. The
+founder may not substitute Codex or Claude for this person.
+
+1. Give the reviewer the R2 sanitized public ZIP and ask them to verify `MANIFEST.sha256` first.
+2. Separately grant the reviewer authorized read access to the canonical ADR-13 and active
+   Amendments A/B in `dgr-internal`; do not send copies through public channels.
+3. From the package root, require all entries in `MANIFEST.sha256`,
+   `metadata/selected-file-inventory.sha256`, `metadata/critical-baseline.sha256`,
+   `metadata/critical-executable.sha256`, `metadata/cross-model-records.sha256`, and
+   `metadata/canonical-scanner-artifacts.sha256` to verify successfully.
+4. From the root of the authorized canonical `dgr-internal` checkout, run
+   `sha256sum -c <absolute-package-path>/metadata/external-authorities.sha256`. Its `specs/adr/...`
+   paths intentionally do not resolve inside the sanitized package; a digest mismatch against the
+   internal source is not acceptable.
+5. In a public clone, verify the three mappings in `metadata/commit-tree-identities.txt` with:
+
+   ```text
+   git rev-parse 'e9c8f585809c15d2464b3d45bc2ce26d716c8673^{tree}'
+   git rev-parse '587585cf476431f078efe587c5dbcc052389cdad^{tree}'
+   git rev-parse '46da707b8b84dfa599c4e27e5fbb2dc005e9e0e4^{tree}'
+   ```
+
+   Do not attempt to reconstruct a full tree from either selected package directory.
+6. Direct the reviewer to `review/prod-000-independent-human-review-input.md`.
+7. Require review of the entire `metadata/baseline-to-executable.diff`, not only the new floor.
+8. Require line-by-line inspection of `metadata/r5-1-timeout-semantic.diff` and direct inspection of
+   the ATK-06 equality assertion body; the name guard does not prove body integrity.
+9. Require inspection of the raw Semgrep JSON, CodeQL SARIF including the complete diagnostic
+   array, and cargo-deny output.
+10. Require inspection of the stored drift through the safe evidence source and an independent
+    name/status diff from `587585c...` through the full 40-character current PR head before
+    decision.
+11. Require the reviewer to write their own identity, findings, verdict, rationale, attestation, and
+   UTC timestamp. Prewritten suggested language is not a review.
+12. Save the response unchanged as `qa/prod-000-independent-human-review.md`; do not overwrite the
+   input template.
+13. Commit that record and push it to PR #90. An agent may perform the mechanical commit/push only
+   after the human supplies the completed record; the human remains its author/reviewer.
+
+If the verdict is `CHANGES REQUIRED` or `REJECT`, stop. Do not begin founder approval. Any
+executable remediation must repeat affected tests/scans and both independent reviews.
+
+## Step 2 — founder line-by-line review and dispositions
+
+Begin only after a passing independent-human record is committed.
+
+Use `qa/bundles/prod-000-founder-line-by-line-review-instructions.md` for the complete source-range,
+provenance-template, analyzer, residual-finding, and final-head procedure. The steps below are only
+a summary and do not replace that runbook.
+
+1. Note the resulting pre-disposition PR head SHA.
+2. Give the founder the sanitized public bundle, access to the canonical internal authority, and
+   the completed independent-human record.
+3. Use `review/prod-000-founder-review-input.md` as the checklist.
+4. The founder personally reviews every consequential line, removed branch, public item, five
+   provenance templates, original Claude review, passing addendum, and human findings.
+5. The founder explicitly dispositions:
+   - the Semgrep temp-directory result;
+   - all nine CodeQL deterministic-nonce results;
+   - the complete CodeQL diagnostic array and external SARIF-binding limitation;
+   - cargo-deny's two bans and 54 license notes;
+   - N5–N8 and N13–N15; and
+   - every line-level provenance classification.
+6. Save the founder-completed record unchanged as `qa/prod-000-founder-review.md`; do not overwrite
+   the input template.
+7. Commit and push the founder record.
+
+If the founder selects `CHANGES REQUIRED` or `REJECT`, stop and repeat affected gates.
+
+## Step 3 — bind approval to the actual final head
+
+A repository review record cannot contain its own commit SHA. Therefore:
+
+1. after the founder record is committed, note the resulting final PR head;
+2. wait for `Structural / governance check` and `Rust format / build / test` to pass on that head;
+3. compare it with the founder-reviewed pre-disposition head and require only the completed review
+   record and mechanical bundle metadata to differ;
+4. the founder submits a GitHub **Approve** review, which GitHub binds to the actual final head;
+5. record the GitHub review URL as the final-head approval reference; and
+6. only the founder merges PR #90.
+
+Any executable or policy change after independent-human review invalidates the docs-only drift
+assumption and reopens affected gates. PROD-001 remains unauthorized until PR #90 is merged.
+
+## Exact executable binding
+
+- Baseline: `e9c8f585809c15d2464b3d45bc2ce26d716c8673`.
+- Executable review input: `587585cf476431f078efe587c5dbcc052389cdad`.
+- Executable tree: `89e5de51d23ead98d24bbbe1b4cd57db343b2dc4`.
+- Patch SHA-256: `c08919d86a1f060cce9a05b3143140a5f011b9349f243475dad4f4ec1b40cf99`.
+- Cross-model addendum SHA-256:
+  `534ce4164067aef339b9f35a176de1b39e6f1573834e52cdc3d533fad7e634db`.
+- Safe evidence source head: `46da707b8b84dfa599c4e27e5fbb2dc005e9e0e4`.

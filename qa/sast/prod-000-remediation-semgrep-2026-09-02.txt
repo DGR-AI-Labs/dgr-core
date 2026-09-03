@@ -1,0 +1,31 @@
+PROD-000 cross-model remediation — Semgrep raw SAST evidence wrapper
+tool_version: 1.173.0 (from the machine-readable result)
+scan_date_utc: 2026-09-02
+scanned_commit: b19f33ae16698a81b993e6cc5a751360b6109577
+scanned_tree: 12fadecee74b6387095977980fb215ddc7fe3c1c
+working_tree_before_scan: clean except for untracked scan/diff output paths
+scope: explicit git ls-files list of every tracked *.rs file
+ruleset: p/rust (11 Rust rules)
+command: semgrep scan --config p/rust --error --no-git-ignore --metrics=off --json-output qa/sast/prod-000-remediation-semgrep-2026-09-02.json --text-output qa/sast/prod-000-remediation-semgrep-2026-09-02.raw.txt "${prod000_rust_files[@]}"
+exit_code: 1
+status: completed; findings present
+finding_count: 1
+scan_error_count: 0
+tracked_rust_file_count: 21
+scanned_target_count: 21
+coverage_status: complete for the tracked Rust surface; no JavaScript coverage is claimed
+finding_disposition: PENDING independent-human and founder review
+
+--- finding ---
+rule_id: rust.lang.security.temp-dir.temp-dir
+path: tests/bypass-rust/tests/consumption_store.rs
+line: 19
+severity: INFO in machine-readable output; blocking under --error
+message: predictable construction below the shared process temporary directory can permit a local race
+
+--- raw artifacts ---
+qa/sast/prod-000-remediation-semgrep-2026-09-02.json
+qa/sast/prod-000-remediation-semgrep-2026-09-02.raw.txt
+
+The JSON records 21 scanned paths, one result, and zero scan errors. The raw text is preserved
+unaltered as emitted by Semgrep. The bundle manifest binds both files to their exact SHA-256.

@@ -1,0 +1,39 @@
+PROD-000 final executable input — CodeQL raw SAST evidence wrapper
+tool_version: CodeQL CLI 2.25.5
+scan_date_utc: 2026-09-02
+scanned_commit: 587585cf476431f078efe587c5dbcc052389cdad
+scanned_tree: 89e5de51d23ead98d24bbbe1b4cd57db343b2dc4
+source_materialization: git archive of scanned_commit at /tmp/prod000-final-input.fM7ZCw
+language_module: rust
+query_pack: codeql/rust-queries@0.1.35
+analysis_prerequisite: rust-src installed for repository-pinned toolchain 1.94.1
+database_create_command: CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=/tmp/prod000-final-input.fM7ZCw/codeql-target codeql database create /tmp/prod000-final-input.fM7ZCw/codeql-db --language=rust --source-root=/tmp/prod000-final-input.fM7ZCw --command="cargo check --manifest-path tests/bypass-rust/Cargo.toml --locked --all-targets"
+database_create_exit_code: 0
+database_analyze_command: codeql database analyze /tmp/prod000-final-input.fM7ZCw/codeql-db codeql/rust-queries@0.1.35 --format=sarif-latest --output=<evidence>/prod-000-final-input-codeql-2026-09-02.sarif --sarif-category=rust --sarif-add-baseline-file-info --threads=0 --verbose
+database_analyze_exit_code: 0
+sarif_run_count: 1
+finding_count: 9
+execution_error_count: 0
+tracked_rust_file_count: 21
+tracked_rust_files_scanned: 21
+tracked_rust_files_extracted_without_error: 21
+extraction_warning_count: 0
+coverage_status: complete for tracked Rust; no JavaScript SAST coverage is claimed
+finding_disposition: PENDING independent-human and founder review
+
+--- findings ---
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  126
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  152
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  169
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  186
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  204
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  222
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_002_fixtures.rs  339
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_004_fixtures.rs  136
+rust/hard-coded-cryptographic-value  tests/bypass-rust/src/val_004_fixtures.rs  143
+
+The SARIF retains the complete diagnostic notification array. Independent-human and founder review
+must inspect that array and all nine results, not only this wrapper.
+
+--- raw machine-readable result ---
+qa/sast/prod-000-final-input-codeql-2026-09-02.sarif

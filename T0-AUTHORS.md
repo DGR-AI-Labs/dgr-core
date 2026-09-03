@@ -32,12 +32,14 @@ until a reviewed PROD-000 commit relocates or transforms an identified region:
 | `tests/bypass-rust/src/founder_fail_closed.rs` | `fail_closed_decision` | Deny behavior for absence, invalidity, unavailability, or internal error |
 | `tests/bypass-rust/src/founder_s2_consumption_store.rs` | `S2ConsumptionStore::consume` | Durable-local, atomic single-use consumption before allow |
 | `tests/bypass-rust/src/founder_consumption_store.rs` | `ConsumptionStore::consume` | Store boundary retained for S2 now and S3 later |
-| `tests/bypass-rust/src/before_tool_call.rs` | `BeforeToolCallAdapter::before_tool_call` | Contain guard faults and unwinding panics and return a fail-closed block before tool invocation |
+| Historical source at `tests/bypass-rust/src/before_tool_call.rs` | Original `BeforeToolCallAdapter::before_tool_call` body | Founder-authored source provenance for the reached-boundary fault/unwind floor transformed by PROD-000 |
 
 ## CORE-004 founder-owned surfaces
 
-The following implemented surfaces are founder-authored T0. Their names record
-ownership and responsibility and do not authorize later agent changes.
+The following implemented surfaces retain founder-authored T0 provenance. Their names record
+ownership and responsibility and do not authorize later agent changes outside Amendment B. The
+R5.1 timeout constant/dependency reversal and the eight module-path rewrites at `40b7130...` are
+separately classified as agent-authored changes pending founder review.
 
 | Surface/location | Founder-owned responsibility |
 |---|---|
@@ -52,9 +54,9 @@ or denied semantics is T0 until the founder records a narrower classification.
 
 ## Current implementation state
 
-The CORE-002 units named above, the CORE-003
-`BeforeToolCallAdapter::before_tool_call` boundary, and the CORE-004 surfaces
-contain founder-authored T0 enforcement. Their applicable T0 gates are
+The CORE-002 units named above, the historical CORE-003
+`BeforeToolCallAdapter::before_tool_call` floor source, and the CORE-004 surfaces
+contain founder-authored T0 enforcement provenance. Their applicable pre-PROD-000 T0 gates are
 complete: CORE-002 Step 5 was accepted through PRs #68/#70 and
 `qa/core-002-step5-governance-disposition.md`; CORE-003 through PR #73 and the
 signed records indexed by `qa/core-003-t0-review-readiness.md`; and CORE-004
@@ -69,15 +71,19 @@ restart-durable local consumption.
 This state record does not relax the authorship boundary. Outside the exact Amendment-B exception,
 an agent must not replace, complete, refactor, or route around any founder-authored unit.
 
-## PROD-000 Amendment-B exception — implementation not yet started
+## PROD-000 Amendment-B exception — implementation checkpoint
 
-ADR-13 Amendment B permits an agent to author only the bounded PROD-000 decoupling after the
-Amendment-B pointer/templates and canonical backlog update are human-reviewed and merged and any
-pre-existing founder draft is explicitly checkpointed or discarded. The permitted scope is:
+The Amendment-B pointer/templates and canonical backlog update are merged. The founder explicitly
+authorized discarding the pre-existing zero-byte placeholder (SHA-256
+`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`). OpenAI Codex authored the
+bounded PROD-000 implementation checkpoint at
+`40b713039a5612831df415cdd785271a7342be74`. Its scope is:
 
 - the new `founder_before_tool_call_floor.rs` boundary module and its `lib.rs` registration;
 - Amendment A R5.1's timeout constant, conformance mirror, and now-impossible missing-row removal;
-- module-path-only rewrites in the eight founder-owned consumers named by Amendment B;
+- module-path rewrites in exactly eight founder-owned consumers named by Amendment B; seven files
+  contain no other semantic change, while `founder_approval_timeout.rs` separately contains the
+  Amendment-A R5.1 change already listed above;
 - removal of the relocated T0 definitions and old floor from the mixed T3 file;
 - the T3 facade, adapter conversion/probe invocation, and registry-mirror assertion; and
 - ownership, boundary, preparation, review, and evidence documentation.
@@ -87,13 +93,31 @@ agent-authored T0, or T3. Founder review, approval, or merge must be recorded se
 never be presented as founder authorship of agent-written or agent-transformed lines. Any change
 outside the enumerated scope is a hard stop requiring a new founder decision.
 
+At the checkpoint, `founder_before_tool_call_floor.rs` is agent-authored T0. Amendment B requires
+this exact filename; the `{AGENT-AUTHORS}` marker and this ownership record are authoritative and
+prevent the `founder_` path prefix from being misread as an authorship claim. Its transformed
+fault/unwind floor retains identified founder-source provenance. The five request/decision/fault/
+port shapes pre-date PROD-000 and were non-founder T0-by-consequence even while physically located
+in the mixed-tier adapter; their relocation and documentation changes are agent-authored T0
+transformations. `BeforeToolCallOutcome`, the R5.1 constant/control-flow change, and all module-path
+rewrites were also authored by the agent. This checkpoint is not founder-approved or merge-ready
+until the exact-commit review stack is complete and every finding is founder-dispositioned.
+
+The first non-author cross-model review at `qa/prod-000-cross-model-review.md` returned
+`CHANGES REQUIRED`. Replacement commit `b19f33ae16698a81b993e6cc5a751360b6109577` addresses its
+source, classification, and evidence findings without expanding the Amendment-B T0 scope. Commit
+`587585cf476431f078efe587c5dbcc052389cdad` then changes only the T3 enumeration guard and its unit
+tests so deletion, rename, or ignoring of the named ATK-06 T0/registry equality test fails required
+CI. This guard proves test presence and active status; it does not prove the assertion body remains
+unchanged, which stays in source/human review scope. Neither commit is founder approval. The
+cross-model addendum now passes with non-blocking findings; the human gates remain pending.
+
 ## Agent-authored supporting units
 
 The following are outside the founder implementation surface:
 
-- `tests/bypass-rust/src/before_tool_call.rs`, except for the founder-owned
-  `BeforeToolCallAdapter::before_tool_call` body: test-only adapter types and
-  mechanical probe plumbing;
+- `tests/bypass-rust/src/before_tool_call.rs`: the T3 compatibility facade, observation types,
+  adapter conversion, and mechanical probe plumbing;
 - `tests/bypass-rust/src/fixtures.rs`: opaque no-token, valid-candidate,
   expired, replayed, forged, and out-of-scope fixture bytes;
 - `tests/bypass-rust/tests/adapter_harness.rs`: adapter-plumbing tests using

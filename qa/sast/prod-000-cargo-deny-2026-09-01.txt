@@ -1,0 +1,19 @@
+PROD-000 — cargo-deny raw SCA evidence
+tool_version: cargo-deny 0.20.2
+scan_date_utc: 2026-09-01
+scanned_commit: 425d7718ecf83086776de8fc09caec26c728df92
+working_directory: dedicated PROD-000 implementation worktree
+manifest: tests/bypass-rust/Cargo.toml
+cargo_lock_sha256: 59c1a398c6a3405a6a895da2e794b7ed7cb0d6970ac74840cbd698c40b0f39ad
+configuration: deny.toml
+configuration_sha256: 8b1fbe5dece4e19de0ed231a4dde2a41c7d258a2bd24ebe6930929fa6b751ad8
+command: cargo deny --manifest-path tests/bypass-rust/Cargo.toml --config deny.toml --locked --format human --color never check --show-stats
+exit_code: 0
+status: completed; no blocking diagnostics
+gate_result: PASS; founder review still required
+
+--- complete cargo-deny output ---
+ advisories ok: 0 errors, 0 warnings, 0 notes
+       bans ok: 0 errors, 0 warnings, 2 notes
+   licenses ok: 0 errors, 0 warnings, 54 notes
+    sources ok: 0 errors, 0 warnings, 0 notes

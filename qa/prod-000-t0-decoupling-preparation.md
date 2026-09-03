@@ -1,7 +1,7 @@
 # PROD-000 T0 decoupling preparation
 
-**Status:** GOVERNANCE UPDATE; implementation blocked pending merged pointer/templates, backlog,
-and founder-draft disposition
+**Status:** IMPLEMENTATION AND FRESH EXACT-INPUT EVIDENCE CREATED; cross-model, independent-human,
+and founder dispositions pending
 
 **Baseline commit:** `ca6493408c5bf0cdd58e2f234d12feed22b161c8`
 
@@ -13,10 +13,18 @@ authorship option (c) and authorizes supervised agent authorship of the bounded 
 The canonical active records are pinned at dgr-internal source commit
 `891607c20ba65c31b024c59f29f09744f8a62b26`. This report does not authorize PROD-001 extraction.
 
-**Implementation hold:** This document and the five evidence templates are governance inputs only.
-No T0 implementation may begin until their dgr-core PR and the canonical backlog update are
-human-reviewed and merged and the pre-existing uncommitted founder draft is explicitly
-checkpointed or discarded.
+**Implementation gate disposition:** The dgr-core pointer/templates merged through PR #89, the
+canonical backlog update merged through dgr-backlog PR #26, and the founder explicitly authorized
+discarding the pre-existing zero-byte placeholder. OpenAI Codex created the bounded implementation
+checkpoint `40b713039a5612831df415cdd785271a7342be74`. This is not a founder approval or merge
+authorization. Fresh functional gates and three-engine evidence were run at its non-Rust
+provenance descendant `425d7718ecf83086776de8fc09caec26c728df92`; the independent-human,
+cross-model, finding-disposition, and founder review gates remain open.
+
+The first cross-model review subsequently returned `CHANGES REQUIRED`. Replacement source commit
+`b19f33ae16698a81b993e6cc5a751360b6109577` and T3 assertion-guard commit
+`587585cf476431f078efe587c5dbcc052389cdad` are the current resubmission inputs. The original
+checkpoint and review remain preserved as history; neither replacement commit completes a human gate.
 
 ## Scope and boundary
 
@@ -47,15 +55,17 @@ The current registry row at `tests/bypass-rust/src/lib.rs:161-170` defines ATK-0
 path at `tests/bypass-rust/src/founder_approval_timeout.rs:47-50` currently resolves that same value
 through `attack_by_id("ATK-06")`.
 
-Therefore, at baseline `ca64934...`, the proposed founder-owned literal and the value returned by
-the registry are equal. The behavior change is limited to ownership and dependency direction:
+Therefore, at baseline `ca64934...`, the approved T0-owned literal and the value returned by the
+registry are equal. Under Amendment B, the literal and dependency reversal are agent-authored T0.
+The behavior change is limited to ownership and dependency direction:
 
 - before: T0 enforcement trusts a T3 registry lookup and fails closed if the row is absent;
 - after: T0 enforcement owns `RequiredOutcome::EscalateThenDenyOnTimeout`, while a T3 test checks
   that the registry still matches it.
 
-This removes the runtime missing-row branch. That is an enforcement-expression change and must be
-authored and reviewed by the founder even though the current registered behavior is identical.
+This removes the runtime missing-row branch. That is an enforcement-expression change; Amendment B
+permits agent authorship but still requires exact-commit founder review even though the current
+registered behavior is identical.
 
 ### Existing mirror precedent
 
@@ -69,7 +79,7 @@ The proposed private-constant/public-mirror shape follows:
   `tests/bypass-rust/src/founder_token_verification.rs:5-9`, mirroring the private registered key
   constants at lines 25-29.
 
-### Approved R5.1 proposal — do not apply before the Amendment-B prerequisites merge
+### Approved R5.1 proposal — applied at `40b7130...` after prerequisites merged
 
 ```diff
 diff --git a/tests/bypass-rust/src/founder_approval_timeout.rs b/tests/bypass-rust/src/founder_approval_timeout.rs
@@ -105,10 +115,11 @@ diff --git a/tests/bypass-rust/src/founder_approval_timeout.rs b/tests/bypass-ru
 ```
 
 The enforcement expression that changes is exactly the timed-out arm's source of `outcome`:
-`match attack_by_id("ATK-06")` becomes the founder-owned `ATK_06_TIMEOUT_OUTCOME`. No other match
+`match attack_by_id("ATK-06")` becomes the T0-owned, agent-authored
+`ATK_06_TIMEOUT_OUTCOME`. No other match
 arm, deadline comparison, store call, signal, or returned decision is proposed to change.
 
-### Exact T3 test-side proposal — do not apply before the T0 constant exists
+### Exact T3 test-side proposal — applied at `40b7130...` after the T0 constant
 
 The equality assertion is folded into the existing
 `atk_06_sequence_is_escalated_then_registry_derived_timeout_block` test so the total remains 52
@@ -133,9 +144,13 @@ diff --git a/tests/bypass-rust/tests/core_004_conformance.rs b/tests/bypass-rust
          RequiredOutcome::EscalateThenDenyOnTimeout
 ```
 
-The dependency is test → T0 mirror. A later registry change still fails this test. Applying this T3
-diff before the founder creates the mirror would intentionally break compilation, so it remains
-review material in this preparation branch.
+The dependency is test → T0 mirror. A later registry change still fails this test. The assertion
+was added to the pre-existing test function after the agent-authored Amendment-B T0 mirror existed;
+it did not add or replace a test expectation.
+
+After PROD-000, `ATK_06_TIMEOUT_OUTCOME` is authoritative for T0 enforcement. The CORE-001 registry
+is the T3 conformance representation, and the assertion added to the pre-existing test function
+detects drift from T0 to that registry. The registry is not a second source of enforcement policy.
 
 ## R5.2 — fail-closed floor relocation
 
@@ -187,11 +202,12 @@ Ok(Err(_)) | Err(_) => BeforeToolCallObservation::Blocked {
 ### Proposed physical split common to either ownership decision
 
 The intended new T0 home before extraction is
-`tests/bypass-rust/src/founder_before_tool_call_floor.rs`. It would later move as one founder-owned
-file into the root `dgr-core` library. The existing `before_tool_call.rs` would remain T3 and retain
+`tests/bypass-rust/src/founder_before_tool_call_floor.rs`. Under Amendment B it is an agent-authored
+T0 file with per-region founder-source provenance, and it would later move into the root `dgr-core`
+library. The existing `before_tool_call.rs` would remain T3 and retain
 the probe, recording observation, and adapter.
 
-The new founder file would own:
+The new Amendment-B T0 file owns:
 
 - `OpaqueCapabilityToken`;
 - `BeforeToolCallRequest`;
@@ -293,18 +309,44 @@ authoring.
 Neither proposed decoupling requires a `Cargo.toml`, `Cargo.lock`, `deny.toml`, or CI-workflow
 change. This preparation report changes none of them.
 
+## Amendment-B implementation checkpoint
+
+The checkpoint is based on merged dgr-core commit
+`e9c8f585809c15d2464b3d45bc2ce26d716c8673`. Every consequential preparation hash matched before
+authoring. The committed code diff is exactly
+`40b713039a5612831df415cdd785271a7342be74`.
+
+Local validation at that checkpoint:
+
+| Check | Result |
+|---|---|
+| `npm run check:structure` | PASS — 18 governance files |
+| `cargo fmt --manifest-path tests/bypass-rust/Cargo.toml --all -- --check` | PASS |
+| `cargo build --manifest-path tests/bypass-rust/Cargo.toml --all-targets --locked` | PASS |
+| `cargo clippy --manifest-path tests/bypass-rust/Cargo.toml --all-targets --locked -- -D warnings` | PASS |
+| `cargo test --manifest-path tests/bypass-rust/Cargo.toml --all-targets --locked` | PASS — 52 passed / 5 ignored |
+| `node scripts/check-ignored-attacks.test.mjs` | PASS — 4/4 |
+| `node scripts/check-ignored-attacks.mjs` | PASS — exactly ATK-04/05/12/14/15 |
+
+The CI workflow, `Cargo.toml`, `Cargo.lock`, `deny.toml`, and ATK-07 test file were unchanged. Fresh
+Semgrep, CodeQL, cargo-deny, non-author cross-model review, independent-human review, and founder
+line/finding disposition remain required against the final review commit.
+
 ## Founder gate
 
 STOP. The founder must:
 
-1. merge this Amendment-B pointer/template update and the canonical backlog update through human
-   review;
-2. explicitly checkpoint or discard the pre-existing uncommitted founder draft;
-3. authorize implementation only on the dedicated bounded PROD-000 branch;
+1. ~~merge this Amendment-B pointer/template update and the canonical backlog update through human
+   review~~ — complete through dgr-core PR #89 and dgr-backlog PR #26;
+2. ~~explicitly checkpoint or discard the pre-existing uncommitted founder draft~~ — founder
+   authorized discard of the zero-byte placeholder;
+3. ~~authorize implementation only on the dedicated bounded PROD-000 branch~~ — checkpoint
+   `40b713039a5612831df415cdd785271a7342be74` created on
+   `codex/prod-000-supervised-agent-t0`;
 4. bind fresh three-engine SAST, non-author cross-model review, independent-human review,
    line-level provenance review, and the unchanged conformance suite to the exact final commit;
 5. disposition every finding and authorship classification; and
 6. founder-merge PROD-000 before PROD-001 extraction begins.
 
-No extraction, runtime work, enforcement claim expansion, or T0 code change is authorized by this
-report.
+No extraction, runtime work, enforcement claim expansion, or T0 change outside Amendment B is
+authorized by this report.

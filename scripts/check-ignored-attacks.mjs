@@ -15,6 +15,12 @@ export const EXPECTED_IGNORED_ATTACKS = Object.freeze([
   "atk_15_deploy_role_data_access",
 ]);
 
+// This active conformance test is the T3 drift detector for the authoritative
+// T0 ATK-06 timeout outcome. Deleting or ignoring it must fail required CI.
+export const REQUIRED_ACTIVE_CONFORMANCE_TESTS = Object.freeze([
+  "atk_06_sequence_is_escalated_then_registry_derived_timeout_block",
+]);
+
 export function compareIgnoredAttacks(actualNames) {
   const expected = new Set(EXPECTED_IGNORED_ATTACKS);
   const actual = new Set(actualNames);
@@ -34,40 +40,62 @@ export function parseIgnoredTests(output) {
     .sort();
 }
 
-function main() {
-  const result = spawnSync(
+export function compareRequiredActiveTests(listedNames, ignoredNames) {
+  const listed = new Set(listedNames);
+  const ignored = new Set(ignoredNames);
+
+  return {
+    missing: REQUIRED_ACTIVE_CONFORMANCE_TESTS.filter((name) => !listed.has(name)),
+    ignored: REQUIRED_ACTIVE_CONFORMANCE_TESTS.filter((name) => ignored.has(name)),
+  };
+}
+
+function enumerateTests(testTarget, extraArgs = []) {
+  return spawnSync(
     "cargo",
     [
       "test",
       "--manifest-path",
       "tests/bypass-rust/Cargo.toml",
       "--test",
-      "attack_set",
+      testTarget,
       "--locked",
       "--",
       "--list",
-      "--ignored",
+      ...extraArgs,
       "--format",
       "terse",
     ],
     { encoding: "utf8" },
   );
+}
 
+function requireEnumeration(result, label) {
   if (result.error) {
-    console.error(`ignored-set enumeration could not start: ${result.error.message}`);
-    process.exitCode = 1;
-    return;
+    console.error(`${label} enumeration could not start: ${result.error.message}`);
+    return null;
   }
 
   if (result.status !== 0) {
     process.stderr.write(result.stderr);
-    console.error(`ignored-set enumeration failed with exit code ${result.status}`);
+    console.error(`${label} enumeration failed with exit code ${result.status}`);
+    return null;
+  }
+
+  return parseIgnoredTests(result.stdout);
+}
+
+function main() {
+  const ignoredAttacks = requireEnumeration(
+    enumerateTests("attack_set", ["--ignored"]),
+    "ignored-set",
+  );
+  if (ignoredAttacks === null) {
     process.exitCode = 1;
     return;
   }
 
-  const actual = parseIgnoredTests(result.stdout);
-  const { unexpected, missing } = compareIgnoredAttacks(actual);
+  const { unexpected, missing } = compareIgnoredAttacks(ignoredAttacks);
 
   if (unexpected.length > 0 || missing.length > 0) {
     if (unexpected.length > 0) {
@@ -80,7 +108,35 @@ function main() {
     return;
   }
 
-  console.log(`ignored-set guard passed: ${actual.join(", ")}`);
+  const listedConformance = requireEnumeration(
+    enumerateTests("core_004_conformance"),
+    "required-active-test",
+  );
+  const ignoredConformance = requireEnumeration(
+    enumerateTests("core_004_conformance", ["--ignored"]),
+    "required-active-test ignored-state",
+  );
+  if (listedConformance === null || ignoredConformance === null) {
+    process.exitCode = 1;
+    return;
+  }
+
+  const activeComparison = compareRequiredActiveTests(listedConformance, ignoredConformance);
+  if (activeComparison.missing.length > 0 || activeComparison.ignored.length > 0) {
+    if (activeComparison.missing.length > 0) {
+      console.error(`required active tests missing: ${activeComparison.missing.join(", ")}`);
+    }
+    if (activeComparison.ignored.length > 0) {
+      console.error(`required active tests are ignored: ${activeComparison.ignored.join(", ")}`);
+    }
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log(`ignored-set guard passed: ${ignoredAttacks.join(", ")}`);
+  console.log(
+    `required active conformance guard passed: ${REQUIRED_ACTIVE_CONFORMANCE_TESTS.join(", ")}`,
+  );
 }
 
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : "";

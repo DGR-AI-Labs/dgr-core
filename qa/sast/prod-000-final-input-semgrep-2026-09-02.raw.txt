@@ -1,0 +1,17 @@
+                  
+                  
+┌────────────────┐
+│ 1 Code Finding │
+└────────────────┘
+                                                
+    tests/bypass-rust/tests/consumption_store.rs
+     ❱ rust.lang.security.temp-dir.temp-dir
+          ❰❰ Blocking ❱❱
+          temp_dir should not be used for security operations. From the docs: 'The temporary directory may be
+          shared among users, or between processes with different privileges; thus, the creation of any files
+          or directories in the temporary directory must use a secure method to create a uniquely named file.
+          Creating a file or directory with a fixed or predictable name may result in “insecure temporary    
+          file” security vulnerabilities.'                                                                   
+          Details: https://sg.run/qzEO                                                                       
+                                                                                                             
+           19┆ let path = std::env::temp_dir().join(format!(

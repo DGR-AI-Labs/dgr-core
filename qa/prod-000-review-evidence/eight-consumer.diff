@@ -1,0 +1,224 @@
+diff --git a/tests/bypass-rust/src/founder_approval_store.rs b/tests/bypass-rust/src/founder_approval_store.rs
+index 507cd44b5f52a4fc3ba9f23f519e3dd2af2107ee..f20494f233dba0f4a281c3343b601549cdaeeea7 100644
+--- a/tests/bypass-rust/src/founder_approval_store.rs
++++ b/tests/bypass-rust/src/founder_approval_store.rs
+@@ -3,7 +3,7 @@
+ //! The default implementation fails closed until a concrete durable-local
+ //! approval store supplies pending-request and timeout-transition behavior.
+ 
+-use crate::before_tool_call::GuardFault;
++use crate::founder_before_tool_call_floor::GuardFault;
+ 
+ /// Founder-derived, agent-independent identity for one approval request.
+ #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+diff --git a/tests/bypass-rust/src/founder_approval_timeout.rs b/tests/bypass-rust/src/founder_approval_timeout.rs
+index 2f4689dd9ebea4af7819d07ac79149d332e873d7..5d7c4bbe99685be0c7a6e452e64c3c47fa858f58 100644
+--- a/tests/bypass-rust/src/founder_approval_timeout.rs
++++ b/tests/bypass-rust/src/founder_approval_timeout.rs
+@@ -1,63 +1,62 @@
+-//! {FOUNDER-AUTHORS}: T0 token-free approval-timeout evaluation.
+-//!
+-//! This surface evaluates an already-persisted approval request. It accepts no
+-//! capability token and cannot issue authorization or invoke a tool.
+-
+-use crate::RequiredOutcome;
+-use crate::attack_by_id;
+-use crate::before_tool_call::{GuardDecision, GuardFault};
+-use crate::founder_approval_store::{
+-    ApprovalStore, EvaluatePendingOutcome, PendingApproval, ReviewRequestId,
+-};
+-use crate::founder_fail_closed::fail_closed_decision;
+-
+-fn matching_pending(
+-    review_request_id: &ReviewRequestId,
+-    pending: PendingApproval,
+-) -> Result<PendingApproval, GuardFault> {
+-    if pending.review_request_id != *review_request_id {
+-        return Err(GuardFault::InternalError);
+-    }
+-
+-    Ok(pending)
+-}
+-
+-pub fn evaluate_approval_timeout(
+-    approval_store: &mut dyn ApprovalStore,
+-    review_request_id: &ReviewRequestId,
+-    now_unix_seconds: u64,
+-) -> Result<GuardDecision, GuardFault> {
+-    match approval_store.evaluate_pending(review_request_id, now_unix_seconds) {
+-        EvaluatePendingOutcome::Pending(pending) => {
+-            let pending = match matching_pending(review_request_id, pending) {
+-                Ok(pending) => pending,
+-                Err(fault) => return fail_closed_decision(fault),
+-            };
+-
+-            Ok(GuardDecision::Escalate {
+-                review_request_id: pending.review_request_id,
+-                deadline: pending.deadline,
+-            })
+-        }
+-        EvaluatePendingOutcome::TimedOut(pending) => {
+-            if let Err(fault) = matching_pending(review_request_id, pending) {
+-                return fail_closed_decision(fault);
+-            }
+-
+-            let outcome = match attack_by_id("ATK-06") {
+-                Some(case) => case.expected,
+-                None => return fail_closed_decision(GuardFault::InternalError),
+-            };
+-
+-            Ok(GuardDecision::Deny {
+-                outcome,
+-                denial_signal: "ATK-06 approval timed out",
+-            })
+-        }
+-        EvaluatePendingOutcome::NotFound => Ok(GuardDecision::Deny {
+-            outcome: RequiredOutcome::FailClosed,
+-            denial_signal: "CORE-004 pending approval not found",
+-        }),
+-        EvaluatePendingOutcome::Faulted(fault) => fail_closed_decision(fault),
+-    }
+-}
++//! {FOUNDER-AUTHORS}: T0 token-free approval-timeout evaluation.
++//!
++//! This surface evaluates an already-persisted approval request. It accepts no
++//! capability token and cannot issue authorization or invoke a tool.
++
++use crate::RequiredOutcome;
++use crate::founder_approval_store::{
++    ApprovalStore, EvaluatePendingOutcome, PendingApproval, ReviewRequestId,
++};
++use crate::founder_before_tool_call_floor::{GuardDecision, GuardFault};
++use crate::founder_fail_closed::fail_closed_decision;
++
++const ATK_06_TIMEOUT_OUTCOME: RequiredOutcome = RequiredOutcome::EscalateThenDenyOnTimeout;
++
++#[doc(hidden)]
++pub const CONFORMANCE_ATK_06_TIMEOUT_OUTCOME: RequiredOutcome = ATK_06_TIMEOUT_OUTCOME;
++
++fn matching_pending(
++    review_request_id: &ReviewRequestId,
++    pending: PendingApproval,
++) -> Result<PendingApproval, GuardFault> {
++    if pending.review_request_id != *review_request_id {
++        return Err(GuardFault::InternalError);
++    }
++
++    Ok(pending)
++}
++
++pub fn evaluate_approval_timeout(
++    approval_store: &mut dyn ApprovalStore,
++    review_request_id: &ReviewRequestId,
++    now_unix_seconds: u64,
++) -> Result<GuardDecision, GuardFault> {
++    match approval_store.evaluate_pending(review_request_id, now_unix_seconds) {
++        EvaluatePendingOutcome::Pending(pending) => {
++            let pending = match matching_pending(review_request_id, pending) {
++                Ok(pending) => pending,
++                Err(fault) => return fail_closed_decision(fault),
++            };
++
++            Ok(GuardDecision::Escalate {
++                review_request_id: pending.review_request_id,
++                deadline: pending.deadline,
++            })
++        }
++        EvaluatePendingOutcome::TimedOut(pending) => {
++            if let Err(fault) = matching_pending(review_request_id, pending) {
++                return fail_closed_decision(fault);
++            }
++
++            Ok(GuardDecision::Deny {
++                outcome: ATK_06_TIMEOUT_OUTCOME,
++                denial_signal: "ATK-06 approval timed out",
++            })
++        }
++        EvaluatePendingOutcome::NotFound => Ok(GuardDecision::Deny {
++            outcome: RequiredOutcome::FailClosed,
++            denial_signal: "CORE-004 pending approval not found",
++        }),
++        EvaluatePendingOutcome::Faulted(fault) => fail_closed_decision(fault),
++    }
++}
+diff --git a/tests/bypass-rust/src/founder_authored_guard.rs b/tests/bypass-rust/src/founder_authored_guard.rs
+index 4e118ee19da002bdca26b5b2906667a9693fb54b..c633202b3f125187fdb085bbf892c30dcd341279 100644
+--- a/tests/bypass-rust/src/founder_authored_guard.rs
++++ b/tests/bypass-rust/src/founder_authored_guard.rs
+@@ -4,7 +4,7 @@
+ //! and fail-closed handling have separate founder-owned units beside this one.
+ //! Absence, invalidity, or internal error must deny.
+ 
+-use crate::before_tool_call::{
++use crate::founder_before_tool_call_floor::{
+     BeforeToolCallRequest, GuardDecision, GuardDecisionPort, GuardFault,
+ };
+ 
+diff --git a/tests/bypass-rust/src/founder_consumption_store.rs b/tests/bypass-rust/src/founder_consumption_store.rs
+index 14a811b9edaeca754b454f3893e7696b07332f34..52d822ed89cae6ede3b7dda43e64917700226df9 100644
+--- a/tests/bypass-rust/src/founder_consumption_store.rs
++++ b/tests/bypass-rust/src/founder_consumption_store.rs
+@@ -3,7 +3,7 @@
+ //! The default implementation fails closed until a concrete store supplies
+ //! durable single-use consumption.
+ 
+-use crate::before_tool_call::GuardFault;
++use crate::founder_before_tool_call_floor::GuardFault;
+ 
+ #[derive(Debug, Eq, PartialEq)]
+ pub enum ConsumeOutcome {
+diff --git a/tests/bypass-rust/src/founder_fail_closed.rs b/tests/bypass-rust/src/founder_fail_closed.rs
+index dd1bd311a66adbe0de5d9200e769c51d7bc87be0..ced422ad6cf59041a51c50b9a6d4e5020c1590e6 100644
+--- a/tests/bypass-rust/src/founder_fail_closed.rs
++++ b/tests/bypass-rust/src/founder_fail_closed.rs
+@@ -1,7 +1,7 @@
+ //! {FOUNDER-AUTHORS}: T0 fail-closed decision unit.
+ 
+ use crate::RequiredOutcome;
+-use crate::before_tool_call::{GuardDecision, GuardFault};
++use crate::founder_before_tool_call_floor::{GuardDecision, GuardFault};
+ 
+ pub fn fail_closed_decision(fault: GuardFault) -> Result<GuardDecision, GuardFault> {
+     let denial_signal = match fault {
+diff --git a/tests/bypass-rust/src/founder_s2_approval_store.rs b/tests/bypass-rust/src/founder_s2_approval_store.rs
+index 6f06bc5861f8ff918e0c23c8a71691e01dc4bb38..78604b481f57c439361d6467f08ea2b1f84510f0 100644
+--- a/tests/bypass-rust/src/founder_s2_approval_store.rs
++++ b/tests/bypass-rust/src/founder_s2_approval_store.rs
+@@ -3,10 +3,10 @@
+ //! One persistent SQLite connection is created per store instance and reused
+ //! for pending-request recording and atomic timeout evaluation.
+ 
+-use crate::before_tool_call::GuardFault;
+ use crate::founder_approval_store::{
+     ApprovalStore, EvaluatePendingOutcome, PendingApproval, RecordPendingOutcome, ReviewRequestId,
+ };
++use crate::founder_before_tool_call_floor::GuardFault;
+ use rusqlite::{
+     Connection, Error as SqliteError, ErrorCode, OptionalExtension, Transaction,
+     TransactionBehavior, params,
+diff --git a/tests/bypass-rust/src/founder_s2_consumption_store.rs b/tests/bypass-rust/src/founder_s2_consumption_store.rs
+index 1f32c1072240297770e08abab526184b1bad5797..bab7ac09631d5f9bc4ecfb9a0aed1e469cc22d84 100644
+--- a/tests/bypass-rust/src/founder_s2_consumption_store.rs
++++ b/tests/bypass-rust/src/founder_s2_consumption_store.rs
+@@ -3,7 +3,7 @@
+ //! One persistent SQLite connection is created per store instance and reused
+ //! for every consumption attempt.
+ 
+-use crate::before_tool_call::GuardFault;
++use crate::founder_before_tool_call_floor::GuardFault;
+ use crate::founder_consumption_store::{ConsumeOutcome, ConsumptionStore};
+ use rusqlite::{Connection, params};
+ use std::path::Path;
+diff --git a/tests/bypass-rust/src/founder_token_verification.rs b/tests/bypass-rust/src/founder_token_verification.rs
+index 8885f63ef13cb158fb2408d6b04b47ee8386a78d..f2e5fce3076fcb57793a041283576239af1bad80 100644
+--- a/tests/bypass-rust/src/founder_token_verification.rs
++++ b/tests/bypass-rust/src/founder_token_verification.rs
+@@ -10,7 +10,7 @@ pub const CONFORMANCE_K2_PUBLIC_KEY: [u8; 32] = REGISTERED_K2_PUBLIC_KEY;
+ 
+ use ed25519_dalek::{Signature, VerifyingKey};
+ 
+-use crate::before_tool_call::GuardFault;
++use crate::founder_before_tool_call_floor::GuardFault;
+ 
+ const FORMAT_VERSION: u8 = 1;
+ const TOKEN_WIRE_LENGTH: usize = 145;

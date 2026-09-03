@@ -3,7 +3,7 @@
 //! The default implementation fails closed until a concrete durable-local
 //! approval store supplies pending-request and timeout-transition behavior.
 
-use crate::before_tool_call::GuardFault;
+use crate::founder_before_tool_call_floor::GuardFault;
 
 /// Founder-derived, agent-independent identity for one approval request.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

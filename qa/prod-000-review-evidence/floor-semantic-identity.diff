@@ -1,0 +1,291 @@
+diff --git a/tests/bypass-rust/src/before_tool_call.rs b/tests/bypass-rust/src/before_tool_call.rs
+index 3a8c38685d46b3deb140ab0cb14b6d48a9f972ff..132d05738c5f347a185598999ece7a166d618a9c 100644
+--- a/tests/bypass-rust/src/before_tool_call.rs
++++ b/tests/bypass-rust/src/before_tool_call.rs
+@@ -1,63 +1,18 @@
+-//! Mixed-tier conformance adapter for the OpenClaw `before_tool_call` boundary.
++//! T3 conformance adapter for the OpenClaw `before_tool_call` boundary.
+ //!
+-//! The request, observation, and probe types are test-only plumbing. The body of
+-//! `BeforeToolCallAdapter::before_tool_call` contains the founder-authored T0
+-//! fail-closed floor for a reached boundary whose guard faults or unwinds.
+-//! The effectful target remains a test probe, never a real tool.
++//! This module re-exports the T0 request/decision surface for compatibility and
++//! owns only observation and test-probe plumbing. The effectful target remains
++//! a test probe, never a real tool.
+ 
+ use crate::founder_approval_store::{ApprovalStore, ReviewRequestId};
+-
+ use crate::founder_consumption_store::ConsumptionStore;
+-use crate::{DecisionContext, ProposedAction, RequiredOutcome};
+-
+-/// Opaque bytes passed to the founder-authored guard without interpretation.
+-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+-pub struct OpaqueCapabilityToken<'a> {
+-    pub bytes: &'a [u8],
+-}
++use crate::{ProposedAction, RequiredOutcome};
+ 
+-/// The intercepted call presented at OpenClaw's `before_tool_call` seam.
+-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+-pub struct BeforeToolCallRequest<'a> {
+-    pub proposed_action: ProposedAction,
+-    pub context: &'a DecisionContext,
+-    pub capability_token: Option<OpaqueCapabilityToken<'a>>,
+-}
+-
+-/// A decision supplied by the founder-authored guard.
+-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+-pub enum GuardDecision {
+-    Allow {
+-        authorization_reference: &'static str,
+-    },
+-    Escalate {
+-        review_request_id: ReviewRequestId,
+-        deadline: u64,
+-    },
+-    Deny {
+-        outcome: RequiredOutcome,
+-        denial_signal: &'static str,
+-    },
+-}
+-
+-/// A guard fault is not a decision and must never be treated as an allow.
+-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+-pub enum GuardFault {
+-    FounderImplementationRequired,
+-    Unavailable,
+-    InternalError,
+-}
+-
+-/// Interface implemented only by the founder-authored guard unit.
+-pub trait GuardDecisionPort {
+-    fn decide(
+-        &self,
+-        request: &BeforeToolCallRequest<'_>,
+-        now_unix_seconds: u64,
+-        consumption_store: &mut dyn ConsumptionStore,
+-        approval_store: &mut dyn ApprovalStore,
+-    ) -> Result<GuardDecision, GuardFault>;
+-}
++use crate::founder_before_tool_call_floor::before_tool_call_floor;
++pub use crate::founder_before_tool_call_floor::{
++    BeforeToolCallOutcome, BeforeToolCallRequest, GuardDecision, GuardDecisionPort, GuardFault,
++    OpaqueCapabilityToken,
++};
+ 
+ /// A fake effectful boundary used only to observe whether execution occurred.
+ pub trait EffectfulToolProbe {
+@@ -85,6 +40,7 @@ pub enum BeforeToolCallObservation {
+         authorization_issued: bool,
+         effectful_invocations: u32,
+     },
++    /// Negative-conformance sentinel: ATK-07 rejects this raw-fault shape if it is ever observed.
+     GuardFault {
+         fault: GuardFault,
+         authorization_issued: bool,
+@@ -94,7 +50,7 @@ pub enum BeforeToolCallObservation {
+ 
+ /// OpenClaw-shaped test boundary. Returned `Ok(Deny | Escalate | Allow)` decisions retain
+ /// their established relay behavior. A typed guard fault or an unwinding panic
+-/// is contained by the founder-authored T0 floor and becomes an explicit
++/// is contained by the Amendment-B T0 floor and becomes an explicit
+ /// fail-closed block before the effectful probe can run.
+ ///
+ /// This containment covers Rust unwinding panics after the boundary is reached.
+@@ -123,37 +79,34 @@ where
+     where
+         T: EffectfulToolProbe,
+     {
+-        // `AssertUnwindSafe` is deliberately bounded to this invocation. If `decide`
+-        // unwinds, this method does not inspect or reuse either store and returns
+-        // fail-closed immediately. This does not certify either store's invariants
+-        // for reuse by a later invocation.
+-        let decision = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+-            self.guard
+-                .decide(request, now_unix_seconds, consumption_store, approval_store)
+-        }));
+-
+-        match decision {
+-            Ok(Ok(GuardDecision::Deny {
++        match before_tool_call_floor(
++            &self.guard,
++            request,
++            now_unix_seconds,
++            consumption_store,
++            approval_store,
++        ) {
++            BeforeToolCallOutcome::Blocked {
+                 outcome,
+                 denial_signal,
+-            })) => BeforeToolCallObservation::Blocked {
++            } => BeforeToolCallObservation::Blocked {
+                 outcome,
+                 denial_signal,
+                 authorization_issued: false,
+                 effectful_invocations: tool.invocation_count(),
+             },
+-            Ok(Ok(GuardDecision::Escalate {
++            BeforeToolCallOutcome::Escalated {
+                 review_request_id,
+                 deadline,
+-            })) => BeforeToolCallObservation::Escalated {
++            } => BeforeToolCallObservation::Escalated {
+                 review_request_id,
+                 deadline,
+                 authorization_issued: false,
+                 effectful_invocations: tool.invocation_count(),
+             },
+-            Ok(Ok(GuardDecision::Allow {
++            BeforeToolCallOutcome::Authorized {
+                 authorization_reference,
+-            })) => {
++            } => {
+                 tool.invoke(&request.proposed_action);
+                 BeforeToolCallObservation::Proceeded {
+                     authorization_reference,
+@@ -161,12 +114,6 @@ where
+                     effectful_invocations: tool.invocation_count(),
+                 }
+             }
+-            Ok(Err(_)) | Err(_) => BeforeToolCallObservation::Blocked {
+-                outcome: RequiredOutcome::FailClosed,
+-                denial_signal: "CORE-003 boundary fail-closed",
+-                authorization_issued: false,
+-                effectful_invocations: tool.invocation_count(),
+-            },
+         }
+     }
+ }
+diff --git a/tests/bypass-rust/src/founder_before_tool_call_floor.rs b/tests/bypass-rust/src/founder_before_tool_call_floor.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..0cb2c16c5096b1b5eab8a4273fdd14c42d956897
+--- /dev/null
++++ b/tests/bypass-rust/src/founder_before_tool_call_floor.rs
+@@ -0,0 +1,126 @@
++//! {AGENT-AUTHORS}: T0 reached-boundary fail-closed floor.
++//!
++//! Existing request and decision shapes are relocated here for PROD-000. The
++//! T0 type surface and transformed floor are agent-authored under ADR-13
++//! Amendment B; the floor retains identified founder-source provenance and
++//! remains subject to founder review and disposition.
++
++use crate::founder_approval_store::{ApprovalStore, ReviewRequestId};
++use crate::founder_consumption_store::ConsumptionStore;
++use crate::{DecisionContext, ProposedAction, RequiredOutcome};
++
++/// Opaque bytes passed to the guard without interpretation.
++#[derive(Clone, Copy, Debug, Eq, PartialEq)]
++pub struct OpaqueCapabilityToken<'a> {
++    pub bytes: &'a [u8],
++}
++
++/// The intercepted call presented at the `before_tool_call` seam.
++#[derive(Clone, Copy, Debug, Eq, PartialEq)]
++pub struct BeforeToolCallRequest<'a> {
++    pub proposed_action: ProposedAction,
++    pub context: &'a DecisionContext,
++    pub capability_token: Option<OpaqueCapabilityToken<'a>>,
++}
++
++/// A decision supplied by the guard.
++#[derive(Clone, Copy, Debug, Eq, PartialEq)]
++pub enum GuardDecision {
++    Allow {
++        authorization_reference: &'static str,
++    },
++    Escalate {
++        review_request_id: ReviewRequestId,
++        deadline: u64,
++    },
++    Deny {
++        outcome: RequiredOutcome,
++        denial_signal: &'static str,
++    },
++}
++
++/// A guard fault is not a decision and must never be treated as an allow.
++#[derive(Clone, Copy, Debug, Eq, PartialEq)]
++pub enum GuardFault {
++    FounderImplementationRequired,
++    Unavailable,
++    InternalError,
++}
++
++/// Interface implemented by the guard unit.
++pub trait GuardDecisionPort {
++    fn decide(
++        &self,
++        request: &BeforeToolCallRequest<'_>,
++        now_unix_seconds: u64,
++        consumption_store: &mut dyn ConsumptionStore,
++        approval_store: &mut dyn ApprovalStore,
++    ) -> Result<GuardDecision, GuardFault>;
++}
++
++/// Product-level result of a reached `before_tool_call` boundary.
++#[derive(Clone, Copy, Debug, Eq, PartialEq)]
++pub enum BeforeToolCallOutcome {
++    Blocked {
++        outcome: RequiredOutcome,
++        denial_signal: &'static str,
++    },
++    Escalated {
++        review_request_id: ReviewRequestId,
++        deadline: u64,
++    },
++    Authorized {
++        authorization_reference: &'static str,
++    },
++}
++
++/// Invoke the guard after the boundary is reached and contain typed faults or
++/// unwinding panics as a product-level fail-closed block.
++///
++/// This containment covers Rust unwinding panics after the boundary is reached.
++/// It does not cover `panic=abort`, process termination, OOM abort, a hook
++/// that is never invoked, or a route around the hook.
++pub fn before_tool_call_floor<G>(
++    guard: &G,
++    request: &BeforeToolCallRequest<'_>,
++    now_unix_seconds: u64,
++    consumption_store: &mut dyn ConsumptionStore,
++    approval_store: &mut dyn ApprovalStore,
++) -> BeforeToolCallOutcome
++where
++    G: GuardDecisionPort,
++{
++    // `AssertUnwindSafe` is deliberately bounded to this invocation. If `decide`
++    // unwinds, this function does not inspect or reuse either store and returns
++    // fail-closed immediately. This does not certify either store's invariants
++    // for reuse by a later invocation.
++    let decision = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++        guard.decide(request, now_unix_seconds, consumption_store, approval_store)
++    }));
++
++    match decision {
++        Ok(Ok(GuardDecision::Deny {
++            outcome,
++            denial_signal,
++        })) => BeforeToolCallOutcome::Blocked {
++            outcome,
++            denial_signal,
++        },
++        Ok(Ok(GuardDecision::Escalate {
++            review_request_id,
++            deadline,
++        })) => BeforeToolCallOutcome::Escalated {
++            review_request_id,
++            deadline,
++        },
++        Ok(Ok(GuardDecision::Allow {
++            authorization_reference,
++        })) => BeforeToolCallOutcome::Authorized {
++            authorization_reference,
++        },
++        Ok(Err(_)) | Err(_) => BeforeToolCallOutcome::Blocked {
++            outcome: RequiredOutcome::FailClosed,
++            denial_signal: "CORE-003 boundary fail-closed",
++        },
++    }
++}
