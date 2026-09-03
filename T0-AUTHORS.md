@@ -27,11 +27,11 @@ until a reviewed PROD-000 commit relocates or transforms an identified region:
 
 | File | Founder-only function | Required responsibility |
 |---|---|---|
-| `tests/bypass-rust/src/founder_authored_guard.rs` | `FounderAuthoredGuard::decide` | Guard decision for the intercepted `before_tool_call` request |
-| `tests/bypass-rust/src/founder_token_verification.rs` | `verify_capability_token` | Capability-token verification |
-| `tests/bypass-rust/src/founder_fail_closed.rs` | `fail_closed_decision` | Deny behavior for absence, invalidity, unavailability, or internal error |
-| `tests/bypass-rust/src/founder_s2_consumption_store.rs` | `S2ConsumptionStore::consume` | Durable-local, atomic single-use consumption before allow |
-| `tests/bypass-rust/src/founder_consumption_store.rs` | `ConsumptionStore::consume` | Store boundary retained for S2 now and S3 later |
+| `src/founder_authored_guard.rs` | `FounderAuthoredGuard::decide` | Guard decision for the intercepted `before_tool_call` request |
+| `src/founder_token_verification.rs` | `verify_capability_token` | Capability-token verification |
+| `src/founder_fail_closed.rs` | `fail_closed_decision` | Deny behavior for absence, invalidity, unavailability, or internal error |
+| `src/founder_s2_consumption_store.rs` | `S2ConsumptionStore::consume` | Durable-local, atomic single-use consumption before allow |
+| `src/founder_consumption_store.rs` | `ConsumptionStore::consume` | Store boundary retained for S2 now and S3 later |
 | Historical source at `tests/bypass-rust/src/before_tool_call.rs` | Original `BeforeToolCallAdapter::before_tool_call` body | Founder-authored source provenance for the reached-boundary fault/unwind floor transformed by PROD-000 |
 
 ## CORE-004 founder-owned surfaces
@@ -43,9 +43,9 @@ separately classified as agent-authored changes pending founder review.
 
 | Surface/location | Founder-owned responsibility |
 |---|---|
-| `tests/bypass-rust/src/founder_approval_store.rs` | The `ApprovalStore` port; original-id/deadline `AlreadyPending` behavior; and every consequential pending/not-found/timed-out/fault outcome |
-| `tests/bypass-rust/src/founder_s2_approval_store.rs` | Durable-local SQLite record, deduplication, lookup, and timeout-transition behavior, including deadline immutability and persist-then-observe |
-| `tests/bypass-rust/src/founder_authored_guard.rs` | Canonical amount validation; founder threshold and conformance mirrors; escalation after binding and before nonce consumption; and timeout decisions |
+| `src/founder_approval_store.rs` | The `ApprovalStore` port; original-id/deadline `AlreadyPending` behavior; and every consequential pending/not-found/timed-out/fault outcome |
+| `src/founder_s2_approval_store.rs` | Durable-local SQLite record, deduplication, lookup, and timeout-transition behavior, including deadline immutability and persist-then-observe |
+| `src/founder_authored_guard.rs` | Canonical amount validation; founder threshold and conformance mirrors; escalation after binding and before nonce consumption; and timeout decisions |
 | R-3 timeout-evaluation path (exact function/location selected by the founder during authoring) | Evaluate a pending record against the trusted injected clock without token re-presentation; return the same `Escalated` id/deadline while `now <= deadline`; persist timeout before returning the terminal block when `now > deadline` |
 | `tests/bypass-rust/src/before_tool_call.rs` adapter behavior | Emit `Escalated` only after durable persistence and guarantee no authorization, nonce consumption, or effectful invocation on that path |
 
@@ -68,8 +68,9 @@ absent concrete store fails closed. The S2 unit exposes an in-memory constructor
 for isolated conformance tests and a file-backed constructor for
 restart-durable local consumption.
 
-This state record does not relax the authorship boundary. Outside the exact Amendment-B exception,
-an agent must not replace, complete, refactor, or route around any founder-authored unit.
+This state record does not relax the authorship boundary. PROD-001 may relocate the reviewed T0
+files byte-identically and change only approved crate/module/Cargo wiring. An agent must not replace,
+complete, refactor, or route around any enforcement body.
 
 ## PROD-000 Amendment-B exception — implementation checkpoint
 
@@ -109,8 +110,23 @@ source, classification, and evidence findings without expanding the Amendment-B 
 `587585cf476431f078efe587c5dbcc052389cdad` then changes only the T3 enumeration guard and its unit
 tests so deletion, rename, or ignoring of the named ATK-06 T0/registry equality test fails required
 CI. This guard proves test presence and active status; it does not prove the assertion body remains
-unchanged, which stays in source/human review scope. Neither commit is founder approval. The
-cross-model addendum now passes with non-blocking findings; the human gates remain pending.
+unchanged, which stays in source/human review scope. The full PROD-000 gate was completed at final
+head `a85e3676367978d5964f0be29e802e8d51f4ed24` and founder-merged through PR #90 as merge commit
+`8318f61eadf689f9b8a72f673cc68cd083dc7831`.
+
+## PROD-001 extraction candidate
+
+PROD-001 moves the nine reviewed T0 files from `tests/bypass-rust/src/` to the root `src/` library
+without changing their bytes. The shared `RequiredOutcome`, `ProposedAction`, and
+`DecisionContext` definitions are relocated from the former mixed harness crate root to the root
+library; the harness re-exports the library definitions for unchanged conformance imports. The
+attack registry, fixtures, adapter, observations, and tests remain T3 under `tests/bypass-rust/`.
+
+The extraction commit is agent-assisted structural work, not authorship of the moved enforcement
+bodies. Existing founder-authored source retains founder provenance; PROD-000 agent-authored and
+agent-transformed T0 retains that provenance; the PROD-001 commit is a relocation/wiring commit
+pending byte-identity review and founder merge. Extraction changes distributability and does not
+expand the bounded isolation claim.
 
 ## Agent-authored supporting units
 

@@ -10,6 +10,6 @@ path = "src/lib.rs"
 
 [dependencies]
 base64ct = { version = "=1.8.3", features = ["alloc"] }
+dgr-core = { path = "../.." }
 ed25519-dalek = "=2.2.0"
-rusqlite = { version = "=0.40.2", features = ["bundled"] }
 sha2 = "=0.10.9"

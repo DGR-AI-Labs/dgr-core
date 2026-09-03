@@ -1,11 +1,12 @@
 # T0 boundary — read before implementing this harness
 
-This directory combines the **T3 test-data and conformance harness** with the
-founder-owned T0 units listed in the repository-root `T0-AUTHORS.md`. It is not
-the deployed DGR gate and must never become an alternate production enforcement
-path. `before_tool_call.rs` can invoke only a test probe, never a real tool.
+This directory is the retained **T3 test-data and conformance harness** for the root `dgr-core`
+library. The T0 units listed in repository-root `T0-AUTHORS.md` now live under root `src/` and are
+consumed through a path dependency plus compatibility re-exports. This harness is not the deployed
+DGR gate and must never become an alternate production enforcement path. `before_tool_call.rs` can
+invoke only a test probe, never a real tool.
 
-`founder_before_tool_call_floor.rs` now contains the Amendment-B agent-authored CORE-003 T0 floor,
+Root `src/founder_before_tool_call_floor.rs` contains the Amendment-B agent-authored CORE-003 T0 floor,
 with identified founder-source provenance for the transformed fault/unwind logic. The T3
 `BeforeToolCallAdapter` converts the product outcome to a harness observation and invokes the probe
 only after `Authorized`. Returned `Deny`, `Escalate`, and `Allow` decisions retain their established
@@ -54,21 +55,30 @@ repository constitution.
 ADR-13 Amendment B supersedes only Amendment A R5.3 authorship option (c). The pointer, templates,
 and backlog prerequisites are merged, and the founder explicitly discarded the zero-byte draft.
 OpenAI Codex authored the bounded PROD-000 T0/T3 partition at implementation checkpoint
-`40b713039a5612831df415cdd785271a7342be74` under founder design authority. Line-by-line review,
-exact-commit finding disposition, independent-human review, and founder-only merge remain pending.
+`40b713039a5612831df415cdd785271a7342be74` under founder design authority. The complete review gate
+was satisfied at final head `a85e3676367978d5964f0be29e802e8d51f4ed24`, which the founder merged
+through PR #90 as `8318f61eadf689f9b8a72f673cc68cd083dc7831`.
 
 After the first Claude review returned `CHANGES REQUIRED`, replacement source commit
 `b19f33ae16698a81b993e6cc5a751360b6109577` corrected the bounded source/document findings. T3-only
 commit `587585cf476431f078efe587c5dbcc052389cdad` makes deletion, rename, or ignoring of the named
 ATK-06 T0/registry equality test fail the required libtest-enumeration guard. The guard does not
-prove the test body remains unchanged; source and human review must verify the assertion. These are
-review inputs, not approval.
+prove the test body remains unchanged; source and human review must verify the assertion. Those
+commits were inputs to the completed PROD-000 review, not independent approval.
 
-The resulting evidence must distinguish existing founder source, agent-relocated founder source,
+The resulting evidence distinguishes existing founder source, agent-relocated founder source,
 agent-authored T0, T3, and founder review. The complete result must not be described as
-founder-authored. This exception does not authorize a permissive stub, a changed conformance
+founder-authored. Amendment B did not itself authorize a permissive stub, a changed conformance
 expectation, a second active floor, real tool integration, PROD-001 extraction, or any T0 change
 outside Amendment B's exact file and symbol scope.
+
+## PROD-001 extraction boundary
+
+PROD-001 moves the reviewed T0 files byte-identically into root `src/` and makes this harness a
+workspace consumer. Only crate/module/Cargo wiring and location documentation may change. The
+attack registry, fixtures, `BeforeToolCallAdapter`, `BeforeToolCallObservation`, and probe remain
+T3 here. No enforcement expression, conformance expectation, active/ignored set, denial signal,
+deadline, store operation, or bounded claim may change as part of extraction.
 
 CORE-003 covers ATK-07 only: the boundary was reached, but its guard/verifier
 returned a fault or panicked. A hook that never fires, a route around the hook,
@@ -124,8 +134,8 @@ absence must never be the enforcement signal.
 
 ATK-06 became active in the isolated conformance suite through the pre-PROD-000 founder-authored T0
 behavior. PROD-000's agent-authored R5.1 constant/dependency reversal preserves the expected value
-and adds a T3 equality assertion; its exact-commit review is pending. The original CORE-004 T0
-human, cross-model,
+and adds a T3 equality assertion; its exact-commit review was completed through PR #90. The original
+CORE-004 T0 human, cross-model,
 adversarial-test, and three-engine SAST/SCA review was accepted through PR #81,
 evidence PR #82, `qa/core-004-t0-founder-review-draft.md`, and
 `qa/core-004-t0-independent-human-review-input.md`. Real human approval

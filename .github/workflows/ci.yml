@@ -29,13 +29,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check Rust formatting
-        run: cargo fmt --manifest-path tests/bypass-rust/Cargo.toml --all -- --check
-      - name: Build Rust bypass harness
-        run: cargo build --manifest-path tests/bypass-rust/Cargo.toml --all-targets --locked
+        run: cargo fmt --manifest-path Cargo.toml --all -- --check
+      - name: Build Rust workspace
+        run: cargo build --workspace --all-targets --locked
       - name: Check Rust lints
-        run: cargo clippy --manifest-path tests/bypass-rust/Cargo.toml --all-targets --locked -- -D warnings
-      - name: Test Rust bypass harness
-        run: cargo test --manifest-path tests/bypass-rust/Cargo.toml --all-targets --locked
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test Rust workspace
+        run: cargo test --workspace --all-targets --locked
       - name: Test ignored-set comparison logic
         run: node scripts/check-ignored-attacks.test.mjs
       - name: Verify exact deferred and external attack set
@@ -62,11 +62,11 @@ jobs:
           python-version: "3.12"
       - name: Install pinned Semgrep
         run: python -m pip install semgrep==1.173.0
-      - name: Scan the Rust harness
+      - name: Scan the Rust workspace
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t rust_files < <(git ls-files -- 'tests/bypass-rust/**/*.rs')
+          mapfile -t rust_files < <(git ls-files -- '*.rs')
           if (( ${#rust_files[@]} == 0 )); then
             echo "Semgrep coverage failure: no tracked Rust files found" >&2
             exit 1
@@ -89,8 +89,8 @@ jobs:
         with:
           languages: rust
           queries: security-extended
-      - name: Build the Rust harness for CodeQL
-        run: cargo build --manifest-path tests/bypass-rust/Cargo.toml --all-targets --locked
+      - name: Build the Rust workspace for CodeQL
+        run: cargo build --workspace --all-targets --locked
       - name: Analyze with CodeQL
         uses: github/codeql-action/analyze@v3
         with:
@@ -106,7 +106,7 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
           rust-version: "1.94.1"
-          manifest-path: tests/bypass-rust/Cargo.toml
+          manifest-path: Cargo.toml
           command: check
           arguments: --config deny.toml --locked
           command-arguments: --show-stats
