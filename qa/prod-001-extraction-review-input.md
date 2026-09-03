@@ -6,7 +6,7 @@
 
 **Base tree:** `227949bfdb0988fa465a1fc1d540c2a447daa0f7`
 
-**Implementation commit:** `91589759964f2a409960c6a21a5d16795f1d95a1`
+**Relocation implementation commit:** `91589759964f2a409960c6a21a5d16795f1d95a1`
 
 **Implementation tree:** `3c1295c4ba011eb660f4a92cddf1f8b06a0b7a2d`
 
@@ -76,8 +76,10 @@ Reproduce a row with `git show COMMIT:PATH | sed -n 'START,ENDp' | sha256sum`.
 Review these separately from the byte-identical moves:
 
 1. `Cargo.toml` creates the root 0.x unpublished library and workspace.
-2. `tests/bypass-rust/Cargo.toml` adds only the root path dependency and removes the now-transitive
-   direct `rusqlite` dependency.
+2. `tests/bypass-rust/Cargo.toml` adds only the root path dependency with an exact `=0.1.0` version
+   requirement and removes the now-transitive direct `rusqlite` dependency. The first cargo-deny
+   run rejected a path-only declaration as a wildcard dependency; adding the exact version resolved
+   that wiring defect without changing T0 source.
 3. `Cargo.lock` is relocated to the workspace root and regenerated offline. Its substantive package
    graph change is the split into `dgr-core` and `dgr-core-bypass-harness`; dependency versions stay
    pinned.
@@ -110,6 +112,8 @@ The implementation commit produced these local results with Rust `1.94.1` from
 | `cargo clippy --workspace --all-targets --locked -- -D warnings` | PASS |
 | `cargo test --workspace --all-targets --locked` | PASS |
 | `cargo test --manifest-path tests/bypass-rust/Cargo.toml --all-targets --locked` | PASS; 52 passed, 5 ignored |
+| `cargo deny --manifest-path Cargo.toml --config deny.toml --locked --workspace check --show-stats` | PASS after exact path-dependency version fix; 0 errors, 0 warnings, 2 bans notes, 55 license notes |
+| Semgrep 1.173.0 / `p/rust` | COMPLETE; 22/22 tracked Rust files, 11 rules, 1 pre-existing test-only finding, 0 scan errors; exit 1 under `--error` |
 | `git diff --exit-code BASE -- tests/bypass-rust/tests scripts` | PASS; test and guard sources unchanged |
 | `find . -name Cargo.lock -not -path './target/*'` | PASS; only `./Cargo.lock` |
 
@@ -125,6 +129,10 @@ The required GitHub job names remain exactly:
 - `Rust format / build / test`
 
 Fresh GitHub checks and analyzer artifacts must still be evaluated on the actual final PR head.
+The Semgrep result is `rust.lang.security.temp-dir.temp-dir` at unchanged
+`tests/bypass-rust/tests/consumption_store.rs:19`; recording its location is not a risk
+disposition. The two cargo-deny bans notes and 55 license notes likewise remain for independent and
+founder review. CodeQL is pending the PR run. No clean-analyzer claim is made.
 
 ## 6. Provenance
 
