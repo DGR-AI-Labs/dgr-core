@@ -1,6 +1,7 @@
 # PROD-001 core-extraction review input
 
-**Status:** implementation complete; independent and founder gates pending
+**Status:** implementation complete; cross-model and independent-human gates satisfied; founder
+review and final-head gates pending
 
 **Base commit:** `8318f61eadf689f9b8a72f673cc68cd083dc7831`
 
@@ -9,6 +10,17 @@
 **Relocation implementation commit:** `91589759964f2a409960c6a21a5d16795f1d95a1`
 
 **Implementation tree:** `3c1295c4ba011eb660f4a92cddf1f8b06a0b7a2d`
+
+**Cross-model reviewed head:** `f1d17087d140b41750c1aeca032916bb4d2d90ae`
+
+**Cross-model review:** `qa/prod-001-cross-model-review.md`, SHA-256
+`e05a1e3864d181a723eaf9769f51904b90825b2681bcc065216c477c917b6a06`
+
+**Cross-model addendum:** `qa/prod-001-cross-model-review-addendum.md`, SHA-256
+`607716840944eb2507c64874a16e0e6773b00131d25ad2e68dd1d71fa67d7825`
+
+**Independent-human review:** `qa/prod-001-independent-human-review.md`, SHA-256
+`7183229f62355a4d06d7a2177654d74b62542e9b3bfccdd5ce324522b6a83c54`
 
 This is evidence for review, not approval. It records an agent-assisted structural extraction under
 ADR-13 and Amendments A and B. The founder must independently verify the byte-identity proof,
@@ -53,6 +65,7 @@ Reproduction pattern:
 ```bash
 git show 8318f61eadf689f9b8a72f673cc68cd083dc7831:tests/bypass-rust/src/FILE.rs | sha256sum
 git show 91589759964f2a409960c6a21a5d16795f1d95a1:src/FILE.rs | sha256sum
+git show f1d17087d140b41750c1aeca032916bb4d2d90ae:src/FILE.rs | sha256sum
 git diff-tree --no-commit-id --name-status -r -M100% 91589759964f2a409960c6a21a5d16795f1d95a1
 ```
 
@@ -105,7 +118,8 @@ The implementation commit produced these local results with Rust `1.94.1` from
 |---|---|
 | `node scripts/check-structure.mjs` | PASS; 18 governance files present |
 | `node --check scripts/check-ignored-attacks.mjs` | PASS |
-| `node --test scripts/check-ignored-attacks.test.mjs` | PASS; 1/1 |
+| `node --test scripts/check-ignored-attacks.test.mjs` | PASS; local Node 22 file mode reports 1/1 top-level file unit containing the same seven cases |
+| `node scripts/check-ignored-attacks.test.mjs` | PASS; direct mode used by CI reports 7/7 |
 | `node scripts/check-ignored-attacks.mjs` | PASS; exact five ignored and named ATK-06 active |
 | `cargo fmt --manifest-path Cargo.toml --all -- --check` | PASS |
 | `cargo build --workspace --all-targets --locked` | PASS |
@@ -131,10 +145,28 @@ The required GitHub job names remain exactly:
 Fresh GitHub checks and analyzer artifacts must still be evaluated on the actual final PR head.
 The Semgrep result is `rust.lang.security.temp-dir.temp-dir` at unchanged
 `tests/bypass-rust/tests/consumption_store.rs:19`; recording its location is not a risk
-disposition. The two cargo-deny bans notes and 55 license notes likewise remain for independent and
-founder review. CodeQL is pending the PR run. No clean-analyzer claim is made.
+disposition. The two cargo-deny bans notes and 55 workspace-scope license entries likewise remain
+for founder review. The diff-range PR CodeQL analysis uploaded zero results in changed ranges; the
+exact-head full-branch analysis uploaded nine deterministic nonce results in two unchanged T3
+fixture files. CodeQL also reported two raw diagnostics, of which only the generated dependency
+`bindgen.rs` warning is enumerable from the processed artifact. No clean-analyzer claim is made.
 
-## 6. Provenance
+## 6. PROD-000 authorization prerequisite
+
+- Founder exact-head fallback approval by `sapenov` for PR #90 at
+  `a85e3676367978d5964f0be29e802e8d51f4ed24`:
+  `https://github.com/DGR-AI-Labs/dgr-core/pull/90#issuecomment-5518513024`.
+- Formal independent approval by `bakaevs` on that same head:
+  `https://github.com/DGR-AI-Labs/dgr-core/pull/90#pullrequestreview-5103039814`.
+- Founder merge by `sapenov` at `2026-09-03T14:20:30Z` produced
+  `8318f61eadf689f9b8a72f673cc68cd083dc7831`.
+- The merge parents are `e9c8f585809c15d2464b3d45bc2ce26d716c8673` and the approved head
+  `a85e3676367978d5964f0be29e802e8d51f4ed24`.
+
+These records close the PROD-000 authorization prerequisite. They do not imply approval of
+PROD-001.
+
+## 7. Provenance
 
 - Founder-authored source moved byte-identically remains founder-authored source.
 - The PROD-000 agent-authored T0 floor remains agent-authored T0 with its recorded founder-source
@@ -145,17 +177,17 @@ founder review. CodeQL is pending the PR run. No clean-analyzer claim is made.
 - Founder supervision, review, approval, and merge do not convert agent-authored or
   agent-transformed bytes into founder-authored bytes.
 
-## 7. Non-claims
+## 8. Non-claims
 
 This extraction proves package separation and preserved isolation-harness behavior only. It does
 not prove runtime hook installation, complete interception, agent non-bypassability, same-process
 store or key protection, deployed fail-closed behavior, or any other ADR-14 runtime-integration
 claim. RUNTIME-003 and RUNTIME-004 remain inactive until PROD-001 is founder-reviewed and merged.
 
-## 8. Required review and merge gate
+## 9. Required review and merge gate
 
-- [ ] non-author cross-model review recorded and satisfied
-- [ ] independent-human review recorded
+- [x] non-author cross-model review recorded and satisfied
+- [x] independent-human review recorded
 - [ ] founder byte-level relocation, provenance, and semantic-identity review
 - [ ] founder disposition of every analyzer finding and diagnostic
 - [ ] at least three required analyzer engines run on the actual final head

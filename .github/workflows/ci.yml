@@ -108,5 +108,5 @@ jobs:
           rust-version: "1.94.1"
           manifest-path: Cargo.toml
           command: check
-          arguments: --config deny.toml --locked
+          arguments: --config deny.toml --locked --workspace
           command-arguments: --show-stats
