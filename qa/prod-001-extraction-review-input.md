@@ -1,7 +1,8 @@
 # PROD-001 core-extraction review input
 
-**Status:** implementation complete; cross-model and independent-human gates satisfied; founder
-review and final-head gates pending
+**Status:** implementation and founder review complete for pre-disposition head
+`60bc229dedbc72d8d3f8b262f44d897a8a0342ac`;
+final-head checks, approvals, and merge pending
 
 **Base commit:** `8318f61eadf689f9b8a72f673cc68cd083dc7831`
 
@@ -22,9 +23,14 @@ review and final-head gates pending
 **Independent-human review:** `qa/prod-001-independent-human-review.md`, SHA-256
 `7183229f62355a4d06d7a2177654d74b62542e9b3bfccdd5ce324522b6a83c54`
 
-This is evidence for review, not approval. It records an agent-assisted structural extraction under
-ADR-13 and Amendments A and B. The founder must independently verify the byte-identity proof,
-dispose of every analyzer result, approve the final reviewed head, and perform the merge.
+**Founder review:** `qa/prod-001-founder-review.md`, SHA-256
+`dce2c262290dc5a1e35712e8b3367bc39f7f6ff6c2e3a6ce20350cc84dfe23c8`
+
+This remains evidence, not merge authorization. It records an agent-assisted structural extraction
+under ADR-13 and Amendments A and B. The founder independently verified the byte-identity proof and
+disposed of every analyzer result at pre-disposition head
+`60bc229dedbc72d8d3f8b262f44d897a8a0342ac`. Committing the signed record creates a new head that
+must pass the remaining exact-head checks and approvals before the founder may merge.
 
 ## 1. Bounded result
 
@@ -188,8 +194,8 @@ claim. RUNTIME-003 and RUNTIME-004 remain inactive until PROD-001 is founder-rev
 
 - [x] non-author cross-model review recorded and satisfied
 - [x] independent-human review recorded
-- [ ] founder byte-level relocation, provenance, and semantic-identity review
-- [ ] founder disposition of every analyzer finding and diagnostic
+- [x] founder byte-level relocation, provenance, and semantic-identity review
+- [x] founder disposition of every analyzer finding and diagnostic
 - [ ] at least three required analyzer engines run on the actual final head
 - [ ] required checks pass on the actual final head
 - [ ] independent GitHub approval of the actual final head
