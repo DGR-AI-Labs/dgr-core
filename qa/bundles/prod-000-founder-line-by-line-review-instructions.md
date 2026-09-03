@@ -403,8 +403,8 @@ Verified evidence to inspect:
 - CodeQL CLI `2.25.5`, Rust queries `0.1.35`;
 - 21 of 21 Rust files extracted;
 - nine hard-coded cryptographic-value results:
-  - `tests/bypass-rust/tests/val_002_fixtures.rs`: lines 126, 152, 169, 186, 204, 222, 339;
-  - `tests/bypass-rust/tests/val_004_fixtures.rs`: lines 136 and 143.
+  - `tests/bypass-rust/src/val_002_fixtures.rs`: lines 126, 152, 169, 186, 204, 222, 339;
+  - `tests/bypass-rust/src/val_004_fixtures.rs`: lines 136 and 143.
 
 For each location, inspect the value, its use, and whether it is deterministic test-fixture material
 or a production secret. Then disposition the nine results as a group only if the same rationale
@@ -419,8 +419,9 @@ actually applies to all nine. The rationale must address:
 ### 8.3 CodeQL diagnostics and evidence binding
 
 Inspect the complete SARIF `invocations[0].toolExecutionNotifications` array, not just its nine
-results. The recorded count is 99 entries: 67 `note`, 32 without a level, and zero warning/error
-notifications. Confirm those counts from the canonical file and inspect the notification messages.
+results. The recorded count is 99 entries: 67 at level `note`, 32 at level `none`, and zero
+warning/error notifications. Confirm those counts from the canonical file and inspect the
+notification messages.
 
 Record a decision and rationale for:
 
