@@ -6,9 +6,9 @@ An experiment in runtime decision governance for AI agents.
 
 Early work-in-progress. **Experimental.** **Not production-ready.** No guarantees of any kind.
 
-This repository is in **Phase 1 — enforcement proof**. It contains an isolated Rust conformance
-harness and founder-authored enforcement surfaces for the currently active attack cases. The
-active suite is expected green in CI, but this remains experimental proof code—not a deployed
+This repository is in **Phase 1 — enforcement proof**. Its root Rust package is the extracted,
+Git-dependency-only `dgr-core` library, and `tests/bypass-rust` is its isolated conformance harness.
+The active suite is expected green in CI, but this remains experimental proof code—not a deployed
 runtime gate—and nothing here should be relied upon as production enforcement.
 
 ## What's here
@@ -16,8 +16,10 @@ runtime gate—and nothing here should be relied upon as production enforcement.
 - [`.specify/memory/constitution.md`](.specify/memory/constitution.md) — the binding governance
   document (source of truth).
 - [`specs/0001-enforcement-spec.md`](specs/0001-enforcement-spec.md) — a draft specification.
-- [`tests/bypass-rust/`](tests/bypass-rust/T0-BOUNDARY.md) — the canonical isolated Rust
-  conformance harness and its T0 ownership boundary.
+- [`src/lib.rs`](src/lib.rs) — the extracted Rust enforcement library; Git dependency only and not
+  published to crates.io.
+- [`tests/bypass-rust/`](tests/bypass-rust/T0-BOUNDARY.md) — the retained canonical isolated Rust
+  conformance harness consuming the root library.
 - [`tests/bypass/`](tests/bypass/README.md) — the retained legacy Node scaffold; it is not the
   canonical CI gate.
 - [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) — short guidance for agents working here.

@@ -108,12 +108,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "dgr-core"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "rusqlite",
+ "sha2",
+]
+
+[[package]]
 name = "dgr-core-bypass-harness"
 version = "0.0.0"
 dependencies = [
  "base64ct",
+ "dgr-core",
  "ed25519-dalek",
- "rusqlite",
  "sha2",
 ]
 
