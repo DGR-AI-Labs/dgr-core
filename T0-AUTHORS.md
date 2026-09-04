@@ -114,7 +114,7 @@ unchanged, which stays in source/human review scope. The full PROD-000 gate was 
 head `a85e3676367978d5964f0be29e802e8d51f4ed24` and founder-merged through PR #90 as merge commit
 `8318f61eadf689f9b8a72f673cc68cd083dc7831`.
 
-## PROD-001 extraction candidate
+## PROD-001 extraction — founder-merged
 
 PROD-001 moves the nine reviewed T0 files from `tests/bypass-rust/src/` to the root `src/` library
 without changing their bytes. The shared `RequiredOutcome`, `ProposedAction`, and
@@ -123,10 +123,16 @@ library; the harness re-exports the library definitions for unchanged conformanc
 attack registry, fixtures, adapter, observations, and tests remain T3 under `tests/bypass-rust/`.
 
 The extraction commit is agent-assisted structural work, not authorship of the moved enforcement
-bodies. Existing founder-authored source retains founder provenance; PROD-000 agent-authored and
-agent-transformed T0 retains that provenance; the PROD-001 commit is a relocation/wiring commit
-pending byte-identity review and founder merge. Extraction changes distributability and does not
-expand the bounded isolation claim.
+bodies. The complete PROD-001 gate was reviewed at final head
+`443abdca62e48a75d1706b31d91aff3049d90b69` and founder-merged through PR #91 as merge commit
+`f955e5a818d5810c95feebcd295e6c26c17c1468`.
+
+The four-way provenance distinction remains intact: existing founder-authored T0 retains founder
+provenance; PROD-000 agent-authored T0 retains agent authorship; PROD-000 agent-transformed T0
+retains its recorded agent transformation and founder-source provenance; and T3 harness material
+remains T3. Founder review, approval, and merge do not convert agent-authored or agent-transformed
+bytes into founder-authored bytes. Extraction changes distributability and does not expand the
+bounded isolation claim.
 
 ## Agent-authored supporting units
 

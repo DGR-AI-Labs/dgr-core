@@ -29,6 +29,10 @@ The following remain **T0, human-led, and review-gated once implemented**:
 - capability-token minting or verification;
 - the policy decision point;
 - the fail-closed runtime guard or native `before_tool_call` hook;
+- the trusted clock supplied to the guard;
+- the consumption-store and approval-store instantiation, including path selection and filesystem
+  permissions;
+- the translation of a product-level outcome into the runtime's own decision representation;
 - audit/hash-chain construction or verification; and
 - any implementation that can authorize or block a consequential action.
 

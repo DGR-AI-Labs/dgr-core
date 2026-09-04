@@ -72,6 +72,7 @@ Reproduction pattern:
 git show 8318f61eadf689f9b8a72f673cc68cd083dc7831:tests/bypass-rust/src/FILE.rs | sha256sum
 git show 91589759964f2a409960c6a21a5d16795f1d95a1:src/FILE.rs | sha256sum
 git show f1d17087d140b41750c1aeca032916bb4d2d90ae:src/FILE.rs | sha256sum
+git show 443abdca62e48a75d1706b31d91aff3049d90b69:src/FILE.rs | sha256sum
 git diff-tree --no-commit-id --name-status -r -M100% 91589759964f2a409960c6a21a5d16795f1d95a1
 ```
 
