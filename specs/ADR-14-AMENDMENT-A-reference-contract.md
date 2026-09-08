@@ -100,6 +100,11 @@ authorization boundaries, permissive fallback, policy changes, weakened tests, l
 adapter/packaging work, runtime evidence, deployment, or product claims. It does not activate
 RUNTIME-002 and does not authorize RUNTIME-003, RUNTIME-004, RUNTIME-005, or RUNTIME-006.
 
+This exclusion list is a public summary; the active private Amendment A §A3 remains controlling.
+In particular, restrictive same-user permissions are not isolation from the process that owns
+them, and no finite route-coverage matrix supports a universal or unqualified non-bypassability
+claim.
+
 This reference contract and Constitution 3.0.0 do not prove live OpenClaw hook installation,
 exactly-once interception, protected-tool coverage, route-around resistance, store/key/clock
 integrity, deployed ATK-03/06/10 survival, operator resistance, or any other runtime property.

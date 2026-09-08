@@ -53,6 +53,10 @@ Record a founder disposition for every finding, warning, note, error, skipped ru
 diagnostic, and coverage gap from Semgrep, CodeQL, cargo-deny, and all required host-language and
 dependency analyzers. `No code finding` does not dispose of diagnostic or coverage evidence.
 
+Start from `qa/runtime-002-known-analyzer-dispositions.md`. Carry a still-applicable prior founder
+disposition forward explicitly; do not silently treat it as a new finding or as resolved. Reopen it
+if its source, reachability, threat context, or risk changes.
+
 | Analyzer item | Disposition | Founder rationale | Required remediation or claim bound |
 |---|---|---|---|
 | `[REQUIRED — one row per item, or an exact indexed disposition attachment]` |  |  |  |

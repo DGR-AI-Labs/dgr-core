@@ -114,9 +114,10 @@ core is **permitted**, and its authoring remains **human-led T0 work** under Pri
   `{FOUNDER-AUTHORS}` units defined in the published CORE-002 design. These are **T0** and
   follow Principle 8's human-led process without exception.
 - **Default authorship rule:** no agent may author, complete, refactor, or stub-with-working-logic
-  any T0 enforcement unit. Agents may author tests, harness/adapters, fixtures, and specs within
-  their assigned tiers and may perform review-only passes over T0 code. The sole prospective
-  exception to this default is the exact RUNTIME-002 exception below; it does not reclassify T0.
+  any T0 enforcement unit. Agents may author tests, harness/adapters, fixtures, and specs only when
+  those materials are classified T2/T3, and may perform review-only passes over T0 code. The sole
+  prospective exception to this default is the exact RUNTIME-002 exception below; it does not
+  reclassify T0.
 
 > **RUNTIME-002 supervised-agent exception.** The default prohibition on agent-authored T0 remains.
 > An agent may author only the RUNTIME-002 T0 regions enumerated by the active, commit-and-blob-pinned
@@ -158,8 +159,10 @@ amend this document and merge its own change.
 - **3.0.0 — 2026-09-08 (ADR-14-AMENDMENT-A):** Principle 9 redefined its otherwise absolute T0
   authorship prohibition to permit only the manifest-scoped RUNTIME-002 supervised-agent exception
   pinned by `specs/ADR-14-AMENDMENT-A-reference-contract.md`. Principle 8 and every T0 review,
-  evidence, approval, and founder-only merge requirement remain unchanged. Authored by agent for
-  review; effective only upon founder merge.
+  evidence, approval, and founder-only merge requirement remain unchanged. The default rule also
+  names refactoring explicitly and permits review-only passes over T0 regardless of provenance;
+  neither adjustment authorizes T0 authorship, and the T2/T3 ceiling on ordinary agent-authored
+  support remains. Authored by agent for review; effective only upon founder merge.
 - **2.0.0 — 2026-08-10 (FND-13):** Principle 9 advanced Phase 0 → Phase 1. Decision core moves
   from forbidden to permitted, founder-authored under the unchanged Principle 8 T0 process.
   Principles 1–8 unchanged. Authored by agent for review; merged by human.
