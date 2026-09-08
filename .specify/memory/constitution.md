@@ -10,9 +10,9 @@
 > README reference this document; they do not override it.
 
 - **Ratified:** 2026-06-16
-- **Version:** 2.0.0 (semver: MAJOR = principle removed/redefined, MINOR = principle added,
+- **Version:** 3.0.0 (semver: MAJOR = principle removed/redefined, MINOR = principle added,
   PATCH = wording/clarification)
-- **Amended:** 2026-08-10 (Principle 9: Phase 0 → Phase 1; see amendment log)
+- **Amended:** 2026-09-08 (Principle 9: bounded RUNTIME-002 authorship exception; see amendment log)
 - **Current phase:** Phase 1 — enforcement proof (see Principle 9)
 
 ---
@@ -107,16 +107,28 @@ treat the work as the *higher* (more critical) tier.
 ## Principle 9 — Current phase: Phase 1 (enforcement proof)
 
 This repository is in **Phase 1**: authoring the proof that DGR is non-bypassable. The decision
-core is **permitted**, and its authoring is **human-led (founder-authored) T0 work** under
-Principle 8.
+core is **permitted**, and its authoring remains **human-led T0 work** under Principle 8.
 
 - **Permitted, founder-authored:** the enforcement guard, capability-token verification, the
   fail-closed decision path, single-use consumption, and the consumption-store interface — the
   `{FOUNDER-AUTHORS}` units defined in the published CORE-002 design. These are **T0** and
   follow Principle 8's human-led process without exception.
-- **Still prohibited:** no agent may author, complete, or stub-with-working-logic any T0
-  enforcement unit. Agents may author tests, harness/adapters, fixtures, and specs (T2/T3), and
-  may perform **review-only** passes over founder-authored T0 code — never author it.
+- **Default authorship rule:** no agent may author, complete, refactor, or stub-with-working-logic
+  any T0 enforcement unit. Agents may author tests, harness/adapters, fixtures, and specs within
+  their assigned tiers and may perform review-only passes over T0 code. The sole prospective
+  exception to this default is the exact RUNTIME-002 exception below; it does not reclassify T0.
+
+> **RUNTIME-002 supervised-agent exception.** The default prohibition on agent-authored T0 remains.
+> An agent may author only the RUNTIME-002 T0 regions enumerated by the active, commit-and-blob-pinned
+> ADR-14 Amendment A and a founder-approved exact-path pre-authoring manifest. The founder remains
+> design and scope authority, every listed T0 gate remains mandatory, the agent may not approve or
+> merge its work, and any unlisted consequential change is prohibited. This exception does not
+> authorize the later adapter, runtime evidence, deployment, or claims.
+
+- **Exception prerequisites:** the public-safe authority pointer is
+  `specs/ADR-14-AMENDMENT-A-reference-contract.md`. The exception is inoperative until every
+  prerequisite named there is complete, including explicit backlog activation and founder approval
+  of the exact-path pre-authoring manifest. A pointer alone never authorizes implementation.
 - The bypass suite transitions from **red-by-absence** to **green-by-authored-enforcement**,
   one attack at a time, as the founder implements each unit. Green for an attack means *real,
   reviewed enforcement exists for it* — **never** achieved by weakening a test or bypassing the
@@ -143,6 +155,11 @@ amend this document and merge its own change.
 
 ## Amendment log
 
+- **3.0.0 — 2026-09-08 (ADR-14-AMENDMENT-A):** Principle 9 redefined its otherwise absolute T0
+  authorship prohibition to permit only the manifest-scoped RUNTIME-002 supervised-agent exception
+  pinned by `specs/ADR-14-AMENDMENT-A-reference-contract.md`. Principle 8 and every T0 review,
+  evidence, approval, and founder-only merge requirement remain unchanged. Authored by agent for
+  review; effective only upon founder merge.
 - **2.0.0 — 2026-08-10 (FND-13):** Principle 9 advanced Phase 0 → Phase 1. Decision core moves
   from forbidden to permitted, founder-authored under the unchanged Principle 8 T0 process.
   Principles 1–8 unchanged. Authored by agent for review; merged by human.
