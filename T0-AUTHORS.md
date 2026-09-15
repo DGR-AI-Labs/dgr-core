@@ -1,11 +1,9 @@
 # T0 authorship boundary
 
-This file is the ownership and authorship map for the current enforcement core and its bounded
-exceptions. The binding repository constitution classifies every consequential authorization path
-as T0 and human-led. The completed PROD-000 exception remains bounded to ADR-13 Amendment B.
-Constitution 3.0.0 adds a distinct, prospective RUNTIME-002 exception; it remains inoperative until
-every prerequisite below is complete. Neither exception reclassifies T0 or alters historical
-authorship.
+This file is the ownership map for CORE-002, CORE-003, and CORE-004. The binding repository
+constitution classifies every consequential authorization path as T0 and human-led. The sole
+current agent-authorship exception is the bounded PROD-000 change authorized by ADR-13 Amendment B
+and described below; it does not reclassify T0 or alter historical authorship.
 
 The CORE-003 boundary contract is recorded in
 `tests/bypass-rust/T0-BOUNDARY.md` and the ATK-07 section of
@@ -172,48 +170,10 @@ The supporting portions of these units must not absorb token verification,
 decision policy, error-to-deny logic, consumption, audit recording, or any real
 tool integration.
 
-## RUNTIME-002 supervised-agent exception — implementation not yet authorized
-
-Constitution 3.0.0 creates a narrow exception for the RUNTIME-002 T0 responsibilities summarized
-in `specs/ADR-14-AMENDMENT-A-reference-contract.md`. It is separate from ADR-13 Amendment B, which
-remains PROD-000-only. The RUNTIME-002 exception covers only founder-approved, manifest-enumerated
-regions needed for:
-
-1. stable OpenClaw tool and authorization-relevant argument binding;
-2. the minimal same-process Rust host-language contract;
-3. founder-selected lifecycle, compatibility, timeout, panic, shutdown, and failure behavior;
-4. founder-selected trusted ports and state lifecycle;
-5. frozen-profile startup enforcement; and
-6. strictly necessary T0 wiring and evidence records.
-
-No path, file, symbol, dependency, generated artifact, test, or consequential region is implicitly
-authorized. Before authoring, a second founder gate must approve an exact-path pre-authoring
-manifest that freezes all founder-owned design and trust decisions, paths, symbols, baseline
-identities, expected changes, tests, analyzers, reviewers, and hard stops. An unresolved decision,
-contradictory authority, or unlisted consequential path stops work.
-
-Every changed region must retain one truthful provenance class: unchanged founder source,
-agent-modified founder source, existing ADR-13 Amendment-B agent-authored T0, new RUNTIME-002
-agent-authored T0, or T3. Founder supervision, review, approval, or merge does not convert an
-agent-authored or agent-transformed region into founder-authored work.
-
-The exception excludes Hermes, unrestricted tool routes, out-of-process or second-authority work,
-permissive fallback, policy changes, weakened tests, later mechanical adapter/packaging work,
-runtime evidence, deployment, and product claims. It does not activate RUNTIME-002. Implementation
-remains prohibited until the canonical backlog is explicitly activated and the founder approves
-the exact pre-authoring manifest.
-
-Any later manifest-scoped T0 branch must pass the complete exact-final-head gate: adversarial
-tests; Semgrep, CodeQL, and cargo-deny plus language-appropriate host-code/dependency coverage;
-disposition of every finding and diagnostic; non-author cross-model review; independent-human
-review; founder line-by-line provenance, semantic, and finding review; required checks on the
-actual final head; founder GitHub approval of that exact head; and founder-only merge.
-
 ## Required change process
 
 T0 implementation remains subject to the complete T0 process: founder design authority and final
 disposition, human review, adversarial testing, cross-model review, and at least three SAST/SCA
 tools. Agents may review existing founder code against
 `specs/CORE-002-guard-review-checklist.md`; they may edit T0 only within an explicit active
-authorship exception, within its founder-approved exact-path manifest, and only after every
-prerequisite gate is satisfied.
+authorship exception such as Amendment B and only after every prerequisite gate is satisfied.
