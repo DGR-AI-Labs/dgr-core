@@ -48,11 +48,13 @@ the T0-review precondition for CORE-005 to wire the currently active
 conformance suite into required CI. It does not activate deferred attacks or
 broaden the isolation claim.
 
-Agents must not make a test pass by weakening or changing an expectation. Outside ADR-13
-Amendment B's exact PROD-000 scope, they also must not add or change enforcement behavior in the
-founder-owned units. If an attack requires unresolved gate internals or a broader T0 change, record
-the dependency and stop. All consequential changes remain subject to the T0 process recorded in the
-repository constitution.
+Agents must not make a test pass by weakening or changing an expectation. ADR-13 Amendment B
+remains limited to its exact PROD-000 scope. The separate RUNTIME-002 exception does not authorize
+changes in this harness unless a consequential region is expressly named in its later
+founder-approved exact-path manifest. Outside an operative, manifest-scoped exception, agents must
+not add or change enforcement behavior in founder-owned units. If an attack requires unresolved
+gate internals or a broader T0 change, record the dependency and stop. All consequential changes
+remain subject to the T0 process recorded in the repository constitution.
 
 ## PROD-000 supervised-agent exception
 
@@ -93,6 +95,19 @@ RUNTIME-003/004, not simulated by this isolation harness.
 enforcement floor. PROD-000 and its three-engine evidence cover the Rust T0/T3 partition. The
 JavaScript scaffold neither competes with nor bypasses the Rust isolation harness, and the
 Rust-only SAST evidence does not claim security coverage for unrelated JavaScript.
+
+## RUNTIME-002 exception does not create a harness authority
+
+The public-safe RUNTIME-002 authority identity and scope summary are pinned by
+`specs/ADR-14-AMENDMENT-A-reference-contract.md`. Constitution 3.0.0 permits only future T0 regions
+named in a founder-approved exact-path pre-authoring manifest after every prerequisite is complete.
+It does not designate this conformance harness, its probe, adapter, fixtures, or attack registry as
+a production hook, alternate gate, policy authority, or effectful tool route.
+
+The retained harness may test a future manifest-scoped boundary, but it may not decide trust
+policy, substitute for live OpenClaw installation evidence, or establish interception,
+non-bypassability, store/key protection, deployment, or product claims. ADR-13 Amendment B remains
+PROD-000-only and cannot be reused as RUNTIME-002 implementation authority.
 
 ## CORE-004 ownership and bounded claim
 
