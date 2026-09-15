@@ -11,16 +11,14 @@ or paraphrase its principles into code or docs — link to them.
 
 ## Current-phase guardrail (read every time)
 
-> **Phase 1 — enforcement proof.** Agent-authored T0 is prohibited by default. The only
-> future-facing exception is the exact manifest-scoped RUNTIME-002 work pinned by
-> [`specs/ADR-14-AMENDMENT-A-reference-contract.md`](specs/ADR-14-AMENDMENT-A-reference-contract.md)
-> and tracked in [`T0-AUTHORS.md`](T0-AUTHORS.md); it is inoperative until every listed prerequisite
-> is complete. Agents may not author, complete, refactor, or patch T0 outside an operative exception.
-> Hold the FS-wedge scope fence and never weaken a bypass test to obtain green.
+> **Phase 1 — enforcement proof.** Founder-authored T0 enforcement is permitted only in the
+> units named by [`T0-AUTHORS.md`](T0-AUTHORS.md). Agents may review those units but may
+> not author, complete, refactor, or patch their enforcement logic. Hold the FS-wedge scope
+> fence and never weaken a bypass test to obtain green.
 
 Tests, harnesses, fixtures, specs, and tooling may support the proof within their assigned
-tier. A green attack case must come from real reviewed enforcement, not a bypass or reclassified
-expectation.
+tier. A green attack case must come from real founder-authored enforcement, not a bypass or
+reclassified expectation.
 
 ## Consequence-tier rules (Constitution P8)
 
