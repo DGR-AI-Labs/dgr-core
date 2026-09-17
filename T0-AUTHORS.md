@@ -217,3 +217,26 @@ tools. Agents may review existing founder code against
 `specs/CORE-002-guard-review-checklist.md`; they may edit T0 only within an explicit active
 authorship exception, within its founder-approved exact-path manifest, and only after every
 prerequisite gate is satisfied.
+
+## Separate offline simulation issuer exception — implementation not authorized
+
+Constitution 4.0.0 proposes the separately gated issuer exception pinned by
+`specs/ADR-14-AMENDMENT-B-reference-contract.md`. ADR-14 Amendment B is distinct from both the
+RUNTIME-002 boundary's Amendment A and the PROD-000-only ADR-13 Amendment B. It authorizes no
+path implicitly and cannot serve as a runtime decision service, daemon or agent-callable route.
+
+Consequential request acceptance, confirmation, custody/unlock, key/time/nonce selection and
+issuance logic remains T0. Any later agent-written or agent-transformed issuer region retains
+agent provenance; human review or merge does not make it founder-authored. Unchanged founder
+source and existing exception-governed code retain their established provenance. Passive T3
+fixtures cannot select operational policy or turn public test keys into real credentials.
+
+No signer source is introduced here. Public constitutional adoption, explicit bounded signer
+backlog activation and founder approval of an exact file/symbol/dependency/test/analyzer manifest
+must all precede authoring. The complete independent human, nonauthor cross-model, adversarial-test,
+three-tool/language-appropriate analysis, finding-disposition, final-head founder approval and
+founder-only merge gates remain. Existing attacks and expected outcomes are unchanged.
+
+The backup provisioning hold remains. Key creation, token issuance, runtime integration,
+deployment and claims require their own applicable authorizations; this documentation change
+supplies none of them. Unresolved authority, custody or implementation decisions stop dependent work.
