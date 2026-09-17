@@ -10,9 +10,9 @@
 > README reference this document; they do not override it.
 
 - **Ratified:** 2026-06-16
-- **Version:** 3.0.0 (semver: MAJOR = principle removed/redefined, MINOR = principle added,
+- **Version:** 4.0.0 (semver: MAJOR = principle removed/redefined, MINOR = principle added,
   PATCH = wording/clarification)
-- **Amended:** 2026-09-08 (Principle 9: bounded RUNTIME-002 authorship exception; see amendment log)
+- **Amended:** 2026-09-17 (proposed Principle 9 issuer exception; effective on founder merge; see amendment log)
 - **Current phase:** Phase 1 — enforcement proof (see Principle 9)
 
 ---
@@ -115,9 +115,10 @@ core is **permitted**, and its authoring remains **human-led T0 work** under Pri
   follow Principle 8's human-led process without exception.
 - **Default authorship rule:** no agent may author, complete, refactor, or stub-with-working-logic
   any T0 enforcement unit. Agents may author tests, harness/adapters, fixtures, and specs only when
-  those materials are classified T2/T3, and may perform review-only passes over T0 code. The sole
-  prospective exception to this default is the exact RUNTIME-002 exception below; it does not
-  reclassify T0.
+  those materials are classified T2/T3, and may perform review-only passes over T0 code. The only
+  prospective exceptions to this default are the exact RUNTIME-002 boundary exception and the
+  separate offline simulation issuer exception below; neither reclassifies T0 or authorizes
+  unlisted responsibilities.
 
 > **RUNTIME-002 supervised-agent exception.** The default prohibition on agent-authored T0 remains.
 > An agent may author only the RUNTIME-002 T0 regions enumerated by the active, commit-and-blob-pinned
@@ -130,6 +131,20 @@ core is **permitted**, and its authoring remains **human-led T0 work** under Pri
   `specs/ADR-14-AMENDMENT-A-reference-contract.md`. The exception is inoperative until every
   prerequisite named there is complete, including explicit backlog activation and founder approval
   of the exact-path pre-authoring manifest. A pointer alone never authorizes implementation.
+> **Offline simulation issuer supervised-agent exception.** The default prohibition on agent-authored
+> T0 remains. An agent may author only the separate operator-invoked, offline simulation issuer T0
+> regions enumerated by active, commit-and-blob-pinned ADR-14 Amendment B and a founder-approved
+> exact-path signer manifest. The founder retains design, scope and trust-policy authority; all T0
+> review/evidence gates and founder-only approval/merge remain mandatory. The exception does not
+> authorize a runtime decision boundary, transport, daemon, production issuer, unlisted key-management
+> functionality, key provisioning, token issuance, deployment or claims. Any unresolved prerequisite
+> or unlisted consequential change is prohibited.
+
+- **Separate issuer prerequisites:** `specs/ADR-14-AMENDMENT-B-reference-contract.md` pins the private
+  authority and ordered prerequisites, including public constitutional adoption, explicit bounded
+  signer backlog activation and founder approval of the exact signer manifest. Until all are
+  complete, signer T0 authoring remains prohibited. Amendment A's prerequisites remain independent.
+
 - The bypass suite transitions from **red-by-absence** to **green-by-authored-enforcement**,
   one attack at a time, as the founder implements each unit. Green for an attack means *real,
   reviewed enforcement exists for it* — **never** achieved by weakening a test or bypassing the
@@ -156,6 +171,12 @@ amend this document and merge its own change.
 
 ## Amendment log
 
+- **4.0.0 — proposed 2026-09-17 (ADR-14-AMENDMENT-B):** Principle 9 adds a separate, narrowly
+  manifested offline simulation issuer authorship exception and updates the formerly exclusive
+  default-rule wording. Amendment A, Principle 8 and all independent-review, adversarial-test,
+  analyzer, provenance, exact-head approval and founder-only merge gates remain unchanged.
+  Agent-drafted for review; effective only on founder merge. No signer implementation, provisioning,
+  issuance, deployment or runtime claim is authorized by constitutional adoption alone.
 - **3.0.0 — 2026-09-08 (ADR-14-AMENDMENT-A):** Principle 9 redefined its otherwise absolute T0
   authorship prohibition to permit only the manifest-scoped RUNTIME-002 supervised-agent exception
   pinned by `specs/ADR-14-AMENDMENT-A-reference-contract.md`. Principle 8 and every T0 review,
