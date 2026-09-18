@@ -12,6 +12,31 @@ use std::{
 use zeroize::{Zeroize, Zeroizing};
 
 type Result<T> = std::result::Result<T, Failure>;
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Operation {
+    Acl,
+    Write,
+    SyncFile,
+    SyncDirectory,
+    Link,
+    OpenInput,
+    SetTermios,
+}
+#[cfg(test)]
+#[derive(Clone, Copy)]
+pub(super) enum Inject {
+    Error(i32),
+    Limit(usize),
+    Zero,
+    AfterLinkError(i32),
+    AfterLinkPanic,
+}
+#[cfg(test)]
+fn injection(operation: Operation) -> Option<Inject> {
+    tests::injection(operation)
+}
+
 fn errno() -> i32 {
     io::Error::last_os_error().raw_os_error().unwrap_or(0)
 }
@@ -41,13 +66,29 @@ fn no_acl(fd: RawFd, directory: bool) -> Result<()> {
         &[c"system.posix_acl_access"]
     };
     for name in names {
-        // SAFETY: readable live fd, static NUL-terminated name, null/zero requests size only.
-        let n = unsafe { libc::fgetxattr(fd, name.as_ptr(), std::ptr::null_mut(), 0) };
-        if n >= 0 || errno() != libc::ENODATA {
+        if acl_size(fd, name) != Err(libc::ENODATA) {
             return Err(Failure::Custody);
         }
     }
     Ok(())
+}
+fn acl_size(fd: RawFd, name: &CStr) -> std::result::Result<usize, i32> {
+    #[cfg(test)]
+    if let Some(action) = injection(Operation::Acl) {
+        return match action {
+            Inject::Error(e) => Err(e),
+            Inject::Zero => Ok(0),
+            Inject::Limit(n) => Ok(n),
+            _ => panic!("invalid ACL script"),
+        };
+    }
+    // SAFETY: held readable fd, static NUL-terminated name; null/zero requests size only.
+    let n = unsafe { libc::fgetxattr(fd, name.as_ptr(), std::ptr::null_mut(), 0) };
+    if n < 0 {
+        Err(errno())
+    } else {
+        usize::try_from(n).map_err(|_| libc::EOVERFLOW)
+    }
 }
 fn mount_id(fd: RawFd) -> Result<u64> {
     let mut value = std::mem::MaybeUninit::<libc::statx>::uninit();
@@ -505,6 +546,13 @@ struct OpenHow {
     resolve: u64,
 }
 fn inside(root: RawFd, name: &CStr) -> Result<OwnedFd> {
+    #[cfg(test)]
+    if let Some(action) = injection(Operation::OpenInput) {
+        match action {
+            Inject::Error(_) => return Err(Failure::Custody),
+            _ => panic!("invalid open script"),
+        }
+    }
     let how = OpenHow {
         flags: (libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK) as u64,
         mode: 0,
@@ -583,14 +631,45 @@ fn namespace(proc: RawFd, name: &CStr) -> Result<(u64, u64)> {
     let s = stat(fd.as_raw_fd())?;
     Ok((s.st_dev, s.st_ino))
 }
-fn trusted_proc(uid: u32) -> Result<Held> {
-    let held = Held::new(open_dir(libc::AT_FDCWD, c"/proc")?, true)?;
-    filesystem(held.fd.as_raw_fd(), 0x9fa0)?;
+// Approved P1: kernel procfs descriptors are a separate class, not an ACL-error fallback.
+struct ProcDescriptor {
+    fd: OwnedFd,
+    metadata: Metadata,
+}
+impl ProcDescriptor {
+    fn recheck(&self, uid: u32) -> Result<()> {
+        let now = Metadata::read(self.fd.as_raw_fd())?;
+        if now.dev != self.metadata.dev
+            || now.ino != self.metadata.ino
+            || now.mount != self.metadata.mount
+            || now.mode != self.metadata.mode
+            || now.uid != self.metadata.uid
+            || now.gid != self.metadata.gid
+        {
+            return Err(Failure::Launch);
+        }
+        validate_proc(self.fd.as_raw_fd(), &now, uid)
+    }
+}
+fn trusted_proc(uid: u32) -> Result<ProcDescriptor> {
+    let fd = open_dir(libc::AT_FDCWD, c"/proc")?;
+    let metadata = Metadata::read(fd.as_raw_fd())?;
+    validate_proc(fd.as_raw_fd(), &metadata, uid)?;
+    Ok(ProcDescriptor { fd, metadata })
+}
+fn validate_proc(fd: RawFd, metadata: &Metadata, uid: u32) -> Result<()> {
+    if metadata.mode & libc::S_IFMT != libc::S_IFDIR
+        || metadata.uid != 0
+        || metadata.mode & 0o6022 != 0
+    {
+        return Err(Failure::Launch);
+    }
+    filesystem(fd, 0x9fa0)?;
     let mut target = [0_u8; 32];
     // SAFETY: fixed proc link, bounded writable buffer; no NUL termination assumed.
     let n = unsafe {
         libc::readlinkat(
-            held.fd.as_raw_fd(),
+            fd,
             c"self".as_ptr(),
             target.as_mut_ptr().cast(),
             target.len(),
@@ -608,7 +687,7 @@ fn trusted_proc(uid: u32) -> Result<Held> {
     let self_fd = owned(
         unsafe {
             libc::openat(
-                held.fd.as_raw_fd(),
+                fd,
                 c"self".as_ptr(),
                 libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
             )
@@ -618,13 +697,13 @@ fn trusted_proc(uid: u32) -> Result<Held> {
     if stat(self_fd.as_raw_fd())?.st_uid != uid {
         return Err(Failure::Launch);
     }
-    Ok(held)
+    Ok(())
 }
 pub struct CustodyInputs {
     pub config: ApprovedOperatorConfig,
     launch: Snapshot,
     launch_chain: Vec<Held>,
-    proc: Held,
+    proc: ProcDescriptor,
     custody_chain: Vec<Held>,
     output_chain: Vec<Held>,
     pub registry: Snapshot,
@@ -721,6 +800,7 @@ impl CustodyInputs {
         for snapshot in [&self.launch, &self.registry, &self.profile, &self.envelope] {
             snapshot.held.recheck()?;
         }
+        self.proc.recheck(self.config.uid)?;
         // Held snapshots are immutable; metadata and anchored hashes were checked at capture.
         if namespace(self.proc.fd.as_raw_fd(), c"self/ns/mnt")? != self.config.mount_ns
             || namespace(self.proc.fd.as_raw_fd(), c"self/ns/user")? != self.config.user_ns
@@ -738,8 +818,8 @@ pub fn verify_envelope_binding(bytes: &[u8], expected: &[u8; 32]) -> Result<()> 
 }
 fn envelope_shape(b: &[u8]) -> Result<()> {
     if b.len() != 214
-        || &b[..21] != b"age-encryption.org/v1\n"
-        || &b[21..32] != b"-> scrypt "
+        || &b[..22] != b"age-encryption.org/v1\n"
+        || &b[22..32] != b"-> scrypt "
         || &b[54..58] != b" 18\n"
         || b[101] != b'\n'
         || &b[102..106] != b"--- "
@@ -781,6 +861,21 @@ pub fn unlock_once(
     Ok(ed25519_dalek::SigningKey::from_bytes(&seed))
 }
 
+fn set_termios(fd: RawFd, value: &libc::termios) -> Result<()> {
+    #[cfg(test)]
+    if let Some(action) = injection(Operation::SetTermios) {
+        match action {
+            Inject::Error(_) => return Err(Failure::Terminal),
+            _ => panic!("invalid termios script"),
+        }
+    }
+    // SAFETY: held terminal descriptor and initialized termios; synchronous copy by libc.
+    if unsafe { libc::tcsetattr(fd, libc::TCSANOW, value) } != 0 {
+        Err(Failure::Terminal)
+    } else {
+        Ok(())
+    }
+}
 struct TerminalSession {
     fd: Option<OwnedFd>,
     signal: Option<OwnedFd>,
@@ -818,7 +913,7 @@ impl TerminalSession {
             return Err(Failure::Terminal);
         }
         let mut original = std::mem::MaybeUninit::<libc::termios>::uninit();
-        let mut mask = std::mem::MaybeUninit::<libc::sigset_t>::uninit();
+        let mut mask = std::mem::MaybeUninit::<libc::sigset_t>::zeroed();
         // SAFETY: writable outputs initialized by successful calls; null set means query only.
         if unsafe { libc::tcgetattr(fd.as_raw_fd(), original.as_mut_ptr()) } != 0
             || unsafe {
@@ -889,7 +984,7 @@ impl TerminalSession {
         self.modified = true;
         // SAFETY: fd is the held controlling terminal; termios is initialized; flush queued input.
         if unsafe { libc::tcflush(self.raw()?, libc::TCIFLUSH) } != 0
-            || unsafe { libc::tcsetattr(self.raw()?, libc::TCSANOW, &raw) } != 0
+            || set_termios(self.raw()?, &raw).is_err()
         {
             return Err(Failure::Terminal);
         }
@@ -897,6 +992,7 @@ impl TerminalSession {
     }
     fn restore(&mut self) -> Result<()> {
         let mut failed = false;
+        let mut cancelled = false;
         if self.modified {
             let fd = self.raw()?;
             // SAFETY: held terminal and exact saved termios; attempt restore even if flush fails.
@@ -904,7 +1000,7 @@ impl TerminalSession {
                 failed = true
             }
             // SAFETY: original termios copied from this descriptor before modifications.
-            if unsafe { libc::tcsetattr(fd, libc::TCSANOW, &self.original) } != 0 {
+            if set_termios(fd, &self.original).is_err() {
                 failed = true
             }
             let mut now = std::mem::MaybeUninit::<libc::termios>::uninit();
@@ -925,7 +1021,9 @@ impl TerminalSession {
             let mut buffer = [0_u8; 128];
             loop {
                 match read_raw(signal.as_raw_fd(), &mut buffer) {
-                    Ok(128) => {}
+                    Ok(128) => {
+                        cancelled = true;
+                    }
                     Err(e) if e.raw_os_error() == Some(libc::EAGAIN) => break,
                     Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
                     _ => {
@@ -948,6 +1046,8 @@ impl TerminalSession {
         }
         if failed {
             Err(Failure::Terminal)
+        } else if cancelled {
+            Err(Failure::Cancelled)
         } else {
             Ok(())
         }
@@ -1049,6 +1149,34 @@ fn edit_input(buffer: &mut [u8; 1024], length: &mut usize, byte: u8, max: usize)
     }
     Ok(false)
 }
+fn read_terminal_line(
+    terminal: &TerminalSession,
+    maximum: usize,
+    deadline: Duration,
+    clock: &mut TrustedClock,
+) -> Result<Zeroizing<Vec<u8>>> {
+    let mut buffer = Zeroizing::new([0_u8; 1024]);
+    let mut length = 0;
+    let mut byte = Zeroizing::new([0_u8; 1]);
+    loop {
+        poll_read(
+            terminal.raw()?,
+            terminal.signal.as_ref().map(AsRawFd::as_raw_fd),
+            deadline,
+            clock,
+            Failure::Cancelled,
+        )?;
+        match read_raw(terminal.raw()?, &mut byte[..]) {
+            Ok(1) => {
+                if edit_input(&mut buffer, &mut length, byte[0], maximum)? {
+                    return Ok(Zeroizing::new(buffer[..length].to_vec()));
+                }
+            }
+            Err(e) if matches!(e.raw_os_error(), Some(libc::EAGAIN | libc::EINTR)) => {}
+            _ => return Err(Failure::Cancelled),
+        }
+    }
+}
 pub fn terminal_input(
     prompt: &[u8],
     maximum: usize,
@@ -1058,31 +1186,12 @@ pub fn terminal_input(
         return Err(Failure::Internal);
     }
     let mut terminal = TerminalSession::open()?;
-    let result = (|| {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let deadline = clock.deadline(60)?;
         terminal.write_prompt(prompt, deadline, clock)?;
-        let mut buffer = Zeroizing::new([0_u8; 1024]);
-        let mut length = 0;
-        let mut byte = Zeroizing::new([0_u8; 1]);
-        loop {
-            poll_read(
-                terminal.raw()?,
-                terminal.signal.as_ref().map(AsRawFd::as_raw_fd),
-                deadline,
-                clock,
-                Failure::Cancelled,
-            )?;
-            match read_raw(terminal.raw()?, &mut byte[..]) {
-                Ok(1) => {
-                    if edit_input(&mut buffer, &mut length, byte[0], maximum)? {
-                        return Ok(Zeroizing::new(buffer[..length].to_vec()));
-                    }
-                }
-                Err(e) if matches!(e.raw_os_error(), Some(libc::EAGAIN | libc::EINTR)) => {}
-                _ => return Err(Failure::Cancelled),
-            }
-        }
-    })();
+        read_terminal_line(&terminal, maximum, deadline, clock)
+    }))
+    .unwrap_or(Err(Failure::Internal));
     terminal.restore()?;
     result
 }
@@ -1116,40 +1225,64 @@ pub fn anonymous_output(inputs: &CustodyInputs) -> Result<OwnedFd> {
     no_acl(fd.as_raw_fd(), false).map_err(|_| Failure::Unpublished)?;
     Ok(fd)
 }
+fn output_write(fd: RawFd, bytes: &[u8]) -> io::Result<usize> {
+    #[cfg(test)]
+    let bytes = match injection(Operation::Write) {
+        Some(Inject::Error(e)) => return Err(io::Error::from_raw_os_error(e)),
+        Some(Inject::Zero) => return Ok(0),
+        Some(Inject::Limit(n)) => &bytes[..n.min(bytes.len())],
+        None => bytes,
+        _ => panic!("invalid write script"),
+    };
+    // SAFETY: held owned fd and immutable bounded slice; caller handles partial I/O.
+    let n = unsafe { libc::write(fd, bytes.as_ptr().cast(), bytes.len()) };
+    if n < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        usize::try_from(n).map_err(io::Error::other)
+    }
+}
 pub fn write_output(fd: &OwnedFd, bytes: &[u8]) -> Result<()> {
     let mut position = 0;
     while position < bytes.len() {
-        // SAFETY: live owned descriptor and immutable input slice; handles short writes explicitly.
-        let n = unsafe {
-            libc::write(
-                fd.as_raw_fd(),
-                bytes[position..].as_ptr().cast(),
-                bytes.len() - position,
-            )
-        };
-        if n < 0 {
-            if errno() == libc::EINTR {
-                continue;
-            }
-            return Err(Failure::Unpublished);
+        match output_write(fd.as_raw_fd(), &bytes[position..]) {
+            Ok(0) => return Err(Failure::Unpublished),
+            Ok(n) => position += n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(_) => return Err(Failure::Unpublished),
         }
-        if n == 0 {
-            return Err(Failure::Unpublished);
-        }
-        position += usize::try_from(n).map_err(|_| Failure::Unpublished)?;
     }
     Ok(())
 }
-pub fn sync_output(fd: &OwnedFd) -> Result<()> {
+fn sync_fd(fd: RawFd, directory: bool) -> Result<()> {
     loop {
-        // SAFETY: live descriptor; fsync has no pointer/ownership transfer.
-        if unsafe { libc::fsync(fd.as_raw_fd()) } == 0 {
+        #[cfg(test)]
+        if let Some(action) = injection(if directory {
+            Operation::SyncDirectory
+        } else {
+            Operation::SyncFile
+        }) {
+            match action {
+                Inject::Error(libc::EINTR) => continue,
+                Inject::Error(_) => return Err(Failure::Unpublished),
+                _ => panic!("invalid sync script"),
+            }
+        }
+        // SAFETY: live owned descriptor, no pointer arguments or ownership transfer.
+        if unsafe { libc::fsync(fd) } == 0 {
             return Ok(());
         }
         if errno() != libc::EINTR {
-            return Err(Failure::Unpublished);
+            return Err(if directory {
+                Failure::Uncertain
+            } else {
+                Failure::Unpublished
+            });
         }
     }
+}
+pub fn sync_output(fd: &OwnedFd) -> Result<()> {
+    sync_fd(fd.as_raw_fd(), false)
 }
 pub enum LinkFailure {
     Exists,
@@ -1163,9 +1296,19 @@ pub fn link_output(
     let source =
         cstring(&format!("self/fd/{}", fd.as_raw_fd())).map_err(|_| LinkFailure::Uncertain)?;
     let target = cstring(name).map_err(|_| LinkFailure::Uncertain)?;
+    #[cfg(test)]
+    let action = injection(Operation::Link);
+    #[cfg(test)]
+    if let Some(Inject::Error(e)) = action {
+        return Err(if e == libc::EEXIST {
+            LinkFailure::Exists
+        } else {
+            LinkFailure::Uncertain
+        });
+    }
     // SAFETY: fixed proc self-FD source naming this live owned anonymous file, held output fd,
-    // generated basename. Only this operation permits the proc magic-link exception. Never retry.
-    if unsafe {
+    // generated basename. This is the sole proc publication exception; no syscall retry.
+    let result = unsafe {
         libc::linkat(
             inputs.proc.fd.as_raw_fd(),
             source.as_ptr(),
@@ -1173,16 +1316,30 @@ pub fn link_output(
             target.as_ptr(),
             libc::AT_SYMLINK_FOLLOW,
         )
-    } == 0
-    {
-        return Ok(());
+    };
+    #[cfg(test)]
+    match action {
+        Some(Inject::AfterLinkError(e)) => {
+            assert_eq!(result, 0);
+            assert_ne!(e, libc::EEXIST);
+            return Err(LinkFailure::Uncertain);
+        }
+        Some(Inject::AfterLinkPanic) => {
+            assert_eq!(result, 0);
+            panic!("scripted post-link panic");
+        }
+        None => {}
+        _ => panic!("invalid link script"),
     }
-    if errno() == libc::EEXIST {
+    if result == 0 {
+        Ok(())
+    } else if errno() == libc::EEXIST {
         Err(LinkFailure::Exists)
     } else {
         Err(LinkFailure::Uncertain)
     }
 }
+
 pub fn verify_published(inputs: &CustodyInputs, file: &OwnedFd, name: &str) -> Result<()> {
     let destination = inside(inputs.output_fd()?, &cstring(name)?)?;
     let a = Metadata::read(file.as_raw_fd())?;
@@ -1191,10 +1348,7 @@ pub fn verify_published(inputs: &CustodyInputs, file: &OwnedFd, name: &str) -> R
         return Err(Failure::Uncertain);
     }
     no_acl(destination.as_raw_fd(), false)?;
-    // SAFETY: held output directory fd is kept live across synchronization.
-    if unsafe { libc::fsync(inputs.output_fd()?) } != 0 {
-        return Err(Failure::Uncertain);
-    }
+    sync_fd(inputs.output_fd()?, true)?;
     let reached = walk_root(
         &inputs.config.output_path,
         inputs.config.output,
@@ -1211,8 +1365,508 @@ pub fn verify_published(inputs: &CustodyInputs, file: &OwnedFd, name: &str) -> R
     Ok(())
 }
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
+    use std::{
+        cell::RefCell,
+        collections::VecDeque,
+        os::unix::fs::{DirBuilderExt, PermissionsExt},
+        path::PathBuf,
+    };
+    struct Script {
+        operations: Vec<Operation>,
+        queue: VecDeque<(Operation, Inject)>,
+    }
+    thread_local! { static SCRIPT: RefCell<Option<Script>> = const { RefCell::new(None) }; }
+    pub(crate) struct ScriptGuard;
+    pub(crate) fn script(entries: &[(Operation, Inject)]) -> ScriptGuard {
+        SCRIPT.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            assert!(slot.is_none());
+            *slot = Some(Script {
+                operations: entries.iter().map(|e| e.0).collect(),
+                queue: entries.iter().copied().collect(),
+            });
+        });
+        ScriptGuard
+    }
+    pub(super) fn injection(operation: Operation) -> Option<Inject> {
+        SCRIPT.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            let state = slot.as_mut()?;
+            // Unselected operations always use the real kernel. Every selected operation must
+            // consume the exact next declared event, including real short-write requests.
+            if !state.operations.contains(&operation) {
+                return None;
+            }
+            let (expected, action) = state
+                .queue
+                .pop_front()
+                .expect("unexpected scripted operation");
+            assert_eq!(operation, expected, "script order mismatch");
+            Some(action)
+        })
+    }
+    impl Drop for ScriptGuard {
+        fn drop(&mut self) {
+            let state = SCRIPT
+                .with(|s| s.borrow_mut().take())
+                .expect("script disappeared");
+            if !std::thread::panicking() {
+                assert!(state.queue.is_empty(), "unconsumed scripted operations");
+            }
+        }
+    }
+    pub(crate) struct Fixture {
+        pub(crate) inputs: CustodyInputs,
+        pub(crate) path: PathBuf,
+    }
+    impl Fixture {
+        pub(crate) fn new() -> Self {
+            // Public disposable test files, never an installed launch record or real key.
+            // A trusted-path positive syscall test needs owner-controlled ext4 ancestors;
+            // /tmp's world-writable ancestor intentionally cannot pass production walk_root.
+            let home = PathBuf::from(std::env::var_os("HOME").expect("test host HOME required"));
+            let mut nonce = [0_u8; 16];
+            getrandom::getrandom(&mut nonce).unwrap();
+            let path = home.join(format!(".dgr-issuer-test-{}", crate::hex(&nonce)));
+            std::fs::DirBuilder::new()
+                .mode(0o700)
+                .create(&path)
+                .unwrap();
+            let custody = path.join("custody");
+            let output = path.join("output");
+            for p in [&custody, &output] {
+                std::fs::DirBuilder::new().mode(0o700).create(p).unwrap();
+            }
+            let (uid, gid) = identity().unwrap();
+            fn root(path: &std::path::Path, uid: u32) -> Held {
+                ancestor(
+                    open_dir(libc::AT_FDCWD, &cstring(path.to_str().unwrap()).unwrap()).unwrap(),
+                    uid,
+                )
+                .unwrap()
+            }
+            fn snapshot(root: &std::path::Path, name: &str, uid: u32) -> Snapshot {
+                let p = root.join(name);
+                std::fs::write(&p, b"PUBLIC-TEST-MARKER").unwrap();
+                std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o400)).unwrap();
+                let fd = std::fs::File::open(p).unwrap().into();
+                bounded_snapshot(fd, 64, uid, 0o400).unwrap()
+            }
+            let launch = snapshot(&custody, "launch.fixture", uid);
+            let registry = snapshot(&custody, "registry.fixture", uid);
+            let profile = snapshot(&custody, "profile.fixture", uid);
+            let envelope = snapshot(&custody, "envelope.fixture", uid);
+            let custody_root = root(&custody, uid);
+            let output_root = root(&output, uid);
+            let triple = |m: &Metadata| (m.dev, m.ino, m.mount);
+            let proc = trusted_proc(uid).unwrap();
+            let config = ApprovedOperatorConfig {
+                uid,
+                gid,
+                mount_ns: namespace(proc.fd.as_raw_fd(), c"self/ns/mnt").unwrap(),
+                user_ns: namespace(proc.fd.as_raw_fd(), c"self/ns/user").unwrap(),
+                root_mount: mount_id(open_dir(libc::AT_FDCWD, c"/").unwrap().as_raw_fd()).unwrap(),
+                registry_hash: Sha256::digest(&registry.bytes).into(),
+                profile_hash: Sha256::digest(&profile.bytes).into(),
+                custody: triple(&custody_root.metadata),
+                output: triple(&output_root.metadata),
+                custody_path: custody.to_str().unwrap().to_owned(),
+                output_path: output.to_str().unwrap().to_owned(),
+            };
+            Self {
+                inputs: CustodyInputs {
+                    config,
+                    launch,
+                    launch_chain: vec![],
+                    proc,
+                    custody_chain: vec![custody_root],
+                    output_chain: vec![output_root],
+                    registry,
+                    profile,
+                    envelope,
+                },
+                path,
+            }
+        }
+        pub(crate) fn output(&self) -> PathBuf {
+            self.path.join("output")
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.path).unwrap();
+        }
+    }
+
+    fn public_pty() -> (OwnedFd, OwnedFd, TerminalSession) {
+        let (mut master, mut slave) = (-1, -1);
+        // SAFETY: writable descriptor outputs; null name/termios/winsize request system defaults.
+        assert_eq!(
+            unsafe {
+                libc::openpty(
+                    &mut master,
+                    &mut slave,
+                    std::ptr::null_mut(),
+                    std::ptr::null(),
+                    std::ptr::null(),
+                )
+            },
+            0
+        );
+        let master = owned(master, Failure::Terminal).unwrap();
+        let slave = owned(slave, Failure::Terminal).unwrap();
+        let observer = slave.try_clone().unwrap();
+        let mut original = std::mem::MaybeUninit::<libc::termios>::zeroed();
+        let mut mask = std::mem::MaybeUninit::<libc::sigset_t>::zeroed();
+        // SAFETY: output buffers for live test-owned PTY and current thread's signal mask.
+        assert_eq!(
+            unsafe { libc::tcgetattr(slave.as_raw_fd(), original.as_mut_ptr()) },
+            0
+        );
+        // SAFETY: query only, initialized sigset output; no signal-mask modification yet.
+        assert_eq!(
+            unsafe {
+                libc::pthread_sigmask(libc::SIG_SETMASK, std::ptr::null(), mask.as_mut_ptr())
+            },
+            0
+        );
+        // SAFETY: both preceding queries succeeded.
+        let (original, mask) = unsafe { (original.assume_init(), mask.assume_init()) };
+        let mut terminal = TerminalSession {
+            fd: Some(slave),
+            signal: None,
+            original,
+            mask,
+            modified: false,
+            masked: false,
+        };
+        terminal.configure().unwrap();
+        (master, observer, terminal)
+    }
+    fn observed_termios(fd: &OwnedFd) -> libc::termios {
+        let mut value = std::mem::MaybeUninit::<libc::termios>::zeroed();
+        // SAFETY: writable output for test-owned terminal; initialized on success.
+        assert_eq!(
+            unsafe { libc::tcgetattr(fd.as_raw_fd(), value.as_mut_ptr()) },
+            0
+        );
+        // SAFETY: tcgetattr succeeded.
+        unsafe { value.assume_init() }
+    }
+    #[test]
+    fn real_pty_read_flush_restore_and_deadline() {
+        use std::io::Write;
+        let (master, observer, mut terminal) = public_pty();
+        let saved = terminal.original;
+        let raw = observed_termios(&observer);
+        assert_eq!(raw.c_lflag & (libc::ECHO | libc::ICANON), 0);
+        assert_eq!(raw.c_iflag & libc::ICRNL, 0);
+        let mut writer = std::fs::File::from(master);
+        writer
+            .write_all("PUBLIC-é\u{7f}X\rqueued-confirmation\n".as_bytes())
+            .unwrap();
+        let mut clock = TrustedClock::new().unwrap();
+        let deadline = clock.deadline(2).unwrap();
+        let line = read_terminal_line(&terminal, 1024, deadline, &mut clock).unwrap();
+        assert_eq!(&line[..], b"PUBLIC-X");
+        terminal.restore().unwrap();
+        assert!(termios_equal(&observed_termios(&observer), &saved));
+        let (_master, _observer, mut terminal) = public_pty();
+        assert!(matches!(
+            read_terminal_line(&terminal, 1024, Duration::ZERO, &mut clock),
+            Err(Failure::Cancelled)
+        ));
+        terminal.restore().unwrap();
+    }
+    #[test]
+    fn handled_signal_and_late_signal_cancel_before_unlock() {
+        for late in [false, true] {
+            let (_master, observer, mut terminal) = public_pty();
+            let saved = terminal.original;
+            // SAFETY: target is this test thread, with SIGTERM blocked and signalfd installed.
+            assert_eq!(
+                unsafe { libc::pthread_kill(libc::pthread_self(), libc::SIGTERM) },
+                0
+            );
+            if !late {
+                let mut clock = TrustedClock::new().unwrap();
+                let deadline = clock.deadline(2).unwrap();
+                assert!(matches!(
+                    read_terminal_line(&terminal, 1024, deadline, &mut clock),
+                    Err(Failure::Cancelled)
+                ));
+            }
+            assert_eq!(terminal.restore(), Err(Failure::Cancelled));
+            assert!(termios_equal(&observed_termios(&observer), &saved));
+        }
+    }
+    #[test]
+    fn restoration_failure_overrides_cancellation() {
+        let (_master, observer, mut terminal) = public_pty();
+        let saved = terminal.original;
+        {
+            let _guard = script(&[(Operation::SetTermios, Inject::Error(libc::EIO))]);
+            assert_eq!(terminal.restore(), Err(Failure::Terminal));
+        }
+        // Explicit recovery of a public disposable PTY, never the operator's terminal.
+        set_termios(observer.as_raw_fd(), &saved).unwrap();
+    }
+    #[test]
+    fn actual_acl_and_fifo_are_rejected() {
+        let f = Fixture::new();
+        let fd = f.inputs.registry.held.fd.as_raw_fd();
+        let mut acl = 2_u32.to_le_bytes().to_vec();
+        for (tag, perm, id) in [
+            (1_u16, 4_u16, u32::MAX),
+            (2, 4, f.inputs.config.uid + 1),
+            (4, 0, u32::MAX),
+            (16, 4, u32::MAX),
+            (32, 0, u32::MAX),
+        ] {
+            acl.extend_from_slice(&tag.to_le_bytes());
+            acl.extend_from_slice(&perm.to_le_bytes());
+            acl.extend_from_slice(&id.to_le_bytes());
+        }
+        // SAFETY: test-owned regular fixture fd, fixed ACL name, bounded initialized public bytes.
+        assert_eq!(
+            unsafe {
+                libc::fsetxattr(
+                    fd,
+                    c"system.posix_acl_access".as_ptr(),
+                    acl.as_ptr().cast(),
+                    acl.len(),
+                    0,
+                )
+            },
+            0
+        );
+        assert_eq!(no_acl(fd, false), Err(Failure::Custody));
+        let directory = f.inputs.custody_chain[0].fd.as_raw_fd();
+        // SAFETY: test-owned directory fd; same complete public ACL value.
+        assert_eq!(
+            unsafe {
+                libc::fsetxattr(
+                    directory,
+                    c"system.posix_acl_default".as_ptr(),
+                    acl.as_ptr().cast(),
+                    acl.len(),
+                    0,
+                )
+            },
+            0
+        );
+        assert_eq!(no_acl(directory, true), Err(Failure::Custody));
+        let name = cstring(f.path.join("output/fifo").to_str().unwrap()).unwrap();
+        // SAFETY: unique fixture path under owned directory, creates only a disposable FIFO.
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        let fifo = inside(f.inputs.output_fd().unwrap(), c"fifo").unwrap();
+        assert!(bounded_snapshot(fifo, 64, f.inputs.config.uid, 0o600).is_err());
+    }
+    fn public_envelope(length: usize) -> Vec<u8> {
+        use std::io::Write;
+        // Only the already disclosed 0x11 seed; encrypted public fixture, not enrollment.
+        let mut recipient = age::scrypt::Recipient::new(age::secrecy::SecretString::from(
+            "PUBLIC-FIXTURE-NOT-A-CREDENTIAL".to_owned(),
+        ));
+        recipient.set_work_factor(18);
+        let encryptor =
+            age::Encryptor::with_recipients(std::iter::once(&recipient as &dyn age::Recipient))
+                .unwrap();
+        let mut stream = encryptor.wrap_output(Vec::new()).unwrap();
+        stream.write_all(&vec![0x11; length]).unwrap();
+        stream.finish().unwrap()
+    }
+    #[test]
+    fn authenticated_age_length_password_and_ciphertext() {
+        let good = public_envelope(32);
+        let password = || Zeroizing::new(b"PUBLIC-FIXTURE-NOT-A-CREDENTIAL".to_vec());
+        let key = unlock_once(&good, password()).unwrap();
+        assert_eq!(
+            key.verifying_key(),
+            ed25519_dalek::SigningKey::from_bytes(&[0x11; 32]).verifying_key()
+        );
+        assert!(profile::accept_public_key(key.verifying_key().as_bytes()).is_err());
+        assert!(unlock_once(&public_envelope(31), password()).is_err());
+        assert!(unlock_once(&public_envelope(33), password()).is_err());
+        assert!(unlock_once(&good, Zeroizing::new(b"PUBLIC-WRONG-PASSWORD".to_vec())).is_err());
+        let mut tampered = good;
+        tampered[213] ^= 1;
+        assert!(unlock_once(&tampered, password()).is_err());
+    }
+    #[test]
+    fn procfs_exception_does_not_relax_acl_errors() {
+        let (uid, _) = identity().unwrap();
+        let proc = trusted_proc(uid).unwrap();
+        proc.recheck(uid).unwrap();
+        assert_eq!(
+            acl_size(proc.fd.as_raw_fd(), c"system.posix_acl_access"),
+            Err(libc::EOPNOTSUPP)
+        );
+        assert_eq!(no_acl(proc.fd.as_raw_fd(), true), Err(Failure::Custody));
+        for error in [libc::EOPNOTSUPP, libc::EPERM, libc::EBADF, libc::ERANGE] {
+            let _guard = script(&[(Operation::Acl, Inject::Error(error))]);
+            assert_eq!(no_acl(proc.fd.as_raw_fd(), false), Err(Failure::Custody));
+        }
+        for outcome in [Inject::Zero, Inject::Limit(24)] {
+            let _guard = script(&[(Operation::Acl, outcome)]);
+            assert_eq!(no_acl(proc.fd.as_raw_fd(), false), Err(Failure::Custody));
+        }
+        let _guard = script(&[
+            (Operation::Acl, Inject::Error(libc::ENODATA)),
+            (Operation::Acl, Inject::Error(libc::ENODATA)),
+        ]);
+        assert!(no_acl(-1, true).is_ok()); // Injected ABI observations; real invalid FDs are rejected above.
+    }
+    #[test]
+    fn procfs_rejects_wrong_owner_mode_type_identity_and_filesystem() {
+        let (uid, _) = identity().unwrap();
+        let proc = trusted_proc(uid).unwrap();
+        assert!(proc.recheck(uid + 1).is_err());
+        for (mode, owner) in [
+            (libc::S_IFDIR | 0o777, 0),
+            (libc::S_IFREG | 0o555, 0),
+            (libc::S_IFDIR | 0o555, uid),
+        ] {
+            let mut m = proc.metadata.clone();
+            m.mode = mode;
+            m.uid = owner;
+            assert!(validate_proc(proc.fd.as_raw_fd(), &m, uid).is_err());
+        }
+        let root = open_dir(libc::AT_FDCWD, c"/").unwrap();
+        let m = Metadata::read(root.as_raw_fd()).unwrap();
+        assert!(validate_proc(root.as_raw_fd(), &m, uid).is_err());
+        let mut proc = proc;
+        proc.metadata.ino += 1;
+        assert!(proc.recheck(uid).is_err());
+    }
+    #[test]
+    fn real_custody_syscalls_reject_aliases_and_mutation() {
+        let f = Fixture::new();
+        f.inputs.recheck().unwrap();
+        let root = f.inputs.custody_chain[0].fd.as_raw_fd();
+        let p = f.path.join("custody");
+        std::os::unix::fs::symlink("profile.fixture", p.join("symlink")).unwrap();
+        assert!(inside(root, c"symlink").is_err());
+        assert!(inside(root, c"../output").is_err());
+        std::fs::hard_link(p.join("profile.fixture"), p.join("hardlink")).unwrap();
+        assert!(
+            bounded_snapshot(
+                inside(root, c"hardlink").unwrap(),
+                64,
+                f.inputs.config.uid,
+                0o400
+            )
+            .is_err()
+        );
+        assert!(f.inputs.recheck().is_err());
+        std::fs::remove_file(p.join("hardlink")).unwrap();
+        // Retained metadata catches content/mode changes even when held descriptors survive rename.
+        std::fs::set_permissions(
+            p.join("profile.fixture"),
+            std::fs::Permissions::from_mode(0o600),
+        )
+        .unwrap();
+        assert!(f.inputs.recheck().is_err());
+    }
+    #[test]
+    fn envelope_exact_shape_and_canonical_base64() {
+        let mut envelope = format!(
+            "age-encryption.org/v1\n-> scrypt {} 18\n{}\n--- {}\n",
+            STANDARD_NO_PAD.encode([0; 16]),
+            STANDARD_NO_PAD.encode([0; 32]),
+            STANDARD_NO_PAD.encode([0; 32])
+        )
+        .into_bytes();
+        envelope.extend_from_slice(&[0; 64]);
+        assert_eq!(envelope.len(), 214);
+        assert!(envelope_shape(&envelope).is_ok());
+        for n in 0..214 {
+            assert!(envelope_shape(&envelope[..n]).is_err());
+        }
+        for index in [0, 21, 22, 31, 54, 55, 56, 57, 101, 102, 105, 149] {
+            let mut bad = envelope.clone();
+            bad[index] = b'!';
+            assert!(envelope_shape(&bad).is_err(), "offset {index}");
+        }
+        for index in [53, 100, 148] {
+            let mut bad = envelope.clone();
+            bad[index] = b'B';
+            assert!(envelope_shape(&bad).is_err());
+        }
+        let mut extra = envelope.clone();
+        extra.push(0);
+        assert!(envelope_shape(&extra).is_err());
+    }
+    #[test]
+    fn launch_encoding_namespace_mount_and_envelope_binding() {
+        let mut f = Fixture::new();
+        let c = &f.inputs.config;
+        let mut bytes = b"DGRLCH1\0".to_vec();
+        bytes.extend_from_slice(&1_u16.to_be_bytes());
+        bytes.extend_from_slice(&0_u16.to_be_bytes());
+        let length = 212 + c.custody_path.len() + c.output_path.len();
+        bytes.extend_from_slice(&u32::try_from(length).unwrap().to_be_bytes());
+        bytes.extend_from_slice(&c.uid.to_be_bytes());
+        bytes.extend_from_slice(&c.gid.to_be_bytes());
+        for n in [
+            c.mount_ns.0,
+            c.mount_ns.1,
+            c.user_ns.0,
+            c.user_ns.1,
+            c.root_mount,
+        ] {
+            bytes.extend_from_slice(&n.to_be_bytes());
+        }
+        bytes.extend_from_slice(&c.registry_hash);
+        bytes.extend_from_slice(&c.profile_hash);
+        for n in [
+            c.custody.0,
+            c.custody.1,
+            c.custody.2,
+            c.output.0,
+            c.output.1,
+            c.output.2,
+        ] {
+            bytes.extend_from_slice(&n.to_be_bytes());
+        }
+        bytes.extend_from_slice(&profile::fixture_inventory_hash());
+        bytes.extend_from_slice(&u16::try_from(c.custody_path.len()).unwrap().to_be_bytes());
+        bytes.extend_from_slice(&u16::try_from(c.output_path.len()).unwrap().to_be_bytes());
+        bytes.extend_from_slice(c.custody_path.as_bytes());
+        bytes.extend_from_slice(c.output_path.as_bytes());
+        assert_eq!(bytes.len(), length);
+        assert!(parse_launch(&bytes).is_ok());
+        for index in [0, 8, 10, 12, 176, 208, 210] {
+            let mut bad = bytes.clone();
+            bad[index] ^= 1;
+            assert!(parse_launch(&bad).is_err());
+        }
+        for n in 0..bytes.len() {
+            assert!(parse_launch(&bytes[..n]).is_err());
+        }
+        assert!(verify_envelope_binding(b"PUBLIC", &Sha256::digest(b"PUBLIC").into()).is_ok());
+        assert_eq!(
+            verify_envelope_binding(b"OTHER", &Sha256::digest(b"PUBLIC").into()),
+            Err(Failure::Custody)
+        );
+        f.inputs.config.mount_ns.1 += 1;
+        assert!(f.inputs.recheck().is_err());
+        f.inputs.config.mount_ns.1 -= 1;
+        f.inputs.config.user_ns.1 += 1;
+        assert!(f.inputs.recheck().is_err());
+        f.inputs.config.user_ns.1 -= 1;
+        f.inputs.config.root_mount += 1;
+        assert!(
+            walk_root(
+                &f.inputs.config.output_path,
+                f.inputs.config.output,
+                &f.inputs.config
+            )
+            .is_err()
+        );
+    }
     #[test]
     fn passphrase_bounds_utf8_and_erase() {
         let mut buffer = [0_u8; 1024];

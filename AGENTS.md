@@ -34,3 +34,13 @@ expectation.
 ## Workflow
 
 Branch → small commits → PR; no direct pushes to `main`; a human merges.
+
+## Separate offline simulation issuer
+
+`tools/local-issuer` is the bounded Amendment B signer; its public-safe technical contract is
+[`specs/LOCAL-ISSUER-contract.md`](specs/LOCAL-ISSUER-contract.md). Its five policy modules remain
+T0 with truthful agent provenance. Exact-manifest approval, including any applicable technical
+supplement, governs authoring; it is not general permission to edit core/runtime policy. No
+installer, enrollment/key management, runtime callback, public disclosure or operational use is
+implied. Final-head independent human/cross-model reviews, all checks and founder-only merge
+remain mandatory. Test-only constructors/fault queues must never reach a production build.

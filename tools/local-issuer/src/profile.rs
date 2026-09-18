@@ -242,7 +242,6 @@ fn parse_profile(input: &[u8]) -> Result<([u8; 16], [u8; 32]), ProfileError> {
                 }
                 let id = p.array()?;
                 let public = p.array()?;
-                accept_public_key(&public)?;
                 binding = Some((id, public));
             }
             _ => return Err(ProfileError),
@@ -262,6 +261,20 @@ pub fn select_profile_registration(
         return Err(ProfileError);
     }
     let (key_id, public_key) = parse_profile(profile)?;
+    accept_public_key(&public_key)?;
+    let mut selected = None;
+    for row in parse_registration_snapshot(registry)? {
+        accept_public_key(&row.public_key)?;
+        if row.profile_hash == profile_hash {
+            if row.key_id != key_id || row.public_key != public_key {
+                return Err(ProfileError);
+            }
+            selected = Some(row);
+        }
+    }
+    selected.ok_or(ProfileError)
+}
+fn parse_registration_snapshot(registry: &[u8]) -> Result<Vec<Binding>, ProfileError> {
     if !(128..=28688).contains(&registry.len()) {
         return Err(ProfileError);
     }
@@ -276,44 +289,188 @@ pub fn select_profile_registration(
     {
         return Err(ProfileError);
     }
-    let mut previous = None;
-    let mut ids = Vec::new();
-    let mut keys = Vec::new();
-    let mut selected = None;
+    let mut rows: Vec<Binding> = Vec::with_capacity(count);
     for _ in 0..count {
-        let digest: [u8; 32] = c.array()?;
-        let id: [u8; 16] = c.array()?;
-        let public: [u8; 32] = c.array()?;
-        let envelope_hash = c.array()?;
-        if previous.is_some_and(|last| last >= digest)
-            || ids.contains(&id)
-            || keys.contains(&public)
+        let row = Binding {
+            profile_hash: c.array()?,
+            key_id: c.array()?,
+            public_key: c.array()?,
+            envelope_hash: c.array()?,
+        };
+        if rows
+            .last()
+            .is_some_and(|previous| previous.profile_hash >= row.profile_hash)
+            || rows.iter().any(|previous| {
+                previous.key_id == row.key_id || previous.public_key == row.public_key
+            })
         {
             return Err(ProfileError);
         }
-        accept_public_key(&public)?;
-        previous = Some(digest);
-        ids.push(id);
-        keys.push(public);
-        if digest == profile_hash {
-            if id != key_id || public != public_key {
-                return Err(ProfileError);
-            }
-            selected = Some(Binding {
-                profile_hash,
-                key_id,
-                public_key,
-                envelope_hash,
-            });
-        }
+        rows.push(row);
     }
     c.end()?;
-    selected.ok_or(ProfileError)
+    Ok(rows)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn unhex(text: &str) -> Vec<u8> {
+        text.as_bytes()
+            .chunks_exact(2)
+            .map(|c| u8::from_str_radix(std::str::from_utf8(c).unwrap(), 16).unwrap())
+            .collect()
+    }
+    fn encoded_profile() -> Vec<u8> {
+        let mut fields: Vec<Vec<u8>> = vec![
+            b"dgr-runtime002/1".to_vec(),
+            b"linux-x86_64-gnu".to_vec(),
+            b"24.21.0".to_vec(),
+            8_u32.to_be_bytes().to_vec(),
+            unhex("9f1c8a1c58bd1e889df4f7e78742ade56d7efefe"),
+            [
+                unhex("69cecf4bbf72d2d44a9eef1b71fb98c7fb973d78af11399deccef19beb008ad9"),
+                vec![1; 32],
+            ]
+            .concat(),
+            vec![1; 32],
+            [65532_u32.to_be_bytes(), 65532_u32.to_be_bytes()].concat(),
+        ];
+        fn path(out: &mut Vec<u8>, path: &str) {
+            out.extend_from_slice(&u16::try_from(path.len()).unwrap().to_be_bytes());
+            out.extend_from_slice(path.as_bytes());
+        }
+        let mut directories = vec![2];
+        for (role, p) in [
+            (1_u8, "/var/lib/dgr/state"),
+            (2, "/var/lib/dgr/invoice-output"),
+        ] {
+            directories.push(role);
+            directories.extend_from_slice(&1_u64.to_be_bytes());
+            directories.extend_from_slice(&u64::from(role).to_be_bytes());
+            directories.extend_from_slice(&0o700_u32.to_be_bytes());
+            path(&mut directories, p);
+        }
+        fields.push(directories);
+        let mut objects = vec![8];
+        for role in 1_u8..=8 {
+            objects.push(role);
+            objects.extend_from_slice(&1_u64.to_be_bytes());
+            objects.extend_from_slice(&(100 + u64::from(role)).to_be_bytes());
+            objects.extend_from_slice(&0o600_u32.to_be_bytes());
+        }
+        fields.push(objects);
+        let mut artifacts = vec![8];
+        for (role, p) in (1_u8..=8).zip([
+            "/opt/dgr/lib/dgr_core_node.node",
+            "/opt/dgr/lib/bootstrap.mjs",
+            "/opt/dgr/lib/invoice-port.mjs",
+            "/etc/dgr/openclaw.json",
+            "/etc/dgr/protected-tools.json",
+            "/etc/dgr/dependency-inventory.json",
+            "/usr/local/bin/node",
+            "/opt/dgr/openclaw/openclaw.mjs",
+        ]) {
+            artifacts.push(role);
+            artifacts.extend_from_slice(&[role; 32]);
+            path(&mut artifacts, p);
+        }
+        fields.push(artifacts);
+        fields.push([vec![1], b"DGR-TEST-KEY-001".to_vec(), FIXTURES[0].to_vec()].concat());
+        fields.push(
+            [1000_u32, 5000, 1, 0, 1]
+                .iter()
+                .flat_map(|n| n.to_be_bytes())
+                .collect(),
+        );
+        fields.push(TOOL.as_bytes().to_vec());
+        fields.push(b"DGR-ACT2\0".to_vec());
+        fields.push(1_u32.to_be_bytes().to_vec());
+        fields.push(b"sync-port/1".to_vec());
+        fields.push(31_u32.to_be_bytes().to_vec());
+        let mut out = b"DGRPROF1".to_vec();
+        out.extend_from_slice(&1_u16.to_be_bytes());
+        out.extend_from_slice(&18_u16.to_be_bytes());
+        out.extend_from_slice(&[0; 4]);
+        for (tag, payload) in (1_u16..=18).zip(fields) {
+            out.extend_from_slice(&tag.to_be_bytes());
+            out.extend_from_slice(&u32::try_from(payload.len()).unwrap().to_be_bytes());
+            out.extend_from_slice(&payload);
+        }
+        let n = u32::try_from(out.len()).unwrap();
+        out[12..16].copy_from_slice(&n.to_be_bytes());
+        out
+    }
+    fn registry(rows: &[([u8; 32], [u8; 16], [u8; 32])]) -> Vec<u8> {
+        let mut out = b"DGRREG1\0".to_vec();
+        out.extend_from_slice(&1_u16.to_be_bytes());
+        out.extend_from_slice(&u16::try_from(rows.len()).unwrap().to_be_bytes());
+        out.extend_from_slice(&u32::try_from(16 + 112 * rows.len()).unwrap().to_be_bytes());
+        for (profile, id, key) in rows {
+            out.extend_from_slice(profile);
+            out.extend_from_slice(id);
+            out.extend_from_slice(key);
+            out.extend_from_slice(&[9; 32]);
+        }
+        out
+    }
+    #[test]
+    fn all_profile_fields_closed_and_fixture_cannot_be_enrolled() {
+        let good = encoded_profile();
+        assert!(parse_profile(&good).is_ok());
+        let digest = Sha256::digest(&good).into();
+        let reg = registry(&[(digest, *b"DGR-TEST-KEY-001", FIXTURES[0])]);
+        assert!(select_profile_registration(&good, &reg, &digest).is_err());
+        assert!(select_profile_registration(&good, &reg, &[0; 32]).is_err());
+        for n in 0..good.len() {
+            assert!(parse_profile(&good[..n]).is_err());
+        }
+        let mut pos = 16;
+        for tag in 1..=18 {
+            let n = u32::from_be_bytes(good[pos + 2..pos + 6].try_into().unwrap()) as usize;
+            let mut bad = good.clone();
+            bad[pos + 1] = 99;
+            assert!(parse_profile(&bad).is_err());
+            if [1, 2, 3, 4, 5, 8, 13, 14, 15, 16, 17, 18].contains(&tag) {
+                let mut bad = good.clone();
+                bad[pos + 6] ^= 1;
+                assert!(parse_profile(&bad).is_err(), "tag {tag}");
+            }
+            pos += 6 + n;
+        }
+        let mut trailing = good.clone();
+        trailing.push(0);
+        assert!(parse_profile(&trailing).is_err());
+        let mut count = good.clone();
+        count[11] = 17;
+        assert!(parse_profile(&count).is_err());
+    }
+    #[test]
+    fn registry_order_count_and_independent_uniqueness() {
+        let rows = [
+            ([1; 32], [1; 16], FIXTURES[0]),
+            ([2; 32], [2; 16], FIXTURES[1]),
+        ];
+        let good = registry(&rows);
+        assert_eq!(parse_registration_snapshot(&good).unwrap().len(), 2);
+        for n in 0..good.len() {
+            assert!(parse_registration_snapshot(&good[..n]).is_err());
+        }
+        for rows in [
+            [rows[1], rows[0]],
+            [rows[0], rows[0]],
+            [rows[0], ([2; 32], [1; 16], FIXTURES[1])],
+            [rows[0], ([2; 32], [2; 16], FIXTURES[0])],
+        ] {
+            assert!(parse_registration_snapshot(&registry(&rows)).is_err());
+        }
+        let mut wrong = good.clone();
+        wrong[11] = 3;
+        assert!(parse_registration_snapshot(&wrong).is_err());
+        let mut extra = good;
+        extra.push(0);
+        assert!(parse_registration_snapshot(&extra).is_err());
+    }
     #[test]
     fn fixture_inventory_and_key_rejection() {
         assert_eq!(

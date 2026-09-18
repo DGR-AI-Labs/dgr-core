@@ -79,8 +79,14 @@ fn confirm_snapshot(
     }
     display.push_str(&format!("profile: {}\nkey_id: {}\npublic_key: {}\ncommitment: {}\nIssuance: current Unix seconds after confirmation; expiry +300 seconds; fresh OS-random nonce.\nType ISSUE {} and Enter: ",hex(&preview.binding.profile_hash),hex(&preview.binding.key_id),hex(&preview.binding.public_key),hex(&preview.commitment),hex(&preview.commitment)));
     let entered = custody::terminal_input(display.as_bytes(), 70, clock)?;
+    bind_confirmation(preview, &entered)
+}
+fn bind_confirmation(
+    preview: ImmutablePreview,
+    entered: &[u8],
+) -> Result<ConfirmedSnapshot, Failure> {
     let expected = format!("ISSUE {}", hex(&preview.commitment));
-    if &entered[..] != expected.as_bytes() {
+    if entered != expected.as_bytes() {
         return Err(Failure::Cancelled);
     }
     Ok(ConfirmedSnapshot(preview))
@@ -113,7 +119,7 @@ fn run_one_attempt(possible_publication: &AtomicBool) -> Result<(), Failure> {
     clock.observe()?;
     let capability = issuance::issue_once(&confirmed, &key, &mut clock)?;
     drop(key);
-    issuance::publish_capability_file(&inputs, capability, possible_publication)
+    issuance::publish_capability_file(&inputs, capability, possible_publication, &mut clock)
 }
 fn main() -> std::process::ExitCode {
     // Suppress panic payload/backtrace before any input; boundary emits only a fixed code.
@@ -153,4 +159,62 @@ fn main() -> std::process::ExitCode {
     };
     eprintln!("{}", outcome.1);
     std::process::ExitCode::from(outcome.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn preview() -> ImmutablePreview {
+        let raw=b"{\"action\":\"record_invoice\",\"amount\":\"1\",\"currency\":\"USD\",\"destination\":\"simulation-vendor-1\",\"invoice_id\":\"SIM-A\",\"source_account\":\"simulation-account-1\",\"tool\":\"dgr.openclaw.invoice.record.v1\"}\n";
+        let invoice = request::parse_request(raw).unwrap();
+        freeze_issuance_preview(
+            invoice,
+            profile::Binding {
+                profile_hash: [1; 32],
+                key_id: [1; 16],
+                public_key: [1; 32],
+                envelope_hash: [1; 32],
+            },
+        )
+    }
+    #[test]
+    fn exact_confirmation_and_immutable_commitment() {
+        let p = preview();
+        let phrase = format!("ISSUE {}", hex(&p.commitment));
+        assert_eq!(phrase.len(), 70);
+        assert!(bind_confirmation(p, phrase.as_bytes()).is_ok());
+        for bad in [
+            phrase.to_uppercase(),
+            phrase.clone() + " ",
+            " ".to_owned() + &phrase,
+            phrase.replace("ISSUE", "issue"),
+            "ISSUE ".to_owned() + &"0".repeat(64),
+        ] {
+            assert!(bind_confirmation(preview(), bad.as_bytes()).is_err());
+        }
+    }
+    #[test]
+    fn fixed_outcomes_have_no_caller_content() {
+        for failure in [
+            Failure::Invocation,
+            Failure::Request,
+            Failure::Launch,
+            Failure::Custody,
+            Failure::Terminal,
+            Failure::Cancelled,
+            Failure::Unlock,
+            Failure::Clock,
+            Failure::Entropy,
+            Failure::Unpublished,
+            Failure::Uncertain,
+            Failure::Resource,
+            Failure::Internal,
+        ] {
+            let (code, message) = failure.outcome();
+            assert_ne!(code, 0);
+            assert!(message.is_ascii());
+            assert!(!message.contains('\n'));
+            assert_eq!(message.matches(' ').count(), 1);
+        }
+    }
 }

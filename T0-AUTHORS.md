@@ -241,19 +241,30 @@ The backup provisioning hold remains. Key creation, token issuance, runtime inte
 deployment and claims require their own applicable authorizations; this documentation change
 supplies none of them. Unresolved authority, custody or implementation decisions stop dependent work.
 
-## Offline simulation issuer — private authoring checkpoint
+## Offline simulation issuer — agent-authored candidate
 
-OpenAI Codex authored all new regions in `tools/local-issuer/src/main.rs`,
-`request.rs`, `profile.rs`, `custody.rs`, and `issuance.rs`, including inline tests,
-under the approved exact Amendment B manifest. These remain agent-authored T0;
-review or merge never converts them to founder-authored code. Existing core and
-harness implementation is unchanged. Cargo member/lock/policy inputs reproduce
-the exact approved signer workspace files.
+OpenAI Codex authored every new region of these five T0 modules under the exact Amendment B
+manifest and approved procfs supplement P1. Review/merge does not convert this to founder authorship.
 
-This checkpoint is incomplete and not approved for publication, merge or use.
-Authoring exposed an ACL-policy conflict on required procfs traversal: Linux
-returns EOPNOTSUPP whereas the frozen general rule accepts only ENODATA. The
-implementation retains fail-closed rejection; no procfs ACL exception is active.
-Affected work awaits an exact founder disposition. The full adversarial matrix,
-release CLI coverage, analyzers, instrumentation and independent final-head
-reviews remain outstanding. Backup and operational authorization remain required.
+| Path | Agent-authored regions |
+|---|---|
+| tools/local-issuer/src/main.rs | command/fixed outcomes, immutable preview/confirmation, one-attempt orchestration, panic/publication boundary, inline tests |
+| tools/local-issuer/src/request.rs | closed invoice grammar, field exposure and DGR-ACT2 commitment, inline adversarial vectors |
+| tools/local-issuer/src/profile.rs | binary cursor/profile/registry grammar, complete key uniqueness/acceptance, fixture inventory and binding, inline tests |
+| tools/local-issuer/src/custody.rs | Linux ABI wrappers, process limits, launch/trusted filesystem/procfs classes, immutable snapshots, terminal/unlock, output primitives, inline syscall/PTY/fault tests |
+| tools/local-issuer/src/issuance.rs | clock/entropy, wire/signature/self-verification, single publication state machine, inline public vectors/fault tests |
+
+The new black-box tests, README and public-safe contract are agent-authored support. Root/member
+Cargo manifests, lock and deny policy reproduce the exact approved workspace inputs. Appended
+AGENTS/boundary/provenance text is agent-authored documentation. No existing founder-authored
+core/harness logic, fixture expectation or CI byte is changed. No operational private key is
+part of the source or tests; production rejects the already disclosed test-key inventory.
+
+All test constructors/scripts are inline cfg(test), with no library target, Cargo feature,
+production argument or environment switch. Kernel faults are labeled separately from real
+syscall observations; test fixtures do not establish enrolled-key operational acceptance.
+Implementation remains subject to final-head adversarial/instrumented/analyzer evidence,
+independent Satoshi/Claude Opus reviews and founder semantic/provenance/finding disposition.
+Only the founder merges; public disclosure, backup readiness, provisioning and operation remain
+separate gates. The initial incomplete checkpoint is retained privately with its observed procfs
+ACL conflict; P1 changes only that fixed kernel-descriptor class, never general ACL errno policy.
