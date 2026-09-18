@@ -240,3 +240,20 @@ founder-only merge gates remain. Existing attacks and expected outcomes are unch
 The backup provisioning hold remains. Key creation, token issuance, runtime integration,
 deployment and claims require their own applicable authorizations; this documentation change
 supplies none of them. Unresolved authority, custody or implementation decisions stop dependent work.
+
+## Offline simulation issuer — private authoring checkpoint
+
+OpenAI Codex authored all new regions in `tools/local-issuer/src/main.rs`,
+`request.rs`, `profile.rs`, `custody.rs`, and `issuance.rs`, including inline tests,
+under the approved exact Amendment B manifest. These remain agent-authored T0;
+review or merge never converts them to founder-authored code. Existing core and
+harness implementation is unchanged. Cargo member/lock/policy inputs reproduce
+the exact approved signer workspace files.
+
+This checkpoint is incomplete and not approved for publication, merge or use.
+Authoring exposed an ACL-policy conflict on required procfs traversal: Linux
+returns EOPNOTSUPP whereas the frozen general rule accepts only ENODATA. The
+implementation retains fail-closed rejection; no procfs ACL exception is active.
+Affected work awaits an exact founder disposition. The full adversarial matrix,
+release CLI coverage, analyzers, instrumentation and independent final-head
+reviews remain outstanding. Backup and operational authorization remain required.

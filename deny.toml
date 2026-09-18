@@ -22,6 +22,8 @@ highlight = "all"
 allow = []
 deny = []
 skip = [
+    { crate = "thiserror@1.0.69", reason = "Accepted exact age 0.12.1 transitive split; retain reviewed lock and advisory evidence; re-review on change." },
+    { crate = "thiserror-impl@1.0.69", reason = "Accepted exact proc-macro companion to thiserror 1.0.69; no global duplicate allowance." },
     { crate = "hashbrown@0.16.1", reason = "Temporary transitive split: sqlite-wasm-rs/rsqlite-vfs has not converged on hashlink's hashbrown line; no advisory is present in the reviewed lockfile." },
     { crate = "syn@2.0.119", reason = "Temporary build-time proc-macro split: Ed25519/wasm dependencies require syn 2 while rsqlite-vfs/thiserror requires syn 3; no advisory is present in the reviewed lockfile." },
 ]
