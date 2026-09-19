@@ -189,3 +189,12 @@ founder-only merge gates remain. Existing attacks and expected outcomes are unch
 The backup provisioning hold remains. Key creation, token issuance, runtime integration,
 deployment and claims require their own applicable authorizations; this documentation change
 supplies none of them. Unresolved authority, custody or implementation decisions stop dependent work.
+
+## Separate offline simulation issuer boundary
+
+The five policy modules in `tools/local-issuer/src/` are agent-authored T0 under the distinct
+Amendment B exact-manifest exception. They perform operator confirmation and offline simulation
+issuance only. They do not replace this harness's guard/verifier, alter any attack expectation,
+change nonce/approval semantics or establish current-core interoperability. The issuer's inline
+public-fixture tests and fault queues are test-only, not operational acceptance paths. See
+`specs/LOCAL-ISSUER-contract.md` and `T0-AUTHORS.md`; all independent final-head gates remain.

@@ -14,5 +14,5 @@ rusqlite = { version = "=0.40.2", features = ["bundled"] }
 sha2 = "=0.10.9"
 
 [workspace]
-members = ["tests/bypass-rust"]
+members = ["tests/bypass-rust", "tools/local-issuer"]
 resolver = "3"

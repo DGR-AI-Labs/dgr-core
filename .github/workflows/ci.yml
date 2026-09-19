@@ -34,6 +34,88 @@ jobs:
         run: cargo build --workspace --all-targets --locked
       - name: Check Rust lints
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Prepare isolated issuer test environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The real syscall fixtures require trusted ancestors, including HOME.
+          # Log public runner metadata before changing this disposable runner only.
+          id
+          namei -l "$HOME"
+          stat -f -c 'home filesystem: %T' "$HOME"
+          python3 - <<'PYTHON'
+          import os
+          import pathlib
+          import stat
+          root = pathlib.Path.home()
+          uid, gid = os.getuid(), os.getgid()
+          if uid == 0 or gid == 0:
+              raise SystemExit("issuer tests require non-root UID/GID")
+          entry = root.lstat()
+          if not stat.S_ISDIR(entry.st_mode) or entry.st_uid != uid:
+              raise SystemExit("runner HOME must be a real directory owned by the test user")
+          # Do not relax product checks or modify other ancestors.
+          root.chmod(stat.S_IMODE(entry.st_mode) & ~0o6022)
+          for path in [root, *root.parents]:
+              entry = path.lstat()
+              print(f"ancestor {path}: uid={entry.st_uid} gid={entry.st_gid} mode={stat.S_IMODE(entry.st_mode):04o}")
+              fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW)
+              try:
+                  fdinfo = pathlib.Path(f"/proc/self/fdinfo/{fd}").read_text()
+                  mount_id = next(line for line in fdinfo.splitlines() if line.startswith("mnt_id:"))
+                  print(f"ancestor {path}: {mount_id}")
+                  for attr in ("system.posix_acl_access", "system.posix_acl_default"):
+                      try:
+                          value = os.getxattr(fd, attr)
+                          print(f"ancestor {path}: {attr} present, bytes={len(value)}")
+                      except OSError as error:
+                          print(f"ancestor {path}: {attr} errno={error.errno}")
+              finally:
+                  os.close(fd)
+              if (not stat.S_ISDIR(entry.st_mode)
+                      or entry.st_uid not in (0, uid)
+                      or entry.st_mode & 0o6022):
+                  raise SystemExit("runner ancestor does not satisfy issuer test policy")
+          PYTHON
+          issuer_test_tmp="$(mktemp -d "$RUNNER_TEMP/dgr-issuer-tests.XXXXXX")"
+          chmod 0700 "$issuer_test_tmp"
+          printf 'TMPDIR=%s\n' "$issuer_test_tmp" >> "$GITHUB_ENV"
+      - name: Remove default ACL from disposable runner parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Hosted image /home has a default ACL; the issuer correctly rejects it.
+          # Normalize this one disposable test-host directory, not product policy.
+          sudo python3 - <<'PYTHON'
+          import errno
+          import os
+          import stat
+          fd = os.open("/home", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW)
+          try:
+              entry = os.fstat(fd)
+              if entry.st_uid != 0 or entry.st_mode & 0o6022:
+                  raise SystemExit("unexpected /home owner or mode")
+              try:
+                  value = os.getxattr(fd, "system.posix_acl_default")
+              except OSError as error:
+                  if error.errno != errno.ENODATA:
+                      raise
+                  print("/home default ACL already absent")
+              else:
+                  print(f"removing /home default ACL: {len(value)} bytes")
+                  os.removexattr(fd, "system.posix_acl_default")
+              for attr in ("system.posix_acl_access", "system.posix_acl_default"):
+                  try:
+                      os.getxattr(fd, attr)
+                  except OSError as error:
+                      if error.errno != errno.ENODATA:
+                          raise
+                      print(f"/home {attr}: ENODATA")
+                  else:
+                      raise SystemExit("/home still has a POSIX ACL")
+          finally:
+              os.close(fd)
+          PYTHON
       - name: Test Rust workspace
         run: cargo test --workspace --all-targets --locked
       - name: Test ignored-set comparison logic
