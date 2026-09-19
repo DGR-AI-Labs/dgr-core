@@ -352,6 +352,28 @@ mod tests {
         assert_eq!(std::fs::read_dir(fixture.output()).unwrap().count(), 1);
     }
     #[test]
+    fn writable_output_ancestor_preserves_uncertain_publication() {
+        use std::os::unix::fs::PermissionsExt;
+        for mode in [0o720, 0o702] {
+            let fixture = custody::tests::Fixture::new();
+            // Only the disposable fixture ancestor is changed, never the user's home.
+            std::fs::set_permissions(&fixture.path, std::fs::Permissions::from_mode(mode)).unwrap();
+            let possible = AtomicBool::new(false);
+            let mut clock = TrustedClock::new().unwrap();
+            let outcome = publish_capability_file(
+                &fixture.inputs,
+                public_capability(),
+                &possible,
+                &mut clock,
+            );
+            std::fs::set_permissions(&fixture.path, std::fs::Permissions::from_mode(0o700))
+                .unwrap();
+            assert_eq!(outcome, Err(Failure::Uncertain));
+            assert!(possible.load(Ordering::SeqCst));
+            assert_eq!(std::fs::read_dir(fixture.output()).unwrap().count(), 1);
+        }
+    }
+    #[test]
     fn renamed_output_path_is_uncertain_without_second_publication() {
         use std::os::unix::fs::DirBuilderExt;
         let fixture = custody::tests::Fixture::new();

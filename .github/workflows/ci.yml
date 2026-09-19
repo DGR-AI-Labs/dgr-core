@@ -34,6 +34,39 @@ jobs:
         run: cargo build --workspace --all-targets --locked
       - name: Check Rust lints
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Prepare isolated issuer test environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The real syscall fixtures require trusted ancestors, including HOME.
+          # Log public runner metadata before changing this disposable runner only.
+          id
+          namei -l "$HOME"
+          stat -f -c 'home filesystem: %T' "$HOME"
+          python3 - <<'PYTHON'
+          import os
+          import pathlib
+          import stat
+          root = pathlib.Path.home()
+          uid, gid = os.getuid(), os.getgid()
+          if uid == 0 or gid == 0:
+              raise SystemExit("issuer tests require non-root UID/GID")
+          entry = root.lstat()
+          if not stat.S_ISDIR(entry.st_mode) or entry.st_uid != uid:
+              raise SystemExit("runner HOME must be a real directory owned by the test user")
+          # Do not relax product checks or modify other ancestors.
+          root.chmod(stat.S_IMODE(entry.st_mode) & ~0o6022)
+          for path in [root, *root.parents]:
+              entry = path.lstat()
+              print(f"ancestor {path}: uid={entry.st_uid} gid={entry.st_gid} mode={stat.S_IMODE(entry.st_mode):04o}")
+              if (not stat.S_ISDIR(entry.st_mode)
+                      or entry.st_uid not in (0, uid)
+                      or entry.st_mode & 0o6022):
+                  raise SystemExit("runner ancestor does not satisfy issuer test policy")
+          PYTHON
+          issuer_test_tmp="$(mktemp -d "$RUNNER_TEMP/dgr-issuer-tests.XXXXXX")"
+          chmod 0700 "$issuer_test_tmp"
+          printf 'TMPDIR=%s\n' "$issuer_test_tmp" >> "$GITHUB_ENV"
       - name: Test Rust workspace
         run: cargo test --workspace --all-targets --locked
       - name: Test ignored-set comparison logic
