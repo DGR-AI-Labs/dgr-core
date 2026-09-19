@@ -44,6 +44,10 @@ profile and explicit operation approval are prerequisites; a code merge supplies
 
 Both custody and output roots must be distinct owner-only ext4 directories on the trusted
 Linux/WSL host. Windows `/mnt/c`, overlay, FUSE and network storage are outside this profile.
+Both roots and every directory in their full ancestor chains must have no POSIX access or
+default ACL: both ACL queries must report ENODATA. Root ownership and mode 0755 alone do not
+establish this; an inherited default ACL on a parent such as `/home` is rejected. Check the
+full chain before use; changing shared-host ACLs requires separate administrator approval.
 Keep the signer and its secrets outside runtime containers and agent-accessible tool catalogs.
 Trusted root/same-UID/kernel compromise is outside the protection claimed by these checks.
 
