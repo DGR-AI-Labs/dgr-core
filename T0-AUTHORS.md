@@ -268,3 +268,27 @@ independent Satoshi/Claude Opus reviews and founder semantic/provenance/finding 
 Only the founder merges; public disclosure, backup readiness, provisioning and operation remain
 separate gates. The initial incomplete checkpoint is retained privately with its observed procfs
 ACL conflict; P1 changes only that fixed kernel-descriptor class, never general ACL errno policy.
+
+### Remediation authorship correction (2026-09-19)
+
+OpenAI Codex authored the implementation, tests and contract clarification in commit
+`b35edd50ea56493b8f98428846d65c11be7193b4`, under the founder's instruction to proceed with
+scoped remediation of the independent review. The founder supplied direction; these regions
+were not founder-authored:
+
+- `tools/local-issuer/src/custody.rs`: launch-record GID rejection, production
+  `validate_identity` and its caller, the `lower_limit` return value and address-space rejection,
+  `sync_once` and the shared `sync_fd` error mapping, the signal-set SAFETY comment, and the
+  launch/identity, fsync and combined cancellation/restoration regression tests.
+- `tools/local-issuer/tests/issuance.rs`: the child-process inherited-address-space regression.
+- `specs/LOCAL-ISSUER-contract.md`: the bounded low-memory failure clarification and its limits.
+
+That commit inherited the local Git configuration and therefore records the founder's identity
+in its author and committer fields. Those metadata fields do not accurately attribute the writing
+of these changes. This additive correction preserves the reviewed commit rather than rewriting
+history. Direction, review or merge does not convert agent authorship to founder authorship.
+
+Codex also authored this correction and the accompanying scanner/inventory evidence preparation.
+The original T0 classification, approved path ceiling and all independent review, founder
+finding-disposition and exact-head approval/merge requirements remain in force. This correction
+is not a founder attestation, independent review, product approval or authorization to operate.
