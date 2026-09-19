@@ -34,6 +34,16 @@ jobs:
         run: cargo build --workspace --all-targets --locked
       - name: Check Rust lints
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Require disposable GitHub-hosted runner
+        shell: bash
+        env:
+          ISSUER_RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: |
+          set -euo pipefail
+          if [[ "$ISSUER_RUNNER_ENVIRONMENT" != "github-hosted" ]]; then
+            echo "Issuer host preparation requires a disposable GitHub-hosted runner" >&2
+            exit 1
+          fi
       - name: Prepare isolated issuer test environment
         shell: bash
         run: |
@@ -116,6 +126,35 @@ jobs:
           finally:
               os.close(fd)
           PYTHON
+      - name: Verify normalized issuer ancestor policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTHON'
+          import errno
+          import os
+          import pathlib
+          import stat
+          root = pathlib.Path.home()
+          uid = os.getuid()
+          for path in [root, *root.parents]:
+              fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW)
+              try:
+                  entry = os.fstat(fd)
+                  if entry.st_uid not in (0, uid) or entry.st_mode & 0o6022:
+                      raise SystemExit(f"ancestor {path}: unexpected owner or mode")
+                  for attr in ("system.posix_acl_access", "system.posix_acl_default"):
+                      try:
+                          os.getxattr(fd, attr)
+                      except OSError as error:
+                          if error.errno != errno.ENODATA:
+                              raise SystemExit(f"ancestor {path}: {attr} errno={error.errno}")
+                          print(f"ancestor {path}: {attr}: ENODATA")
+                      else:
+                          raise SystemExit(f"ancestor {path}: {attr} must be absent")
+              finally:
+                  os.close(fd)
+          PYTHON
       - name: Test Rust workspace
         run: cargo test --workspace --all-targets --locked
       - name: Test ignored-set comparison logic
@@ -129,7 +168,7 @@ jobs:
   # exact-commit, founder-dispositioned Semgrep, CodeQL, and cargo-deny evidence.
   # Known reviewed output: Semgrep test-only temp-dir; CodeQL deterministic
   # fixture nonces plus diagnostic-only path-resolution notes; cargo-deny clean
-  # with two reviewed duplicate-version skips and no advisory ignores.
+  # with four reviewed duplicate-version skips and no advisory ignores.
   # No baseline or suppression policy may be introduced without founder review.
   # ---------------------------------------------------------------------------
 

@@ -374,6 +374,48 @@ mod tests {
         }
     }
     #[test]
+    fn default_acl_output_ancestor_preserves_uncertain_publication() {
+        use std::os::fd::AsRawFd;
+        use std::os::unix::fs::OpenOptionsExt;
+        let fixture = custody::tests::Fixture::new();
+        // Change only the disposable parent of output/, after its children exist.
+        let ancestor = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(&fixture.path)
+            .unwrap();
+        let mut acl = 2_u32.to_le_bytes().to_vec();
+        for (tag, permissions) in [(1_u16, 7_u16), (4, 0), (32, 0)] {
+            acl.extend_from_slice(&tag.to_le_bytes());
+            acl.extend_from_slice(&permissions.to_le_bytes());
+            acl.extend_from_slice(&u32::MAX.to_le_bytes());
+        }
+        // SAFETY: live test-owned directory fd, fixed name and initialized public ACL bytes.
+        let set = unsafe {
+            libc::fsetxattr(
+                ancestor.as_raw_fd(),
+                c"system.posix_acl_default".as_ptr(),
+                acl.as_ptr().cast(),
+                acl.len(),
+                0,
+            )
+        };
+        assert_eq!(set, 0, "{}", std::io::Error::last_os_error());
+        let possible = AtomicBool::new(false);
+        let mut clock = TrustedClock::new().unwrap();
+        let outcome =
+            publish_capability_file(&fixture.inputs, public_capability(), &possible, &mut clock);
+        // SAFETY: the same live fixture fd and fixed attribute set above. Fixture Drop
+        // also removes this entire disposable tree if the test panics before cleanup.
+        let removed = unsafe {
+            libc::fremovexattr(ancestor.as_raw_fd(), c"system.posix_acl_default".as_ptr())
+        };
+        assert_eq!(removed, 0, "{}", std::io::Error::last_os_error());
+        assert_eq!(outcome, Err(Failure::Uncertain));
+        assert!(possible.load(Ordering::SeqCst));
+        assert_eq!(std::fs::read_dir(fixture.output()).unwrap().count(), 1);
+    }
+    #[test]
     fn renamed_output_path_is_uncertain_without_second_publication() {
         use std::os::unix::fs::DirBuilderExt;
         let fixture = custody::tests::Fixture::new();

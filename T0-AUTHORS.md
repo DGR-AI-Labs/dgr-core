@@ -292,3 +292,20 @@ Codex also authored this correction and the accompanying scanner/inventory evide
 The original T0 classification, approved path ceiling and all independent review, founder
 finding-disposition and exact-head approval/merge requirements remain in force. This correction
 is not a founder attestation, independent review, product approval or authorization to operate.
+
+### CI and ACL regression follow-ups (2026-09-19)
+
+OpenAI Codex authored the CI preparation, diagnostics and disposable-runner ACL normalization
+in `a356f79741df905ccd1bad4f1f6099cecc4bb601`,
+`f66cfc1fbc340df70dc191139d2265d7ca874b56` and
+`f1107721cf6070f69cbd2c6c4c5731eb3f4bd98a`, and the test-only writable-output-ancestor
+regression in the first of those commits. The earlier candidate's statement that CI bytes
+were unchanged describes that historical candidate; it does not describe these follow-ups.
+
+Under the founder's subsequent direction, Codex also authored the README's explicit full-chain
+ACL prerequisite, the test-only default-ACL output-ancestor regression in `issuance.rs`, the
+workflow's hosted-runner guard and post-normalization ancestor checks, the four-skip comment
+correction and this provenance note. No production policy region or existing core/harness
+logic is changed by these follow-ups. The two new unsafe calls are confined to the disposable
+ACL test and require updated inventory and analyzer evidence. Reviews and finding dispositions
+remain bound to the actual reviewed head; human approval or merge does not change authorship.
