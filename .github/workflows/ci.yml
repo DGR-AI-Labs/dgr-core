@@ -59,6 +59,19 @@ jobs:
           for path in [root, *root.parents]:
               entry = path.lstat()
               print(f"ancestor {path}: uid={entry.st_uid} gid={entry.st_gid} mode={stat.S_IMODE(entry.st_mode):04o}")
+              fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW)
+              try:
+                  fdinfo = pathlib.Path(f"/proc/self/fdinfo/{fd}").read_text()
+                  mount_id = next(line for line in fdinfo.splitlines() if line.startswith("mnt_id:"))
+                  print(f"ancestor {path}: {mount_id}")
+                  for attr in ("system.posix_acl_access", "system.posix_acl_default"):
+                      try:
+                          value = os.getxattr(fd, attr)
+                          print(f"ancestor {path}: {attr} present, bytes={len(value)}")
+                      except OSError as error:
+                          print(f"ancestor {path}: {attr} errno={error.errno}")
+              finally:
+                  os.close(fd)
               if (not stat.S_ISDIR(entry.st_mode)
                       or entry.st_uid not in (0, uid)
                       or entry.st_mode & 0o6022):
