@@ -256,6 +256,7 @@ fn parse_launch(b: &[u8]) -> Result<ApprovedOperatorConfig> {
         || !(1..=512).contains(&n)
         || !(1..=512).contains(&m)
         || u32_at(16)? == 0
+        || u32_at(20)? == 0
         || hash(176)? != profile::fixture_inventory_hash()
     {
         return Err(Failure::Launch);
@@ -297,12 +298,13 @@ fn identity() -> Result<(u32, u32)> {
     // SAFETY: writable uid_t/gid_t outputs are distinct and remain live throughout each call.
     if unsafe { libc::getresuid(&mut r, &mut e, &mut s) } != 0
         || unsafe { libc::getresgid(&mut gr, &mut ge, &mut gs) } != 0
-        || r == 0
-        || r != e
-        || r != s
-        || gr != ge
-        || gr != gs
     {
+        return Err(Failure::Launch);
+    }
+    validate_identity(r, e, s, gr, ge, gs)
+}
+fn validate_identity(r: u32, e: u32, s: u32, gr: u32, ge: u32, gs: u32) -> Result<(u32, u32)> {
+    if r == 0 || gr == 0 || r != e || r != s || gr != ge || gr != gs {
         return Err(Failure::Launch);
     }
     Ok((r, gr))
@@ -348,7 +350,7 @@ fn no_capabilities() -> Result<()> {
     }
     Ok(())
 }
-fn lower_limit(resource: libc::__rlimit_resource_t, ceiling: u64) -> Result<()> {
+fn lower_limit(resource: libc::__rlimit_resource_t, ceiling: u64) -> Result<u64> {
     let mut limit = std::mem::MaybeUninit::<libc::rlimit>::uninit();
     // SAFETY: valid output buffer and supported Linux resource selector.
     if unsafe { libc::getrlimit(resource, limit.as_mut_ptr()) } != 0 {
@@ -365,13 +367,19 @@ fn lower_limit(resource: libc::__rlimit_resource_t, ceiling: u64) -> Result<()> 
     if unsafe { libc::setrlimit(resource, &new) } != 0 {
         return Err(Failure::Resource);
     }
-    Ok(())
+    Ok(bound)
 }
 pub fn harden_process() -> Result<()> {
     identity()?;
     no_capabilities()?;
     lower_limit(libc::RLIMIT_CORE, 0)?;
-    lower_limit(libc::RLIMIT_AS, 512 * 1024 * 1024)?;
+    let address_limit = lower_limit(libc::RLIMIT_AS, 512 * 1024 * 1024)?;
+    // Frozen scrypt N=2^18, r=8 allocates a 256 MiB V buffer alone. Reject an
+    // inherited limit that cannot accommodate it plus any process overhead, before
+    // input or secrets. A larger limit is not a guarantee against later allocation abort.
+    if address_limit <= 256 * 1024 * 1024 {
+        return Err(Failure::Resource);
+    }
     lower_limit(libc::RLIMIT_CPU, 10)?;
     // SAFETY: scalar prctl operations and umask; this single-threaded CLI owns process policy.
     if unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0, 0, 0, 0) } != 0
@@ -942,7 +950,8 @@ impl TerminalSession {
             .ok_or(Failure::Terminal)
     }
     fn configure(&mut self) -> Result<()> {
-        // SAFETY: sigemptyset initializes the entire valid signal-set object before use.
+        // SAFETY: on the supported Linux x86_64 ABI, sigset_t contains integer words;
+        // all-zero is a valid initialized representation. sigemptyset establishes the empty set.
         let mut signals = unsafe { std::mem::zeroed::<libc::sigset_t>() };
         // SAFETY: live initialized sigset_t pointer.
         if unsafe { libc::sigemptyset(&mut signals) } != 0 {
@@ -1254,30 +1263,40 @@ pub fn write_output(fd: &OwnedFd, bytes: &[u8]) -> Result<()> {
     }
     Ok(())
 }
+fn sync_once(fd: RawFd, directory: bool) -> std::result::Result<(), i32> {
+    #[cfg(not(test))]
+    let _ = directory;
+    #[cfg(test)]
+    if let Some(action) = injection(if directory {
+        Operation::SyncDirectory
+    } else {
+        Operation::SyncFile
+    }) {
+        return match action {
+            Inject::Error(error) => Err(error),
+            _ => panic!("invalid sync script"),
+        };
+    }
+    // SAFETY: fsync borrows the descriptor, with no pointers or ownership transfer.
+    // An invalid descriptor is rejected by the kernel and is used only in negative tests.
+    if unsafe { libc::fsync(fd) } == 0 {
+        Ok(())
+    } else {
+        Err(errno())
+    }
+}
 fn sync_fd(fd: RawFd, directory: bool) -> Result<()> {
     loop {
-        #[cfg(test)]
-        if let Some(action) = injection(if directory {
-            Operation::SyncDirectory
-        } else {
-            Operation::SyncFile
-        }) {
-            match action {
-                Inject::Error(libc::EINTR) => continue,
-                Inject::Error(_) => return Err(Failure::Unpublished),
-                _ => panic!("invalid sync script"),
+        match sync_once(fd, directory) {
+            Ok(()) => return Ok(()),
+            Err(libc::EINTR) => continue,
+            Err(_) => {
+                return Err(if directory {
+                    Failure::Uncertain
+                } else {
+                    Failure::Unpublished
+                });
             }
-        }
-        // SAFETY: live owned descriptor, no pointer arguments or ownership transfer.
-        if unsafe { libc::fsync(fd) } == 0 {
-            return Ok(());
-        }
-        if errno() != libc::EINTR {
-            return Err(if directory {
-                Failure::Uncertain
-            } else {
-                Failure::Unpublished
-            });
         }
     }
 }
@@ -1606,6 +1625,11 @@ pub(super) mod tests {
     fn restoration_failure_overrides_cancellation() {
         let (_master, observer, mut terminal) = public_pty();
         let saved = terminal.original;
+        // SAFETY: this thread owns the configured terminal and blocks SIGTERM for signalfd.
+        assert_eq!(
+            unsafe { libc::pthread_kill(libc::pthread_self(), libc::SIGTERM) },
+            0
+        );
         {
             let _guard = script(&[(Operation::SetTermios, Inject::Error(libc::EIO))]);
             assert_eq!(terminal.restore(), Err(Failure::Terminal));
@@ -1838,6 +1862,11 @@ pub(super) mod tests {
         bytes.extend_from_slice(c.output_path.as_bytes());
         assert_eq!(bytes.len(), length);
         assert!(parse_launch(&bytes).is_ok());
+        for offset in [16, 20] {
+            let mut bad = bytes.clone();
+            bad[offset..offset + 4].copy_from_slice(&0_u32.to_be_bytes());
+            assert!(matches!(parse_launch(&bad), Err(Failure::Launch)));
+        }
         for index in [0, 8, 10, 12, 176, 208, 210] {
             let mut bad = bytes.clone();
             bad[index] ^= 1;
@@ -1892,6 +1921,41 @@ pub(super) mod tests {
                 edit_input(&mut buffer, &mut n, b, 1024),
                 Err(Failure::Cancelled)
             );
+        }
+    }
+    #[test]
+    fn identity_rejects_root_primary_group_and_mismatched_ids() {
+        assert_eq!(
+            validate_identity(1000, 1000, 1000, 1000, 1000, 1000),
+            Ok((1000, 1000))
+        );
+        for ids in [
+            (0, 0, 0, 1000, 1000, 1000),
+            (1000, 1000, 1000, 0, 0, 0),
+            (1000, 1001, 1000, 1000, 1000, 1000),
+            (1000, 1000, 1001, 1000, 1000, 1000),
+            (1000, 1000, 1000, 1000, 1001, 1000),
+            (1000, 1000, 1000, 1000, 1000, 1001),
+        ] {
+            assert_eq!(
+                validate_identity(ids.0, ids.1, ids.2, ids.3, ids.4, ids.5),
+                Err(Failure::Launch)
+            );
+        }
+    }
+    #[test]
+    fn sync_errors_match_real_syscalls_and_retry_interruption() {
+        for (directory, op, expected) in [
+            (false, Operation::SyncFile, Failure::Unpublished),
+            (true, Operation::SyncDirectory, Failure::Uncertain),
+        ] {
+            // A real EBADF exercises production classification, without the outer publication map.
+            assert_eq!(sync_fd(-1, directory), Err(expected));
+            for error in [libc::EBADF, libc::EIO] {
+                let _guard =
+                    script(&[(op, Inject::Error(libc::EINTR)), (op, Inject::Error(error))]);
+                assert_eq!(sync_fd(-1, directory), Err(expected));
+            }
         }
     }
     #[test]

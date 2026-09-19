@@ -106,3 +106,31 @@ fn pipe_requires_eof_before_absolute_deadline() {
     assert!(output.stdout.is_empty());
     assert_eq!(output.stderr, b"DGR-E003 request\n");
 }
+
+#[test]
+fn insufficient_inherited_address_space_is_a_fixed_resource_failure() {
+    use std::os::unix::process::CommandExt;
+    for limit in [128 * 1024 * 1024, 256 * 1024 * 1024] {
+        let mut command = Command::new(binary());
+        command.arg("issue").stdin(Stdio::null());
+        // SAFETY: this callback runs only in the forked child before exec and calls
+        // only setrlimit with a stack value; it does not allocate or acquire locks.
+        unsafe {
+            command.pre_exec(move || {
+                let limits = libc::rlimit {
+                    rlim_cur: limit,
+                    rlim_max: limit,
+                };
+                if libc::setrlimit(libc::RLIMIT_AS, &limits) == 0 {
+                    Ok(())
+                } else {
+                    Err(std::io::Error::last_os_error())
+                }
+            });
+        }
+        let output = command.output().unwrap();
+        assert_eq!(output.status.code(), Some(13));
+        assert!(output.stdout.is_empty());
+        assert_eq!(output.stderr, b"DGR-E013 resource\n");
+    }
+}

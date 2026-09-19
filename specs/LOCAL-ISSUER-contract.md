@@ -99,7 +99,10 @@ inheritable/ambient capabilities are supported. No setuid service, environment-s
 anchor or caller namespace establishes authority. Before secrets: lower RLIMIT_AS to at most
 512 MiB and CPU soft/hard to at most 10 seconds, preserving tighter inherited limits; disable
 core dumps/dumpability, set no-new-privileges, umask077 and checked close_range above fd2.
-Unsupported or failed hardening aborts, never relaxes policy.
+Unsupported or failed hardening aborts, never relaxes policy. An inherited address-space limit
+at or below 256 MiB cannot accommodate the frozen scrypt V buffer plus process overhead and is
+rejected with `DGR-E013 resource` before input or secrets. Larger limits do not guarantee
+allocation success; later allocator aborts and fatal termination cannot guarantee a status line.
 
 Fixed `/etc/dgr/local-issuer/launch.bin` is root-owned regular0444/nlink1, opened nofollow,
 nonblocking and close-on-exec through a held root-owned directory chain without group/other
