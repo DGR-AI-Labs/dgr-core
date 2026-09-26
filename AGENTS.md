@@ -15,7 +15,9 @@ truth.** It wins over anything here. Reference it; do not duplicate it.
 > [`specs/ADR-14-AMENDMENT-A-reference-contract.md`](specs/ADR-14-AMENDMENT-A-reference-contract.md)
 > for the RUNTIME-002 boundary and
 > [`specs/ADR-14-AMENDMENT-B-reference-contract.md`](specs/ADR-14-AMENDMENT-B-reference-contract.md)
-> for the separate offline simulation issuer, with provenance tracked in
+> for the separate offline simulation issuer, and
+> [`specs/HERMES-CORE-authority-reference.md`](specs/HERMES-CORE-authority-reference.md)
+> for the separately gated Hermes core, with provenance tracked in
 > [`T0-AUTHORS.md`](T0-AUTHORS.md). Each is inoperative until all its prerequisites are complete.
 > Agents may not author, complete, refactor or patch T0 outside an operative exception.
 > Hold the FS-wedge scope fence and never weaken a bypass test to obtain green.

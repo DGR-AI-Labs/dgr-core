@@ -309,3 +309,16 @@ correction and this provenance note. No production policy region or existing cor
 logic is changed by these follow-ups. The two new unsafe calls are confined to the disposable
 ACL test and require updated inventory and analyzer evidence. Reviews and finding dispositions
 remain bound to the actual reviewed head; human approval or merge does not change authorship.
+
+## Hermes core — proposed exception, no implementation authored
+
+Constitution 5.0.0 proposes an independently gated Hermes core exception, referenced by
+`specs/HERMES-CORE-authority-reference.md`. Its pinned private source is a draft. No Hermes T0
+code is introduced or authorized by this governance change. Existing provenance is unchanged.
+
+Active private adoption, public constitutional adoption, scope disposition, founder-owned registry,
+approved contracts and exact file/symbol/dependency/test/analyzer manifest, plus explicit backlog
+activation must precede authoring. New agent-written or transformed T0 retains agent provenance;
+review and merge cannot convert it to founder authorship. All independent human/cross-model,
+adversarial, applicable three-tool analysis, finding-disposition and exact-final-head approval/merge
+gates remain mandatory. The core exception does not authorize a proxy or effectful extension route.

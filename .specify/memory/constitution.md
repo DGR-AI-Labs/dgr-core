@@ -10,9 +10,9 @@
 > README reference this document; they do not override it.
 
 - **Ratified:** 2026-06-16
-- **Version:** 4.0.0 (semver: MAJOR = principle removed/redefined, MINOR = principle added,
+- **Version:** 5.0.0 (semver: MAJOR = principle removed/redefined, MINOR = principle added,
   PATCH = wording/clarification)
-- **Amended:** 2026-09-17 (proposed Principle 9 issuer exception; effective on founder merge; see amendment log)
+- **Amended:** 2026-09-26 (proposed Principle 9 Hermes exception; effective on founder merge; see amendment log)
 - **Current phase:** Phase 1 — enforcement proof (see Principle 9)
 
 ---
@@ -117,7 +117,7 @@ core is **permitted**, and its authoring remains **human-led T0 work** under Pri
   any T0 enforcement unit. Agents may author tests, harness/adapters, fixtures, and specs only when
   those materials are classified T2/T3, and may perform review-only passes over T0 code. The only
   prospective exceptions to this default are the exact RUNTIME-002 boundary exception and the
-  separate offline simulation issuer exception below; neither reclassifies T0 or authorizes
+  separate offline simulation issuer and Hermes core exceptions below; none reclassifies T0 or authorizes
   unlisted responsibilities.
 
 > **RUNTIME-002 supervised-agent exception.** The default prohibition on agent-authored T0 remains.
@@ -145,6 +145,20 @@ core is **permitted**, and its authoring remains **human-led T0 work** under Pri
   signer backlog activation and founder approval of the exact signer manifest. Until all are
   complete, signer T0 authoring remains prohibited. Amendment A's prerequisites remain independent.
 
+> **Hermes core supervised-agent exception.** The default prohibition on agent-authored T0 remains.
+> Only the bounded core responsibilities enumerated by an active, commit-and-blob-pinned private
+> Hermes authority and a founder-approved exact implementation manifest may become eligible.
+> All Principle 8 gates remain mandatory. The founder retains scope, policy and trust authority;
+> agent-authored or transformed regions retain truthful provenance. Existing v1 behavior and proof
+> expectations remain unchanged. No proxy dispatch, credential provisioning, deployment, arbitrary
+> module execution in the proxy or unlisted consequential work is authorized.
+
+- **Separate Hermes prerequisites:** `specs/HERMES-CORE-authority-reference.md` records the private
+  source status and ordered gates. The exception is inoperative until active private adoption,
+  public constitutional adoption, founder-approved contracts/registry/exact manifest and explicit
+  canonical backlog activation all resolve. A draft authority pointer is insufficient. Principle 6
+  scope justification requires founder disposition; the other exceptions remain independent.
+
 - The bypass suite transitions from **red-by-absence** to **green-by-authored-enforcement**,
   one attack at a time, as the founder implements each unit. Green for an attack means *real,
   reviewed enforcement exists for it* — **never** achieved by weakening a test or bypassing the
@@ -170,6 +184,11 @@ amend this document and merge its own change.
   a deliberate, later, human step taken only once a real gate exists.
 
 ## Amendment log
+
+- **5.0.0 — proposed 2026-09-26 (Hermes core):** Principle 9 adds a separately gated, exact-manifest
+  Hermes core authorship exception. Principles 1–8 and existing exceptions remain unchanged.
+  Agent-drafted for human review/merge. The private source is currently a draft; public adoption
+  alone activates no T0 authoring, deployment or operational authority.
 
 - **4.0.0 — proposed 2026-09-17 (ADR-14-AMENDMENT-B):** Principle 9 adds a separate, narrowly
   manifested offline simulation issuer authorship exception and updates the formerly exclusive
