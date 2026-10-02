@@ -1,4 +1,6 @@
+use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -7,6 +9,7 @@ use dgr_core_bypass_harness::founder_consumption_store::{ConsumeOutcome, Consump
 use dgr_core_bypass_harness::founder_s2_consumption_store::S2ConsumptionStore;
 
 struct TemporaryDatabase {
+    directory: PathBuf,
     path: PathBuf,
 }
 
@@ -16,11 +19,28 @@ impl TemporaryDatabase {
             .duration_since(UNIX_EPOCH)
             .expect("system clock must be after the Unix epoch")
             .as_nanos();
-        let path = std::env::temp_dir().join(format!(
-            "dgr-core-s2-restart-{}-{unique}.sqlite3",
-            std::process::id()
-        ));
-        Self { path }
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        for _ in 0..128 {
+            let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
+            let directory = std::env::temp_dir().join(format!(
+                "dgr-core-s2-restart-{}-{unique}-{sequence}",
+                std::process::id()
+            ));
+            match Self::create_at(directory) {
+                Ok(database) => return database,
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => panic!("create private database directory: {error}"),
+            }
+        }
+        panic!("temporary database directory collisions exhausted");
+    }
+
+    fn create_at(directory: PathBuf) -> std::io::Result<Self> {
+        // Atomic, non-recursive creation refuses existing directories and symlinks.
+        // The name need not be secret: only a successful creator uses this 0700 directory.
+        std::fs::DirBuilder::new().mode(0o700).create(&directory)?;
+        let path = directory.join("database.sqlite3");
+        Ok(Self { directory, path })
     }
 
     fn path(&self) -> &Path {
@@ -30,16 +50,10 @@ impl TemporaryDatabase {
 
 impl Drop for TemporaryDatabase {
     fn drop(&mut self) {
-        for suffix in ["", "-journal", "-shm", "-wal"] {
-            let candidate = PathBuf::from(format!("{}{suffix}", self.path.display()));
-            if let Err(error) = std::fs::remove_file(&candidate) {
-                assert_eq!(
-                    error.kind(),
-                    std::io::ErrorKind::NotFound,
-                    "failed to remove temporary SQLite file {}",
-                    candidate.display()
-                );
-            }
+        if let Err(error) = std::fs::remove_dir_all(&self.directory)
+            && !std::thread::panicking()
+        {
+            panic!("remove private database directory: {error}");
         }
     }
 }
@@ -104,4 +118,37 @@ fn concurrent_presentations_cannot_both_consume() {
         )),
         "concurrent presentation produced an unknown outcome"
     );
+}
+
+#[test]
+fn temporary_database_refuses_preexisting_directory_and_symlink() {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    let owner = TemporaryDatabase::new();
+    assert_eq!(
+        std::fs::metadata(&owner.directory)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o077,
+        0
+    );
+    let sentinel = owner.directory.join("sentinel");
+    std::fs::write(&sentinel, b"unchanged").unwrap();
+    assert_eq!(
+        TemporaryDatabase::create_at(owner.directory.clone())
+            .err()
+            .unwrap()
+            .kind(),
+        std::io::ErrorKind::AlreadyExists
+    );
+    let link = owner.directory.join("precreated-link");
+    symlink(&owner.directory, &link).unwrap();
+    assert_eq!(
+        TemporaryDatabase::create_at(link).err().unwrap().kind(),
+        std::io::ErrorKind::AlreadyExists
+    );
+    assert_eq!(std::fs::read(sentinel).unwrap(), b"unchanged");
+    let directory = owner.directory.clone();
+    drop(owner);
+    assert!(!directory.exists());
 }
