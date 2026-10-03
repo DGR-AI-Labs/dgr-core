@@ -345,3 +345,521 @@ const GOLDEN_ALLOW_HASH: &str = "6004d9638710a844c7c0ecd1e56a0cb27353af6e62417a0
 const GOLDEN_ESCALATE: &str = "4447522d4845524d45532d4445434953494f4e2d56310000000001610000000161000000016100000001610000000161000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001610000000161000000016100000000000005dc0000000161000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000001610000000161000000016100000000000000000000000000000000000001000000000000000000000000000000000000000161000001000000017200000000000003e800000000000007d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002001b00000001001c000100000000000003e800000000000007d00100000001720000000200000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 const GOLDEN_ESCALATE_HASH: &str =
     "06d05529e303341a4d920ce92a1a93a0064bb6f695aa7f6df03348d3b057604f";
+
+fn preparation_settings() -> CommerceActionSettingsV1 {
+    CommerceActionSettingsV1 {
+        enabled: true,
+        currencies: vec!["USD".into()],
+        required_evidence: vec![(EvidenceFieldV1::SourceRevision, 1000)],
+        amount_ceiling_minor: Some(5000),
+        count_ceiling: Some(3),
+        value_ceiling_minor: Some(5000),
+        budget_window_ms: Some(60000),
+        order_age_limit_seconds: Some(1000),
+        require_provenance: true,
+        attestation_enabled: true,
+        require_monetary_review: false,
+        review_request_timeout_ms: Some(1000),
+        grant_max_lifetime_ms: Some(1000),
+        attestation_max_lifetime_ms: Some(1000),
+        reviewer_role_policy_id: Some("reviewer".into()),
+        review_routes: vec![],
+    }
+}
+fn preparation_source() -> CommerceBundleSourceV1 {
+    let actions = [
+        CommerceActionV1::RefundCreate,
+        CommerceActionV1::OrderAddressUpdate,
+        CommerceActionV1::OrderCancel,
+        CommerceActionV1::DiscountCreate,
+        CommerceActionV1::CustomerEmailSend,
+    ];
+    let mut schema_actions = serde_json::Map::new();
+    for a in actions {
+        schema_actions.insert(
+            format!("{a:?}"),
+            serde_json::json!({"appliesTo": {
+                "principalTypes": ["Principal"], "resourceTypes": ["Resource"],
+                "context": {"type": "Record", "attributes": {}}
+            }}),
+        );
+    }
+    let mut source = CommerceBundleSourceV1 {
+        schema_text: serde_json::json!({"HermesCommerce": {
+            "entityTypes": {"Principal": {}, "Resource": {}}, "actions": schema_actions
+        }})
+        .to_string(),
+        permissions_text: "permit(principal, action, resource);".into(),
+        action_settings: actions
+            .into_iter()
+            .map(|a| (a, preparation_settings()))
+            .collect(),
+        registry_digest: [7; 32],
+        declared_digest: [0; 32],
+    };
+    recommit(&mut source);
+    source
+}
+fn recommit(source: &mut CommerceBundleSourceV1) {
+    source.declared_digest = bundle_digest_v1(source).unwrap();
+}
+fn prep_error(source: &CommerceBundleSourceV1) -> BundleErrorV1 {
+    prepare_bundle_v1(source, &[7; 32]).unwrap_err()
+}
+
+#[test]
+fn bundle_error_categories() {
+    let base = preparation_source();
+    let prepared = prepare_bundle_v1(&base, &[7; 32]).unwrap();
+    assert_eq!(prepared.digest(), &base.declared_digest);
+    assert_eq!(prepared.registry_digest(), &[7; 32]);
+    assert_eq!(prepared.policies().policies().count(), 1);
+    assert_eq!(prepared.action_settings().len(), 5);
+    let _ = prepared.schema();
+    let mut bad = base.clone();
+    bad.schema_text = "{".into();
+    assert_eq!(prep_error(&bad), BundleErrorV1::MalformedSource);
+    bad = base.clone();
+    bad.permissions_text = " ".repeat(131073);
+    assert_eq!(prep_error(&bad), BundleErrorV1::SourceTooLarge);
+    bad = base.clone();
+    bad.permissions_text = "permit(principal, action, resource);\n".repeat(65);
+    assert_eq!(prep_error(&bad), BundleErrorV1::StructureLimitExceeded);
+    bad = base.clone();
+    bad.schema_text = r#"{"HermesCommerce":{"entityTypes":{"Principal":{"shape":{"type":"NonexistentType"}}},"actions":{}}}"#.into();
+    assert_eq!(prep_error(&bad), BundleErrorV1::SchemaInvalid);
+    bad = base.clone();
+    bad.permissions_text =
+        "permit(principal, action, resource) when { context.unknownAttribute == true };".into();
+    assert_eq!(prep_error(&bad), BundleErrorV1::PolicyInvalid);
+    bad = base.clone();
+    bad.action_settings[0].1.budget_window_ms = Some(0);
+    assert_eq!(prep_error(&bad), BundleErrorV1::SettingsInvalid);
+    bad = base.clone();
+    bad.declared_digest = [0; 32];
+    assert_eq!(prep_error(&bad), BundleErrorV1::DigestMismatch);
+    bad = base.clone();
+    bad.registry_digest = [0; 32];
+    assert_eq!(prep_error(&bad), BundleErrorV1::RegistryMismatch);
+    bad = base.clone();
+    bad.permissions_text =
+        "permit(principal, action, resource) when { decimal(\"1.0\") == decimal(\"1.0\") };".into();
+    assert_eq!(prep_error(&bad), BundleErrorV1::UnsupportedFeature);
+    // Trust must be independent of the declaration; digest agreement alone is
+    // not trust. Supplying an unrelated expected identity rejects valid source.
+    assert_eq!(
+        prepare_bundle_v1(&base, &[8; 32]).unwrap_err(),
+        BundleErrorV1::RegistryMismatch
+    );
+}
+
+#[test]
+fn preparation_error_precedence() {
+    let mut source = preparation_source();
+    source.schema_text = r#"{"HermesCommerce":{"entityTypes":{"Principal":{"shape":{"type":"NonexistentType"}}},"actions":{}}}"#.into();
+    source.permissions_text = "permit(principal, action, resource) when { decimal(\"1.0\") == decimal(\"1.0\") && context.unknownAttribute };".into();
+    assert_eq!(prep_error(&source), BundleErrorV1::UnsupportedFeature);
+    source.permissions_text =
+        "permit(principal, action, resource) when { context.unknownAttribute };".into();
+    assert_eq!(prep_error(&source), BundleErrorV1::SchemaInvalid);
+    source.schema_text = preparation_source().schema_text;
+    assert_eq!(prep_error(&source), BundleErrorV1::PolicyInvalid);
+    source
+        .permissions_text
+        .push_str(&"permit(principal, action, resource);".repeat(64));
+    assert_eq!(prep_error(&source), BundleErrorV1::StructureLimitExceeded);
+    source.permissions_text =
+        "permit(principal, action, resource) when { decimal(\"1\") == decimal(\"1\") };".repeat(65);
+    assert_eq!(prep_error(&source), BundleErrorV1::StructureLimitExceeded);
+    source.schema_text = "{".into();
+    assert_eq!(prep_error(&source), BundleErrorV1::MalformedSource);
+    source.permissions_text = " ".repeat(131073);
+    assert_eq!(prep_error(&source), BundleErrorV1::SourceTooLarge);
+}
+
+#[test]
+fn extension_rejection_before_authorizer() {
+    // This slice has no Authorizer or Context construction path. The unit tests
+    // separately instrument the actual semantic-schema conversion boundary.
+    // These are preparation assertions, not evaluator reachability proof.
+    let cases = [
+        "decimal(\"1.0\") == decimal(\"1.0\")",
+        "ip(\"127.0.0.1\") == ip(\"127.0.0.1\")",
+        "datetime(\"2026-01-01T00:00:00Z\") == datetime(\"2026-01-01T00:00:00Z\")",
+        "duration(\"1h\") == duration(\"1h\")",
+        "decimal(\"1.0\").lessThan(decimal(\"2.0\"))",
+        "{amount: decimal(\"1.0\")}.amount == decimal(\"1.0\")",
+        "[decimal(\"1.0\")].contains(decimal(\"1.0\"))",
+        "if true then true else decimal(\"1.0\") == decimal(\"1.0\")",
+        "if false then decimal(\"1.0\") == decimal(\"1.0\") else true",
+        "false && decimal(\"1.0\") == decimal(\"1.0\")",
+        "true || decimal(\"1.0\") == decimal(\"1.0\")",
+    ];
+    for expr in cases {
+        let mut source = preparation_source();
+        source.permissions_text = format!("permit(principal, action, resource) when {{ {expr} }};");
+        assert_eq!(
+            prep_error(&source),
+            BundleErrorV1::UnsupportedFeature,
+            "{expr}"
+        );
+    }
+    let mut source = preparation_source();
+    source.permissions_text.push_str("permit(principal == HermesCommerce::Principal::\"never\", action, resource) when { decimal(\"1.0\") == decimal(\"1.0\") };");
+    assert_eq!(prep_error(&source), BundleErrorV1::UnsupportedFeature);
+    source.permissions_text = "permit(principal == ?principal, action, resource);".into();
+    assert_eq!(prep_error(&source), BundleErrorV1::UnsupportedFeature);
+    for ty in ["decimal", "ipaddr", "datetime", "duration"] {
+        source = preparation_source();
+        let mut schema: serde_json::Value = serde_json::from_str(&source.schema_text).unwrap();
+        schema["HermesCommerce"]["commonTypes"] = serde_json::json!({
+            "Unused": {"type":"Alias"}, "Alias": {"type":"Set", "element":{
+                "type":"Record", "attributes":{"nested":{"type":"Extension","name":ty}}
+            }}
+        });
+        source.schema_text = schema.to_string();
+        assert_eq!(
+            prep_error(&source),
+            BundleErrorV1::UnsupportedFeature,
+            "{ty}"
+        );
+    }
+    for literal in [
+        serde_json::json!({"__extn":{"fn":"decimal","arg":"1.0"}}),
+        serde_json::json!({"nested":[{"__extn":{"fn":"decimal","arg":"1.0"}}]}),
+        serde_json::json!({"__expr":"decimal(\"1.0\")"}),
+    ] {
+        source = preparation_source();
+        let mut schema: serde_json::Value = serde_json::from_str(&source.schema_text).unwrap();
+        schema["HermesCommerce"]["actions"]["RefundCreate"]["attributes"] =
+            serde_json::json!({"x":literal});
+        source.schema_text = schema.to_string();
+        assert_eq!(prep_error(&source), BundleErrorV1::UnsupportedFeature);
+    }
+}
+
+#[test]
+fn native_policy_positive_controls() {
+    for expr in [
+        "1 + 2 == 3",
+        "!false",
+        "-1 < 0",
+        "1 <= 2 && 2 >= 1 && 2 > 1 && 1 != 2",
+        "[1, 2].contains(1)",
+        "[1, 2].containsAll([1])",
+        "[1].containsAny([1])",
+        "[1].isEmpty()",
+        "{decimal: \"decimal(1)\", ip: \"ip\"}.decimal == \"decimal(1)\"",
+        "{x: 1} has x",
+        "\"duration\" like \"dur*\"",
+        "if true then true else false",
+        "principal is HermesCommerce::Principal",
+        "principal == HermesCommerce::Principal::\"decimal(1)\"",
+    ] {
+        let mut source = preparation_source();
+        source.permissions_text = format!(
+            "@description(\"datetime duration decimal ip\") permit(principal, action, resource) when {{ {expr} }};"
+        );
+        recommit(&mut source);
+        assert!(
+            prepare_bundle_v1(&source, &[7; 32]).is_ok(),
+            "{expr}: {:?}",
+            prepare_bundle_v1(&source, &[7; 32])
+        );
+    }
+}
+
+#[test]
+fn bounded_inputs_preparation() {
+    let base = preparation_source();
+    for size in [131071, 131072, 131073] {
+        let mut s = base.clone();
+        s.permissions_text
+            .push_str(&" ".repeat(size - s.schema_text.len() - s.permissions_text.len()));
+        assert_eq!(s.schema_text.len() + s.permissions_text.len(), size);
+        if size <= 131072 {
+            recommit(&mut s);
+            assert!(prepare_bundle_v1(&s, &[7; 32]).is_ok());
+        } else {
+            assert_eq!(prep_error(&s), BundleErrorV1::SourceTooLarge);
+        }
+    }
+    for count in [64, 65] {
+        let mut s = base.clone();
+        s.permissions_text = "permit(principal, action, resource);".repeat(count);
+        recommit(&mut s);
+        if count == 64 {
+            assert!(prepare_bundle_v1(&s, &[7; 32]).is_ok());
+        } else {
+            assert_eq!(prep_error(&s), BundleErrorV1::StructureLimitExceeded);
+        }
+    }
+    for text in [
+        "{\"x\":{},\"x\":{}}",
+        "{\"x\":{\"actions\":{},\"actions\":{}}}",
+        "{} {}",
+    ] {
+        let mut s = base.clone();
+        s.schema_text = text.into();
+        assert_eq!(prep_error(&s), BundleErrorV1::MalformedSource);
+    }
+    let mut s = base;
+    s.permissions_text = format!(
+        "permit(principal, action, resource) when {{ \"{}\" == \"x\" }};",
+        "x".repeat(1025)
+    );
+    assert_eq!(prep_error(&s), BundleErrorV1::StructureLimitExceeded);
+}
+
+#[test]
+fn preparation_settings_and_identity() {
+    let base = preparation_source();
+    for action in [0usize, 3] {
+        for missing in 0..5 {
+            let mut s = base.clone();
+            let settings = &mut s.action_settings[action].1;
+            match missing {
+                0 => settings.currencies.clear(),
+                1 => settings.amount_ceiling_minor = None,
+                2 => settings.count_ceiling = None,
+                3 => settings.value_ceiling_minor = None,
+                _ => settings.budget_window_ms = None,
+            }
+            assert_eq!(
+                prep_error(&s),
+                BundleErrorV1::SettingsInvalid,
+                "action={action}, missing={missing}"
+            );
+        }
+    }
+    for field in 0..7 {
+        let mut s = base.clone();
+        let settings = &mut s.action_settings[0].1;
+        match field {
+            0 => settings.currencies.push("USD".into()),
+            1 => settings
+                .required_evidence
+                .push((EvidenceFieldV1::SourceRevision, 2)),
+            2 => settings.amount_ceiling_minor = Some(-1),
+            3 => settings.attestation_max_lifetime_ms = None,
+            4 => settings.review_request_timeout_ms = Some(0),
+            5 => settings.reviewer_role_policy_id = None,
+            _ => settings.currencies = vec!["usd".into()],
+        }
+        assert_eq!(
+            prep_error(&s),
+            BundleErrorV1::SettingsInvalid,
+            "field={field}"
+        );
+    }
+    let mut s = base.clone();
+    s.action_settings[1].0 = CommerceActionV1::RefundCreate;
+    assert_eq!(prep_error(&s), BundleErrorV1::SettingsInvalid);
+    s = base.clone();
+    s.action_settings.reverse();
+    recommit(&mut s);
+    assert_eq!(s.declared_digest, base.declared_digest);
+    assert_eq!(
+        prepare_bundle_v1(&s, &[7; 32]).unwrap().action_settings()[0].0,
+        CommerceActionV1::RefundCreate
+    );
+    s = base.clone();
+    s.permissions_text.push(' ');
+    recommit(&mut s);
+    assert_ne!(s.declared_digest, base.declared_digest);
+    assert!(prepare_bundle_v1(&s, &[7; 32]).is_ok());
+    s = base.clone();
+    s.action_settings[0].1.enabled = false;
+    s.action_settings[0].1.amount_ceiling_minor = None;
+    recommit(&mut s);
+    assert!(
+        !prepare_bundle_v1(&s, &[7; 32]).unwrap().action_settings()[0]
+            .1
+            .enabled
+    );
+    assert_ne!(s.declared_digest, base.declared_digest);
+}
+
+#[test]
+fn schema_depth_collections_and_alias_controls() {
+    for depth in [32, 33] {
+        let mut source = preparation_source();
+        let mut schema: serde_json::Value = serde_json::from_str(&source.schema_text).unwrap();
+        let mut ty = serde_json::json!({"type":"Long"});
+        for _ in 0..depth {
+            ty = serde_json::json!({"type":"Set", "element":ty});
+        }
+        schema["HermesCommerce"]["commonTypes"] = serde_json::json!({"UnusedNative":ty});
+        source.schema_text = schema.to_string();
+        recommit(&mut source);
+        if depth == 32 {
+            assert!(prepare_bundle_v1(&source, &[7; 32]).is_ok());
+        } else {
+            assert_eq!(prep_error(&source), BundleErrorV1::StructureLimitExceeded);
+        }
+    }
+    for n in [32, 33] {
+        let mut source = preparation_source();
+        let fields = (0..n)
+            .map(|i| format!("a{i}: {i}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        source.permissions_text =
+            format!("permit(principal, action, resource) when {{ {{{fields}}}.a0 == 0 }};");
+        recommit(&mut source);
+        if n == 32 {
+            assert!(prepare_bundle_v1(&source, &[7; 32]).is_ok());
+        } else {
+            assert_eq!(prep_error(&source), BundleErrorV1::StructureLimitExceeded);
+        }
+    }
+    let mut source = preparation_source();
+    let mut schema: serde_json::Value = serde_json::from_str(&source.schema_text).unwrap();
+    schema["HermesCommerce"]["commonTypes"] =
+        serde_json::json!({"A":{"type":"B"},"B":{"type":"A"}});
+    source.schema_text = schema.to_string();
+    assert_eq!(prep_error(&source), BundleErrorV1::SchemaInvalid);
+    // Native tag methods must not be confused with extension methods.
+    let mut source = preparation_source();
+    let mut schema: serde_json::Value = serde_json::from_str(&source.schema_text).unwrap();
+    schema["HermesCommerce"]["entityTypes"]["Principal"]["tags"] =
+        serde_json::json!({"type":"String"});
+    source.schema_text = schema.to_string();
+    source.permissions_text = "permit(principal, action, resource) when { principal.hasTag(\"decimal\") && principal.getTag(\"decimal\") == \"ip\" };".into();
+    recommit(&mut source);
+    assert!(prepare_bundle_v1(&source, &[7; 32]).is_ok());
+}
+
+#[test]
+fn preparation_vocabulary_tags() {
+    assert_eq!(
+        (EvidenceFieldV1::SourceRevision as u16).to_be_bytes(),
+        [0, 0],
+        "EvidenceFieldV1::SourceRevision"
+    );
+    assert_eq!(
+        (EvidenceFieldV1::FetchedAtMs as u16).to_be_bytes(),
+        [0, 1],
+        "EvidenceFieldV1::FetchedAtMs"
+    );
+    assert_eq!(
+        (EvidenceFieldV1::EvidenceDigest as u16).to_be_bytes(),
+        [0, 2],
+        "EvidenceFieldV1::EvidenceDigest"
+    );
+    assert_eq!(
+        (EvidenceFieldV1::CapturedMinor as u16).to_be_bytes(),
+        [0, 3],
+        "EvidenceFieldV1::CapturedMinor"
+    );
+    assert_eq!(
+        (EvidenceFieldV1::PriorRefundsMinor as u16).to_be_bytes(),
+        [0, 4],
+        "EvidenceFieldV1::PriorRefundsMinor"
+    );
+    assert_eq!(
+        (EvidenceFieldV1::OrderAgeSeconds as u16).to_be_bytes(),
+        [0, 5],
+        "EvidenceFieldV1::OrderAgeSeconds"
+    );
+    assert_eq!(
+        (EvidenceFieldV1::LineItemsEligible as u16).to_be_bytes(),
+        [0, 6],
+        "EvidenceFieldV1::LineItemsEligible"
+    );
+    assert_eq!(
+        (EvidenceFieldV1::AnyFulfillment as u16).to_be_bytes(),
+        [0, 7],
+        "EvidenceFieldV1::AnyFulfillment"
+    );
+    assert_eq!(
+        (EvidenceFieldV1::CancellationEligible as u16).to_be_bytes(),
+        [0, 8],
+        "EvidenceFieldV1::CancellationEligible"
+    );
+    assert_eq!(
+        (EvidenceFieldV1::DiscountConflict as u16).to_be_bytes(),
+        [0, 9],
+        "EvidenceFieldV1::DiscountConflict"
+    );
+    assert_eq!(
+        (EvidenceFieldV1::DerivedRecipientDigest as u16).to_be_bytes(),
+        [0, 10],
+        "EvidenceFieldV1::DerivedRecipientDigest"
+    );
+    assert_eq!(
+        (EvidenceFieldV1::ApprovedTemplateDigest as u16).to_be_bytes(),
+        [0, 11],
+        "EvidenceFieldV1::ApprovedTemplateDigest"
+    );
+    assert_eq!(
+        (EvidenceFieldV1::RecipientCount as u16).to_be_bytes(),
+        [0, 12],
+        "EvidenceFieldV1::RecipientCount"
+    );
+    assert_eq!(
+        (EvidenceFieldV1::Provenance as u16).to_be_bytes(),
+        [0, 13],
+        "EvidenceFieldV1::Provenance"
+    );
+    assert_eq!(
+        (EvidenceFieldV1::ProvenanceBindingDigest as u16).to_be_bytes(),
+        [0, 14],
+        "EvidenceFieldV1::ProvenanceBindingDigest"
+    );
+    assert_eq!(
+        (ReviewRouteV1::OrderWindow as u16).to_be_bytes(),
+        [0, 0],
+        "ReviewRouteV1::OrderWindow"
+    );
+    assert_eq!(
+        (ReviewRouteV1::DiscountConflict as u16).to_be_bytes(),
+        [0, 1],
+        "ReviewRouteV1::DiscountConflict"
+    );
+    assert_eq!(
+        (BundleErrorV1::MalformedSource as u16).to_be_bytes(),
+        [0, 0],
+        "BundleErrorV1::MalformedSource"
+    );
+    assert_eq!(
+        (BundleErrorV1::SourceTooLarge as u16).to_be_bytes(),
+        [0, 1],
+        "BundleErrorV1::SourceTooLarge"
+    );
+    assert_eq!(
+        (BundleErrorV1::StructureLimitExceeded as u16).to_be_bytes(),
+        [0, 2],
+        "BundleErrorV1::StructureLimitExceeded"
+    );
+    assert_eq!(
+        (BundleErrorV1::SchemaInvalid as u16).to_be_bytes(),
+        [0, 3],
+        "BundleErrorV1::SchemaInvalid"
+    );
+    assert_eq!(
+        (BundleErrorV1::PolicyInvalid as u16).to_be_bytes(),
+        [0, 4],
+        "BundleErrorV1::PolicyInvalid"
+    );
+    assert_eq!(
+        (BundleErrorV1::SettingsInvalid as u16).to_be_bytes(),
+        [0, 5],
+        "BundleErrorV1::SettingsInvalid"
+    );
+    assert_eq!(
+        (BundleErrorV1::DigestMismatch as u16).to_be_bytes(),
+        [0, 6],
+        "BundleErrorV1::DigestMismatch"
+    );
+    assert_eq!(
+        (BundleErrorV1::RegistryMismatch as u16).to_be_bytes(),
+        [0, 7],
+        "BundleErrorV1::RegistryMismatch"
+    );
+    assert_eq!(
+        (BundleErrorV1::UnsupportedFeature as u16).to_be_bytes(),
+        [0, 8],
+        "BundleErrorV1::UnsupportedFeature"
+    );
+}

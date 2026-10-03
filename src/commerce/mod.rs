@@ -1,4 +1,4 @@
-//! Pure commerce decision data and canonical encoding.
+//! Pure commerce data, canonical encoding and extension-free bundle preparation.
 //!
 //! These values do not authenticate a caller, evaluate policy or authorize a
 //! provider operation. A digest commits bytes; it is not an execution capability.
@@ -6,7 +6,10 @@
 
 mod decision;
 mod reasons;
-pub use decision::{decision_digest_v1, encode_decision_v1};
+pub use decision::{
+    PreparedCommerceBundleV1, bundle_digest_v1, decision_digest_v1, encode_decision_v1,
+    prepare_bundle_v1,
+};
 pub use reasons::ReasonV1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -190,4 +193,79 @@ pub struct CommerceDecisionV1 {
     pub policy_digest: [u8; 32],
     pub registry_digest: [u8; 32],
     pub evidence_digest: [u8; 32],
+}
+
+/// Errors are preparation failures, not commerce decisions. Declaration tags
+/// are wire vocabulary; preparation precedence is the order of checks, not tags.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u16)]
+pub enum BundleErrorV1 {
+    MalformedSource = 0,
+    SourceTooLarge = 1,
+    StructureLimitExceeded = 2,
+    SchemaInvalid = 3,
+    PolicyInvalid = 4,
+    SettingsInvalid = 5,
+    DigestMismatch = 6,
+    RegistryMismatch = 7,
+    UnsupportedFeature = 8,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[repr(u16)]
+pub enum EvidenceFieldV1 {
+    SourceRevision = 0,
+    FetchedAtMs = 1,
+    EvidenceDigest = 2,
+    CapturedMinor = 3,
+    PriorRefundsMinor = 4,
+    OrderAgeSeconds = 5,
+    LineItemsEligible = 6,
+    AnyFulfillment = 7,
+    CancellationEligible = 8,
+    DiscountConflict = 9,
+    DerivedRecipientDigest = 10,
+    ApprovedTemplateDigest = 11,
+    RecipientCount = 12,
+    Provenance = 13,
+    ProvenanceBindingDigest = 14,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[repr(u16)]
+pub enum ReviewRouteV1 {
+    OrderWindow = 0,
+    DiscountConflict = 1,
+}
+
+/// Operator configuration. There are deliberately no live defaults.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CommerceActionSettingsV1 {
+    pub enabled: bool,
+    pub currencies: Vec<String>,
+    pub required_evidence: Vec<(EvidenceFieldV1, u64)>,
+    pub amount_ceiling_minor: Option<i64>,
+    pub count_ceiling: Option<i64>,
+    pub value_ceiling_minor: Option<i64>,
+    pub budget_window_ms: Option<u64>,
+    pub order_age_limit_seconds: Option<u64>,
+    pub require_provenance: bool,
+    pub attestation_enabled: bool,
+    pub require_monetary_review: bool,
+    pub review_request_timeout_ms: Option<u64>,
+    pub grant_max_lifetime_ms: Option<u64>,
+    pub attestation_max_lifetime_ms: Option<u64>,
+    pub reviewer_role_policy_id: Option<String>,
+    pub review_routes: Vec<ReviewRouteV1>,
+}
+
+/// Untrusted bundle declarations. The expected registry identity is supplied
+/// separately by trusted integration code; a bundle cannot select its trust root.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CommerceBundleSourceV1 {
+    pub schema_text: String,
+    pub permissions_text: String,
+    pub action_settings: Vec<(CommerceActionV1, CommerceActionSettingsV1)>,
+    pub registry_digest: [u8; 32],
+    pub declared_digest: [u8; 32],
 }

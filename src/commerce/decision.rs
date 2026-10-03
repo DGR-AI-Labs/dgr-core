@@ -419,3 +419,893 @@ mod encoding_tests {
         assert_eq!(&e.0[4..4 + diagnostics.len()], diagnostics);
     }
 }
+
+// Preparation uses only syntax-preserving parsing before the positive grammar
+// walk. In particular, Schema conversion can evaluate action attribute values;
+// it must remain below both guards. No Context, Entities or Authorizer is built.
+use cedar_policy::{PolicySet, Schema, ValidationMode, Validator};
+use serde::de::{Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
+use serde_json::{Map, Value};
+use std::collections::BTreeSet;
+use std::str::FromStr;
+
+type BundleResult<T = ()> = Result<T, BundleErrorV1>;
+const UNSUPPORTED: BundleErrorV1 = BundleErrorV1::UnsupportedFeature;
+const STRUCTURE: BundleErrorV1 = BundleErrorV1::StructureLimitExceeded;
+const SETTINGS: BundleErrorV1 = BundleErrorV1::SettingsInvalid;
+const SOURCE_LIMIT: usize = 128 * 1024;
+
+/// Immutable validated preparation result. No mutable Cedar accessor is exposed,
+/// and callers cannot construct this type themselves. It grants no authority.
+///
+/// ```compile_fail
+/// use dgr_core::commerce::PreparedCommerceBundleV1;
+/// let bundle = PreparedCommerceBundleV1 { };
+/// ```
+#[derive(Debug)]
+pub struct PreparedCommerceBundleV1 {
+    schema: Schema,
+    policies: PolicySet,
+    settings: Vec<(CommerceActionV1, CommerceActionSettingsV1)>,
+    digest: [u8; 32],
+    registry_digest: [u8; 32],
+}
+
+impl PreparedCommerceBundleV1 {
+    pub fn schema(&self) -> &Schema {
+        &self.schema
+    }
+    pub fn policies(&self) -> &PolicySet {
+        &self.policies
+    }
+    pub fn action_settings(&self) -> &[(CommerceActionV1, CommerceActionSettingsV1)] {
+        &self.settings
+    }
+    pub fn digest(&self) -> &[u8; 32] {
+        &self.digest
+    }
+    pub fn registry_digest(&self) -> &[u8; 32] {
+        &self.registry_digest
+    }
+}
+
+/// Prepare an operator bundle without evaluation. `trusted_registry_digest`
+/// must come from separately trusted configuration, never from the bundle or
+/// an agent request. No generated registry identity is implied by this API.
+///
+/// Limits bound accepted inputs, not worst-case parser time or memory. No hard
+/// deadline is promised. Cedar's extension code remains compiled in the graph;
+/// this boundary rejects extension syntax before semantic schema conversion.
+pub fn prepare_bundle_v1(
+    source: &CommerceBundleSourceV1,
+    trusted_registry_digest: &[u8; 32],
+) -> BundleResult<PreparedCommerceBundleV1> {
+    validate_source_bounds(source)?;
+    let schema = parse_schema_json(&source.schema_text)?;
+    let policies = PolicySet::from_str(&source.permissions_text)
+        .map_err(|_| BundleErrorV1::MalformedSource)?;
+    let est = policies
+        .clone()
+        .to_json()
+        .map_err(|_| BundleErrorV1::MalformedSource)?;
+    validate_bundle_limits_v1(&schema, &est)?;
+    validate_no_extensions_v1(&schema, &est)?;
+    #[cfg(test)]
+    PREPARATION_TRACE.with(|trace| trace.borrow_mut().push("schema-conversion"));
+    let schema = Schema::from_json_value(schema).map_err(|_| BundleErrorV1::SchemaInvalid)?;
+    if !Validator::new(schema.clone())
+        .validate(&policies, ValidationMode::Strict)
+        .validation_passed()
+    {
+        return Err(BundleErrorV1::PolicyInvalid);
+    }
+    validate_settings(&source.action_settings)?;
+    if source.registry_digest != *trusted_registry_digest {
+        return Err(BundleErrorV1::RegistryMismatch);
+    }
+    let digest = bundle_digest_v1(source)?;
+    if digest != source.declared_digest {
+        return Err(BundleErrorV1::DigestMismatch);
+    }
+    let mut settings = source.action_settings.clone();
+    settings.sort_by_key(|(action, _)| *action);
+    Ok(PreparedCommerceBundleV1 {
+        schema,
+        policies,
+        settings,
+        digest,
+        registry_digest: source.registry_digest,
+    })
+}
+
+fn validate_source_bounds(source: &CommerceBundleSourceV1) -> BundleResult {
+    if source
+        .schema_text
+        .len()
+        .checked_add(source.permissions_text.len())
+        .is_none_or(|n| n > SOURCE_LIMIT)
+    {
+        return Err(BundleErrorV1::SourceTooLarge);
+    }
+    Ok(())
+}
+
+// Value's ordinary deserializer accepts duplicate map keys. This syntax-only
+// visitor rejects them at every nesting level before any semantic conversion.
+struct UniqueJson(Value);
+impl<'de> Deserialize<'de> for UniqueJson {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct JsonVisitor;
+        impl<'de> Visitor<'de> for JsonVisitor {
+            type Value = UniqueJson;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("JSON without duplicate keys")
+            }
+            fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E> {
+                Ok(UniqueJson(v.into()))
+            }
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E> {
+                Ok(UniqueJson(v.into()))
+            }
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E> {
+                Ok(UniqueJson(v.into()))
+            }
+            fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<Self::Value, E> {
+                serde_json::Number::from_f64(v)
+                    .map(|n| UniqueJson(Value::Number(n)))
+                    .ok_or_else(|| E::custom("nonfinite number"))
+            }
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                Ok(UniqueJson(v.into()))
+            }
+            fn visit_unit<E>(self) -> Result<Self::Value, E> {
+                Ok(UniqueJson(Value::Null))
+            }
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+                let mut values = Vec::new();
+                while let Some(UniqueJson(v)) = seq.next_element()? {
+                    values.push(v);
+                }
+                Ok(UniqueJson(Value::Array(values)))
+            }
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+                let mut values = Map::new();
+                while let Some((k, UniqueJson(v))) = map.next_entry::<String, UniqueJson>()? {
+                    if values.insert(k, v).is_some() {
+                        return Err(serde::de::Error::custom("duplicate key"));
+                    }
+                }
+                Ok(UniqueJson(Value::Object(values)))
+            }
+        }
+        deserializer.deserialize_any(JsonVisitor)
+    }
+}
+fn parse_schema_json(text: &str) -> BundleResult<Value> {
+    serde_json::from_str::<UniqueJson>(text)
+        .map(|v| v.0)
+        .map_err(|_| BundleErrorV1::MalformedSource)
+}
+
+// A separate complete structural pass gives size/depth errors precedence even
+// when unsupported syntax occurs earlier in a different branch.
+fn validate_bundle_limits_v1(schema: &Value, est: &Value) -> BundleResult {
+    fn literal_limits(v: &Value, depth: usize) -> BundleResult {
+        if depth > 32 {
+            return Err(STRUCTURE);
+        }
+        match v {
+            Value::Object(o) => {
+                if o.len() > 32 {
+                    return Err(STRUCTURE);
+                }
+                for child in o.values() {
+                    literal_limits(child, depth + 1)?;
+                }
+            }
+            Value::Array(a) => {
+                if a.len() > 64 {
+                    return Err(STRUCTURE);
+                }
+                for child in a {
+                    literal_limits(child, depth + 1)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+    // Literal record bounds must also win over a forbidden expression elsewhere.
+    for ns in schema.as_object().into_iter().flat_map(|o| o.values()) {
+        for action in ns
+            .get("actions")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flat_map(|o| o.values())
+        {
+            if let Some(attrs) = action.get("attributes") {
+                literal_limits(attrs, 0)?;
+            }
+        }
+    }
+    let mut pending = vec![(schema, 0usize), (est, 0)];
+    while let Some((node, depth)) = pending.pop() {
+        if depth > 128 {
+            return Err(STRUCTURE);
+        }
+        match node {
+            Value::String(s) if s.len() > 1024 => return Err(STRUCTURE),
+            Value::Array(a) => {
+                if a.len() > 64 {
+                    return Err(STRUCTURE);
+                }
+                pending.extend(a.iter().map(|v| (v, depth + 1)));
+            }
+            Value::Object(o) => {
+                if let Some(literal) = o.get("Value") {
+                    literal_limits(literal, 0)?;
+                }
+                if o.len() > 64 || o.keys().any(|s| s.len() > 1024) {
+                    return Err(STRUCTURE);
+                }
+                for key in ["attributes", "Record"] {
+                    if o.get(key)
+                        .and_then(Value::as_object)
+                        .is_some_and(|v| v.len() > 32)
+                    {
+                        return Err(STRUCTURE);
+                    }
+                }
+                pending.extend(o.values().map(|v| (v, depth + 1)));
+            }
+            _ => {}
+        }
+    }
+    // Type nesting and EST expression nesting use semantic levels, not JSON
+    // wrapper levels. Every definition is visited; aliases need no expansion.
+    fn nesting(v: &Value, types: usize, expressions: usize) -> BundleResult {
+        let t = types + usize::from(v.get("type").is_some_and(Value::is_string));
+        let e = expressions
+            + usize::from(v.as_object().is_some_and(|o| {
+                o.len() == 1
+                    && o.keys().any(|k| {
+                        matches!(
+                            k.as_str(),
+                            "Value"
+                                | "Var"
+                                | "!"
+                                | "neg"
+                                | "=="
+                                | "!="
+                                | "in"
+                                | "<"
+                                | "<="
+                                | ">"
+                                | ">="
+                                | "&&"
+                                | "||"
+                                | "+"
+                                | "-"
+                                | "*"
+                                | "."
+                                | "has"
+                                | "is"
+                                | "like"
+                                | "if-then-else"
+                                | "Set"
+                                | "Record"
+                                | "contains"
+                                | "containsAll"
+                                | "containsAny"
+                                | "isEmpty"
+                                | "getTag"
+                                | "hasTag"
+                        )
+                    })
+            }));
+        if t > 33 || e > 33 {
+            return Err(STRUCTURE);
+        }
+        match v {
+            Value::Object(o) => {
+                for child in o.values() {
+                    nesting(child, t, e)?;
+                }
+            }
+            Value::Array(a) => {
+                for child in a {
+                    nesting(child, t, e)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+    nesting(schema, 0, 0)?;
+    nesting(est, 0, 0)
+}
+
+fn object(v: &Value) -> BundleResult<&Map<String, Value>> {
+    v.as_object().ok_or(UNSUPPORTED)
+}
+fn array(v: &Value) -> BundleResult<&[Value]> {
+    v.as_array().map(Vec::as_slice).ok_or(UNSUPPORTED)
+}
+fn fields<'a>(
+    v: &'a Value,
+    required: &[&str],
+    optional: &[&str],
+) -> BundleResult<&'a Map<String, Value>> {
+    let o = object(v)?;
+    if required.iter().any(|k| !o.contains_key(*k))
+        || o.keys()
+            .any(|k| !required.contains(&k.as_str()) && !optional.contains(&k.as_str()))
+    {
+        return Err(UNSUPPORTED);
+    }
+    Ok(o)
+}
+fn text(v: &Value) -> BundleResult<&str> {
+    v.as_str().ok_or(UNSUPPORTED)
+}
+fn strings(v: &Value) -> BundleResult {
+    for item in array(v)? {
+        text(item)?;
+    }
+    Ok(())
+}
+fn entity_literal(v: &Value) -> BundleResult {
+    let o = fields(v, &["type", "id"], &[])?;
+    if text(&o["type"])?.is_empty() || text(&o["id"])?.is_empty() {
+        return Err(UNSUPPORTED);
+    }
+    Ok(())
+}
+fn validate_extension_free_literal_v1(v: &Value) -> BundleResult {
+    match v {
+        Value::Bool(_) | Value::String(_) => Ok(()),
+        Value::Number(n) if n.as_i64().is_some() => Ok(()),
+        Value::Array(a) => {
+            for item in a {
+                validate_extension_free_literal_v1(item)?;
+            }
+            Ok(())
+        }
+        Value::Object(o) => {
+            if o.contains_key("__extn") || o.contains_key("__expr") {
+                return Err(UNSUPPORTED);
+            }
+            if let Some(uid) = o.get("__entity") {
+                if o.len() != 1 {
+                    return Err(UNSUPPORTED);
+                }
+                return entity_literal(uid);
+            }
+            if o.len() > 32 {
+                return Err(STRUCTURE);
+            }
+            for value in o.values() {
+                validate_extension_free_literal_v1(value)?;
+            }
+            Ok(())
+        }
+        _ => Err(UNSUPPORTED),
+    }
+}
+fn validate_expression(v: &Value) -> BundleResult {
+    let o = object(v)?;
+    if o.len() != 1 {
+        return Err(UNSUPPORTED);
+    }
+    let (tag, data) = o.iter().next().ok_or(UNSUPPORTED)?;
+    match tag.as_str() {
+        "Value" => validate_extension_free_literal_v1(data),
+        "Var" if matches!(text(data)?, "principal" | "action" | "resource" | "context") => Ok(()),
+        "!" | "neg" | "isEmpty" => {
+            fields(data, &["arg"], &[])?;
+            validate_expression(&data["arg"])
+        }
+        "==" | "!=" | "in" | "<" | "<=" | ">" | ">=" | "&&" | "||" | "+" | "-" | "*"
+        | "contains" | "containsAll" | "containsAny" | "getTag" | "hasTag" => {
+            fields(data, &["left", "right"], &[])?;
+            validate_expression(&data["left"])?;
+            validate_expression(&data["right"])
+        }
+        "." | "has" => {
+            fields(data, &["left", "attr"], &[])?;
+            if data["attr"].is_string() {
+                text(&data["attr"])?;
+            } else if tag == "has" && !array(&data["attr"])?.is_empty() {
+                strings(&data["attr"])?;
+            } else {
+                return Err(UNSUPPORTED);
+            }
+            validate_expression(&data["left"])
+        }
+        "is" => {
+            fields(data, &["left", "entity_type"], &["in"])?;
+            text(&data["entity_type"])?;
+            validate_expression(&data["left"])?;
+            if let Some(expr) = data.get("in") {
+                validate_expression(expr)?;
+            }
+            Ok(())
+        }
+        "like" => {
+            fields(data, &["left", "pattern"], &[])?;
+            for p in array(&data["pattern"])? {
+                if p.as_str() != Some("Wildcard") {
+                    fields(p, &["Literal"], &[])?;
+                    text(&p["Literal"])?;
+                }
+            }
+            validate_expression(&data["left"])
+        }
+        "if-then-else" => {
+            fields(data, &["if", "then", "else"], &[])?;
+            for k in ["if", "then", "else"] {
+                validate_expression(&data[k])?;
+            }
+            Ok(())
+        }
+        "Set" => {
+            for e in array(data)? {
+                validate_expression(e)?;
+            }
+            Ok(())
+        }
+        "Record" => {
+            for e in object(data)?.values() {
+                validate_expression(e)?;
+            }
+            Ok(())
+        }
+        // Every extension call/method, Slot and unknown future tag fails closed.
+        _ => Err(UNSUPPORTED),
+    }
+}
+fn validate_scope(v: &Value) -> BundleResult {
+    let o = fields(v, &["op"], &["entity", "entities", "entity_type", "in"])?;
+    match text(&o["op"])? {
+        "All" => {
+            fields(v, &["op"], &[])?;
+        }
+        "==" => {
+            fields(v, &["op", "entity"], &[])?;
+            entity_literal(&o["entity"])?;
+        }
+        "in" => {
+            if o.contains_key("entity") == o.contains_key("entities") {
+                return Err(UNSUPPORTED);
+            }
+            fields(v, &["op"], &["entity", "entities"])?;
+            if let Some(uid) = o.get("entity") {
+                entity_literal(uid)?;
+            }
+            if let Some(uids) = o.get("entities") {
+                for uid in array(uids)? {
+                    entity_literal(uid)?;
+                }
+            }
+        }
+        "is" => {
+            fields(v, &["op", "entity_type"], &["in"])?;
+            text(&o["entity_type"])?;
+            if let Some(uid) = o.get("in") {
+                entity_literal(uid)?;
+            }
+        }
+        _ => return Err(UNSUPPORTED),
+    }
+    Ok(())
+}
+fn validate_policy_est_v1(est: &Value) -> BundleResult {
+    let root = fields(est, &["templates", "staticPolicies", "templateLinks"], &[])?;
+    if !object(&root["templates"])?.is_empty() || !array(&root["templateLinks"])?.is_empty() {
+        return Err(UNSUPPORTED);
+    }
+    for p in object(&root["staticPolicies"])?.values() {
+        let o = fields(
+            p,
+            &["effect", "principal", "action", "resource", "conditions"],
+            &["annotations"],
+        )?;
+        if !matches!(text(&o["effect"])?, "permit" | "forbid") {
+            return Err(UNSUPPORTED);
+        }
+        if let Some(a) = o.get("annotations") {
+            for v in object(a)?.values() {
+                text(v)?;
+            }
+        }
+        for k in ["principal", "action", "resource"] {
+            validate_scope(&o[k])?;
+        }
+        for c in array(&o["conditions"])? {
+            fields(c, &["kind", "body"], &[])?;
+            if !matches!(text(&c["kind"])?, "when" | "unless") {
+                return Err(UNSUPPORTED);
+            }
+            validate_expression(&c["body"])?;
+        }
+    }
+    Ok(())
+}
+fn validate_schema_type(v: &Value, attribute: bool) -> BundleResult {
+    let mut ty = object(v)?.clone();
+    if attribute
+        && let Some(required) = ty.remove("required")
+        && !required.is_boolean()
+    {
+        return Err(UNSUPPORTED);
+    }
+    let v = Value::Object(ty);
+    let tag = text(&v["type"])?;
+    match tag {
+        "Extension" => return Err(UNSUPPORTED),
+        "String" | "Long" | "Boolean" => {
+            fields(&v, &["type"], &[])?;
+        }
+        "Set" => {
+            fields(&v, &["type", "element"], &[])?;
+            validate_schema_type(&v["element"], false)?;
+        }
+        "Record" => {
+            fields(&v, &["type", "attributes"], &["additionalAttributes"])?;
+            if v.get("additionalAttributes")
+                .is_some_and(|a| a != &Value::Bool(false))
+            {
+                return Err(UNSUPPORTED);
+            }
+            for a in object(&v["attributes"])?.values() {
+                validate_schema_type(a, true)?;
+            }
+        }
+        "Entity" | "EntityOrCommon" if v.get("name").is_some() => {
+            fields(&v, &["type", "name"], &[])?;
+            if text(&v["name"])?.is_empty() {
+                return Err(UNSUPPORTED);
+            }
+        }
+        _ => {
+            fields(&v, &["type"], &[])?;
+            if tag.is_empty() {
+                return Err(UNSUPPORTED);
+            }
+        }
+    }
+    Ok(())
+}
+fn validate_schema_types_v1(schema: &Value) -> BundleResult {
+    for ns in object(schema)?.values() {
+        fields(ns, &[], &["entityTypes", "actions", "commonTypes"])?;
+        if let Some(types) = ns.get("commonTypes") {
+            for t in object(types)?.values() {
+                validate_schema_type(t, false)?;
+            }
+        }
+        if let Some(entities) = ns.get("entityTypes") {
+            for entity in object(entities)?.values() {
+                fields(entity, &[], &["shape", "memberOfTypes", "tags"])?;
+                if let Some(parents) = entity.get("memberOfTypes") {
+                    strings(parents)?;
+                }
+                for k in ["shape", "tags"] {
+                    if let Some(t) = entity.get(k) {
+                        validate_schema_type(t, false)?;
+                    }
+                }
+            }
+        }
+        if let Some(actions) = ns.get("actions") {
+            for action in object(actions)?.values() {
+                fields(action, &[], &["appliesTo", "memberOf", "attributes"])?;
+                if let Some(attrs) = action.get("attributes") {
+                    validate_extension_free_literal_v1(attrs)?;
+                }
+                if let Some(parents) = action.get("memberOf") {
+                    for p in array(parents)? {
+                        fields(p, &["id"], &["type"])?;
+                        text(&p["id"])?;
+                        if let Some(t) = p.get("type") {
+                            text(t)?;
+                        }
+                    }
+                }
+                if let Some(applies) = action.get("appliesTo") {
+                    fields(
+                        applies,
+                        &[],
+                        &["principalTypes", "resourceTypes", "context"],
+                    )?;
+                    for k in ["principalTypes", "resourceTypes"] {
+                        if let Some(a) = applies.get(k) {
+                            strings(a)?;
+                        }
+                    }
+                    if let Some(t) = applies.get("context") {
+                        validate_schema_type(t, false)?;
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+fn validate_no_extensions_v1(schema: &Value, est: &Value) -> BundleResult {
+    validate_policy_est_v1(est)?;
+    validate_schema_types_v1(schema)
+}
+
+fn validate_settings(entries: &[(CommerceActionV1, CommerceActionSettingsV1)]) -> BundleResult {
+    if entries.len() != 5
+        || entries
+            .iter()
+            .map(|(a, _)| a)
+            .collect::<BTreeSet<_>>()
+            .len()
+            != 5
+    {
+        return Err(SETTINGS);
+    }
+    for (action, s) in entries {
+        let monetary = matches!(
+            action,
+            CommerceActionV1::RefundCreate | CommerceActionV1::DiscountCreate
+        );
+        if s.enabled {
+            if s.count_ceiling.is_none() || s.budget_window_ms.is_none_or(|n| n == 0) {
+                return Err(SETTINGS);
+            }
+            if monetary
+                && (s.currencies.is_empty()
+                    || s.amount_ceiling_minor.is_none()
+                    || s.value_ceiling_minor.is_none())
+            {
+                return Err(SETTINGS);
+            }
+            if *action == CommerceActionV1::RefundCreate && s.order_age_limit_seconds.is_none() {
+                return Err(SETTINGS);
+            }
+            let grant = s.require_monetary_review || !s.review_routes.is_empty();
+            let attest = s.attestation_enabled;
+            if (grant || attest)
+                && (s.review_request_timeout_ms.is_none_or(|n| n == 0)
+                    || s.reviewer_role_policy_id.is_none())
+            {
+                return Err(SETTINGS);
+            }
+            if grant && s.grant_max_lifetime_ms.is_none_or(|n| n == 0) {
+                return Err(SETTINGS);
+            }
+            if attest && s.attestation_max_lifetime_ms.is_none_or(|n| n == 0) {
+                return Err(SETTINGS);
+            }
+        }
+        // Encode on a throw-away buffer to enforce all representation and set
+        // constraints, including supplied values for disabled actions.
+        Encoder(Vec::new()).settings(s).map_err(|_| SETTINGS)?;
+    }
+    Ok(())
+}
+
+/// Commit source bytes and typed settings in the V1 bundle frame. This checks
+/// representation only: callers still must prepare and verify the declared
+/// identity. It does not parse policy or establish registry trust.
+pub fn bundle_digest_v1(source: &CommerceBundleSourceV1) -> BundleResult<[u8; 32]> {
+    Ok(Sha256::digest(encode_bundle_v1(source)?).into())
+}
+fn encode_bundle_v1(source: &CommerceBundleSourceV1) -> BundleResult<Vec<u8>> {
+    validate_source_bounds(source)?;
+    validate_settings(&source.action_settings)?;
+    let mut e = Encoder(b"DGR-HERMES-BUNDLE-V1\0".to_vec());
+    for s in [&source.schema_text, &source.permissions_text] {
+        e.0.extend_from_slice(&(s.len() as u32).to_be_bytes());
+        e.0.extend_from_slice(s.as_bytes());
+    }
+    let mut entries: Vec<_> = source.action_settings.iter().collect();
+    entries.sort_by_key(|(action, _)| *action);
+    e.count(entries.len()).map_err(|_| SETTINGS)?;
+    for (action, settings) in entries {
+        e.tag(*action as u16);
+        e.settings(settings).map_err(|_| SETTINGS)?;
+    }
+    e.digest(&source.registry_digest).map_err(|_| SETTINGS)?;
+    Ok(e.0)
+}
+impl Encoder {
+    fn settings(&mut self, s: &CommerceActionSettingsV1) -> EncodingResult {
+        self.boolean(&s.enabled)?;
+        self.count(s.currencies.len())?;
+        let mut currencies: Vec<_> = s.currencies.iter().collect();
+        currencies.sort();
+        if currencies.windows(2).any(|w| w[0] == w[1]) {
+            return Err(INVALID);
+        }
+        for c in currencies {
+            self.currency(c)?;
+        }
+        self.count(s.required_evidence.len())?;
+        let mut evidence = s.required_evidence.clone();
+        evidence.sort_by_key(|(field, _)| *field);
+        if evidence.windows(2).any(|w| w[0].0 == w[1].0) {
+            return Err(INVALID);
+        }
+        for (field, age) in evidence {
+            self.tag(field as u16);
+            self.time(age)?;
+        }
+        for n in [
+            &s.amount_ceiling_minor,
+            &s.count_ceiling,
+            &s.value_ceiling_minor,
+        ] {
+            self.option(n, Self::money)?;
+        }
+        for n in [&s.budget_window_ms, &s.order_age_limit_seconds] {
+            self.option(n, |e, v| e.time(*v))?;
+        }
+        for b in [
+            &s.require_provenance,
+            &s.attestation_enabled,
+            &s.require_monetary_review,
+        ] {
+            self.boolean(b)?;
+        }
+        for n in [
+            &s.review_request_timeout_ms,
+            &s.grant_max_lifetime_ms,
+            &s.attestation_max_lifetime_ms,
+        ] {
+            self.option(n, |e, v| e.time(*v))?;
+        }
+        self.option(&s.reviewer_role_policy_id, |e, s| e.string(s))?;
+        self.count(s.review_routes.len())?;
+        let mut routes = s.review_routes.clone();
+        routes.sort();
+        if routes.windows(2).any(|w| w[0] == w[1]) {
+            return Err(INVALID);
+        }
+        for route in routes {
+            self.tag(route as u16);
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    static PREPARATION_TRACE: std::cell::RefCell<Vec<&'static str>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[cfg(test)]
+mod preparation_guard_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn unknown_grammar_and_literals_fail_closed() {
+        for expr in [
+            json!({"newNativeOperator": {"Value": true}}),
+            json!({"Slot":"?principal"}),
+            json!({"Value":{"__extn":{"fn":"decimal","arg":"1.0"}}}),
+            json!({"Var":"unknown"}),
+            json!({"Value":true,"Var":"context"}),
+        ] {
+            assert_eq!(validate_expression(&expr), Err(UNSUPPORTED));
+        }
+        assert_eq!(
+            validate_expression(&json!({"Record":{"__extn":{"Value":"decimal"}}})),
+            Ok(())
+        );
+        assert_eq!(
+            validate_expression(
+                &json!({"Value":{"__entity":{"type":"Principal","id":"decimal(1)"}}})
+            ),
+            Ok(())
+        );
+        for value in [
+            json!(null),
+            json!(1.5),
+            json!({"__entity":{"type":"P","id":"x"},"other":1}),
+            json!({"__expr":"true"}),
+        ] {
+            assert_eq!(validate_extension_free_literal_v1(&value), Err(UNSUPPORTED));
+        }
+    }
+
+    #[test]
+    fn raw_schema_guard_precedes_semantic_conversion() {
+        let mut source = CommerceBundleSourceV1 {
+            schema_text: "{}".into(),
+            permissions_text: "permit(principal, action, resource);".into(),
+            action_settings: vec![],
+            registry_digest: [0; 32],
+            declared_digest: [0; 32],
+        };
+        PREPARATION_TRACE.with(|t| t.borrow_mut().clear());
+        assert_eq!(
+            prepare_bundle_v1(&source, &[0; 32]).unwrap_err(),
+            BundleErrorV1::SettingsInvalid
+        );
+        PREPARATION_TRACE.with(|t| assert_eq!(*t.borrow(), ["schema-conversion"]));
+        for schema in [
+            json!({"":{"commonTypes":{"Unused":{"type":"Extension","name":"decimal"}}}}),
+            json!({"":{"actions":{"a":{"attributes":{"x":{"__extn":{"fn":"decimal","arg":"1.0"}}}}}}}),
+        ] {
+            source.schema_text = schema.to_string();
+            PREPARATION_TRACE.with(|t| t.borrow_mut().clear());
+            assert_eq!(
+                prepare_bundle_v1(&source, &[0; 32]).unwrap_err(),
+                UNSUPPORTED
+            );
+            PREPARATION_TRACE.with(|t| assert!(t.borrow().is_empty()));
+        }
+        source.schema_text = "{}".into();
+        source.permissions_text = "permit(principal, action, resource) when { false && decimal(\"1\") == decimal(\"1\") };".into();
+        PREPARATION_TRACE.with(|t| t.borrow_mut().clear());
+        assert_eq!(
+            prepare_bundle_v1(&source, &[0; 32]).unwrap_err(),
+            UNSUPPORTED
+        );
+        PREPARATION_TRACE.with(|t| assert!(t.borrow().is_empty()));
+    }
+}
+
+#[cfg(test)]
+mod bundle_encoding_tests {
+    use super::*;
+    #[test]
+    fn historical_bundle_frame() {
+        let settings = CommerceActionSettingsV1 {
+            enabled: false,
+            currencies: vec![],
+            required_evidence: vec![],
+            amount_ceiling_minor: None,
+            count_ceiling: None,
+            value_ceiling_minor: None,
+            budget_window_ms: None,
+            order_age_limit_seconds: None,
+            require_provenance: false,
+            attestation_enabled: false,
+            require_monetary_review: false,
+            review_request_timeout_ms: None,
+            grant_max_lifetime_ms: None,
+            attestation_max_lifetime_ms: None,
+            reviewer_role_policy_id: None,
+            review_routes: vec![],
+        };
+        let source = CommerceBundleSourceV1 {
+            schema_text: "{}".into(),
+            permissions_text: String::new(),
+            action_settings: [
+                CommerceActionV1::RefundCreate,
+                CommerceActionV1::OrderAddressUpdate,
+                CommerceActionV1::OrderCancel,
+                CommerceActionV1::DiscountCreate,
+                CommerceActionV1::CustomerEmailSend,
+            ]
+            .into_iter()
+            .map(|a| (a, settings.clone()))
+            .collect(),
+            registry_digest: [0; 32],
+            declared_digest: [0; 32],
+        };
+        // Historical structural frame: no commerce permission is asserted.
+        let expected_hex = "4447522d4845524d45532d42554e444c452d563100000000027b7d00000000000000050000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+        let expected: Vec<u8> = (0..expected_hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&expected_hex[i..i + 2], 16).unwrap())
+            .collect();
+        assert_eq!(encode_bundle_v1(&source).unwrap(), expected);
+        let digest = bundle_digest_v1(&source)
+            .unwrap()
+            .iter()
+            .map(|v| format!("{v:02x}"))
+            .collect::<String>();
+        assert_eq!(
+            digest,
+            "e0c3fec499fb8d9e2cb243b3b77be8ed8cfedaaf2c9ad912a34637638e6b9d9f"
+        );
+    }
+}
