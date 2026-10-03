@@ -863,3 +863,18 @@ fn preparation_vocabulary_tags() {
         "BundleErrorV1::UnsupportedFeature"
     );
 }
+
+#[test]
+fn aggregate_policy_bound_precedes_template_rejection() {
+    let mut source = preparation_source();
+    source.permissions_text = "permit(principal, action, resource);".repeat(64);
+    source
+        .permissions_text
+        .push_str("permit(principal == ?principal, action, resource);");
+    assert_eq!(prep_error(&source), BundleErrorV1::StructureLimitExceeded);
+    source.permissions_text = "permit(principal, action, resource);".repeat(63);
+    source
+        .permissions_text
+        .push_str("permit(principal == ?principal, action, resource);");
+    assert_eq!(prep_error(&source), BundleErrorV1::UnsupportedFeature);
+}

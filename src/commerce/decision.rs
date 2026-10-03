@@ -590,6 +590,16 @@ fn parse_schema_json(text: &str) -> BundleResult<Value> {
 // A separate complete structural pass gives size/depth errors precedence even
 // when unsupported syntax occurs earlier in a different branch.
 fn validate_bundle_limits_v1(schema: &Value, est: &Value) -> BundleResult {
+    // Bound the whole parsed set, including templates that will subsequently
+    // be refused. Splitting entries across the two maps cannot evade precedence.
+    let policy_count = ["staticPolicies", "templates"]
+        .iter()
+        .filter_map(|key| est.get(*key).and_then(Value::as_object))
+        .map(Map::len)
+        .sum::<usize>();
+    if policy_count > 64 {
+        return Err(STRUCTURE);
+    }
     fn literal_limits(v: &Value, depth: usize) -> BundleResult {
         if depth > 32 {
             return Err(STRUCTURE);
