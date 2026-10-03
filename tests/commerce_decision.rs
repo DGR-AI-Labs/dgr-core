@@ -207,6 +207,58 @@ fn bounded_inputs() {
     c = context.clone();
     c.evidence.prior_refunds_minor = Some(-1);
     assert!(encode_decision_v1(&request, &c, &[0; 32], &decision).is_err());
+
+    // Exercise each currency site separately so one guard cannot mask another.
+    let mut allow = decision.clone();
+    allow.outcome = CommerceOutcomeV1::Allow;
+    allow.primary_reason = ReasonV1::OK_POLICY_PERMIT;
+    allow.constraints = Some(CommerceConstraintsV1 {
+        profile_id: "a".into(),
+        shop_id: "a".into(),
+        subject_id: "a".into(),
+        operation_id: "a".into(),
+        resource_id: "a".into(),
+        action: CommerceActionV1::RefundCreate,
+        payload_digest: [0; 32],
+        amount_ceiling_minor: Some(0),
+        currency: Some("USD".into()),
+        evidence_revision: "a".into(),
+        policy_digest: [0; 32],
+        registry_digest: [0; 32],
+        review_ids: vec![],
+        evaluation_time_ms: 0,
+    });
+    for currency in [None, Some("USD"), Some("EUR"), Some("ZZZ")] {
+        let mut r = request.clone();
+        r.currency = currency.map(str::to_owned);
+        assert!(encode_decision_v1(&r, &context, &[0; 32], &decision).is_ok());
+        let mut c = context.clone();
+        c.budget.currency = currency.map(str::to_owned);
+        assert!(encode_decision_v1(&request, &c, &[0; 32], &decision).is_ok());
+        let mut a = allow.clone();
+        a.constraints.as_mut().unwrap().currency = currency.map(str::to_owned);
+        assert!(encode_decision_v1(&request, &context, &[0; 32], &a).is_ok());
+    }
+    for invalid in ["usd", "US", "USDD", "US1", "€", "dollars", ""] {
+        let mut r = request.clone();
+        r.currency = Some(invalid.into());
+        assert!(
+            encode_decision_v1(&r, &context, &[0; 32], &decision).is_err(),
+            "request {invalid}"
+        );
+        let mut c = context.clone();
+        c.budget.currency = Some(invalid.into());
+        assert!(
+            encode_decision_v1(&request, &c, &[0; 32], &decision).is_err(),
+            "budget {invalid}"
+        );
+        let mut a = allow.clone();
+        a.constraints.as_mut().unwrap().currency = Some(invalid.into());
+        assert!(
+            encode_decision_v1(&request, &context, &[0; 32], &a).is_err(),
+            "constraints {invalid}"
+        );
+    }
 }
 
 #[test]

@@ -20,6 +20,8 @@ pub fn encode_decision_v1(
     e.0.extend_from_slice(b"DGR-HERMES-DECISION-V1\0");
     let start = e.0.len();
     e.request(request)?;
+    // Currently slack under the fixed fields and identifier bounds; retain the
+    // request-section ceiling so later field growth cannot bypass it.
     if e.0.len() - start > 64 * 1024 {
         return Err(INVALID);
     }
@@ -54,6 +56,13 @@ impl Encoder {
         self.0.extend_from_slice(&(s.len() as u32).to_be_bytes());
         self.0.extend_from_slice(s.as_bytes());
         Ok(())
+    }
+    fn currency(&mut self, value: &str) -> EncodingResult {
+        if value.len() != 3 || !value.bytes().all(|byte| byte.is_ascii_uppercase()) {
+            return Err(INVALID);
+        }
+        // Membership in the configured currency set belongs to policy evaluation.
+        self.string(value)
     }
     fn number(&mut self, value: u64) -> EncodingResult {
         self.0.extend_from_slice(&value.to_be_bytes());
@@ -112,7 +121,7 @@ impl Encoder {
         }
         self.tag(r.action as u16);
         self.option(&r.amount_minor, Self::money)?;
-        self.option(&r.currency, |e, s| e.string(s))?;
+        self.option(&r.currency, |e, s| e.currency(s))?;
         self.digest(&r.payload_digest)?;
         self.number(u64::from(r.payload_length))
     }
@@ -138,7 +147,7 @@ impl Encoder {
             self.string(s)?;
         }
         self.tag(v.action as u16);
-        self.option(&v.currency, |e, s| e.string(s))?;
+        self.option(&v.currency, |e, s| e.currency(s))?;
         self.time(v.window_start_ms)?;
         self.time(v.window_length_ms)?;
         self.money(&v.count_used)?;
@@ -195,7 +204,7 @@ impl Encoder {
         self.tag(v.action as u16);
         self.digest(&v.payload_digest)?;
         self.option(&v.amount_ceiling_minor, Self::money)?;
-        self.option(&v.currency, |e, s| e.string(s))?;
+        self.option(&v.currency, |e, s| e.currency(s))?;
         self.string(&v.evidence_revision)?;
         self.digest(&v.policy_digest)?;
         self.digest(&v.registry_digest)?;
@@ -259,5 +268,154 @@ impl Encoder {
         self.digest(&v.policy_digest)?;
         self.digest(&v.registry_digest)?;
         self.digest(&v.evidence_digest)
+    }
+}
+
+#[cfg(test)]
+mod encoding_tests {
+    use super::*;
+
+    #[test]
+    fn registry_conformance() {
+        // Literal expected bytes: 46 preserved enum-tag vectors plus the
+        // additive E_APPROVAL_INVALID (tag 32) vector. No observed-output oracle.
+        let cases: &[(u16, [u8; 2])] = &[
+            (CommerceActionV1::RefundCreate as u16, [0x00, 0x00]),
+            (CommerceActionV1::OrderAddressUpdate as u16, [0x00, 0x01]),
+            (CommerceActionV1::OrderCancel as u16, [0x00, 0x02]),
+            (CommerceActionV1::DiscountCreate as u16, [0x00, 0x03]),
+            (CommerceActionV1::CustomerEmailSend as u16, [0x00, 0x04]),
+            (ProvenanceStateV1::TrustedBoundUnused as u16, [0x00, 0x00]),
+            (ProvenanceStateV1::Missing as u16, [0x00, 0x01]),
+            (ProvenanceStateV1::Invalid as u16, [0x00, 0x02]),
+            (ProvenanceStateV1::Consumed as u16, [0x00, 0x03]),
+            (CommerceOutcomeV1::Allow as u16, [0x00, 0x00]),
+            (CommerceOutcomeV1::Deny as u16, [0x00, 0x01]),
+            (CommerceOutcomeV1::Escalate as u16, [0x00, 0x02]),
+            (ReviewKindV1::Grant as u16, [0x00, 0x00]),
+            (ReviewKindV1::Attestation as u16, [0x00, 0x01]),
+            (ReasonV1::E_INTERNAL_EVALUATION as u16, [0x00, 0x00]),
+            (ReasonV1::E_LEDGER_UNAVAILABLE as u16, [0x00, 0x01]),
+            (ReasonV1::E_STATE_UNAVAILABLE as u16, [0x00, 0x02]),
+            (ReasonV1::E_MALFORMED_REQUEST as u16, [0x00, 0x03]),
+            (ReasonV1::E_UNAUTHENTICATED_CALLER as u16, [0x00, 0x04]),
+            (ReasonV1::E_CALLER_IDENTITY_ASSERTED as u16, [0x00, 0x05]),
+            (ReasonV1::E_UNKNOWN_ACTION as u16, [0x00, 0x06]),
+            (ReasonV1::E_UNDERSPECIFIED_ACTION as u16, [0x00, 0x07]),
+            (ReasonV1::E_FORBIDDEN_CALLER_FIELD as u16, [0x00, 0x08]),
+            (ReasonV1::E_UNTRUSTED_KEY as u16, [0x00, 0x09]),
+            (ReasonV1::E_REVOKED_KEY as u16, [0x00, 0x0a]),
+            (ReasonV1::E_INVALID_SIGNATURE as u16, [0x00, 0x0b]),
+            (ReasonV1::E_CAPABILITY_EXPIRED as u16, [0x00, 0x0c]),
+            (ReasonV1::E_BINDING_MISMATCH as u16, [0x00, 0x0d]),
+            (ReasonV1::E_REPLAY as u16, [0x00, 0x0e]),
+            (ReasonV1::E_MISSING_EVIDENCE as u16, [0x00, 0x0f]),
+            (ReasonV1::E_EVIDENCE_CONFLICT as u16, [0x00, 0x10]),
+            (ReasonV1::E_STALE_STATE as u16, [0x00, 0x11]),
+            (ReasonV1::E_OPERATION_UNKNOWN as u16, [0x00, 0x12]),
+            (ReasonV1::E_POLICY_UNCONFIGURED as u16, [0x00, 0x13]),
+            (ReasonV1::E_POLICY_FORBID as u16, [0x00, 0x14]),
+            (ReasonV1::E_AMOUNT_LIMIT as u16, [0x00, 0x15]),
+            (ReasonV1::E_COUNT_LIMIT as u16, [0x00, 0x16]),
+            (ReasonV1::E_VALUE_LIMIT as u16, [0x00, 0x17]),
+            (ReasonV1::E_ORDER_WINDOW as u16, [0x00, 0x18]),
+            (ReasonV1::E_DISCOUNT_CONFLICT as u16, [0x00, 0x19]),
+            (ReasonV1::E_CONSTRAINT_VIOLATION as u16, [0x00, 0x1a]),
+            (ReasonV1::E_PROVENANCE_UNVERIFIABLE as u16, [0x00, 0x1b]),
+            (ReasonV1::E_APPROVAL_REQUIRED as u16, [0x00, 0x1c]),
+            (ReasonV1::E_APPROVAL_EXPIRED as u16, [0x00, 0x1d]),
+            (ReasonV1::E_REVIEWER_SEPARATION as u16, [0x00, 0x1e]),
+            (ReasonV1::OK_POLICY_PERMIT as u16, [0x00, 0x1f]),
+            (ReasonV1::E_APPROVAL_INVALID as u16, [0x00, 0x20]),
+        ];
+        assert_eq!(cases.len(), 47);
+        for &(tag, expected) in cases {
+            let mut e = Encoder(Vec::new());
+            e.tag(tag);
+            assert_eq!(e.0, expected, "wire tag {tag}");
+        }
+    }
+
+    fn expected(hex: &str) -> Vec<u8> {
+        assert_eq!(hex.len() % 2, 0);
+        hex.as_bytes()
+            .chunks_exact(2)
+            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn deterministic_digest() {
+        // All nine primitive/collection vectors; use the production writer.
+        // Literal preimages are copied from the preserved vector input.
+        let mut e = Encoder(Vec::new());
+        e.option::<[u8; 32]>(&None, Encoder::digest).unwrap();
+        assert_eq!(e.0, expected("00"));
+        e.0.clear();
+        e.option(&Some([0; 32]), Encoder::digest).unwrap();
+
+        assert_eq!(
+            e.0,
+            expected("010000000000000000000000000000000000000000000000000000000000000000")
+        );
+        e.0.clear();
+        e.option(&Some(0), Encoder::money).unwrap();
+        assert_eq!(e.0, expected("010000000000000000"));
+        e.0.clear();
+        e.money(&i64::MAX).unwrap();
+        assert_eq!(e.0, expected("7fffffffffffffff"));
+        e.0.clear();
+        e.number(u64::from(u32::MAX)).unwrap();
+        assert_eq!(e.0, expected("00000000ffffffff"));
+        e.0.clear();
+        e.string("é").unwrap();
+        assert_eq!(e.0, expected("00000002c3a9"));
+        e.0.clear();
+        e.string(&"a".repeat(128)).unwrap();
+        assert_eq!(
+            e.0,
+            expected(
+                "000000806161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161"
+            )
+        );
+        e.0.clear();
+        let constraints = CommerceConstraintsV1 {
+            profile_id: "a".into(),
+            shop_id: "a".into(),
+            subject_id: "a".into(),
+            operation_id: "a".into(),
+            resource_id: "a".into(),
+            action: CommerceActionV1::RefundCreate,
+            payload_digest: [0; 32],
+            amount_ceiling_minor: None,
+            currency: None,
+            evidence_revision: "a".into(),
+            policy_digest: [0; 32],
+            registry_digest: [0; 32],
+            review_ids: vec!["b".into(), "a".into()],
+            evaluation_time_ms: 0,
+        };
+        e.constraints(&constraints).unwrap();
+        // The final field is an eight-byte time, immediately after the ID set.
+
+        let ids = expected("0000000200000001610000000162");
+        assert_eq!(&e.0[e.0.len() - 8 - ids.len()..e.0.len() - 8], ids);
+        e.0.clear();
+        let body = CommerceDecisionV1 {
+            outcome: CommerceOutcomeV1::Deny,
+            primary_reason: ReasonV1::E_INTERNAL_EVALUATION,
+            diagnostics: vec![ReasonV1::E_POLICY_FORBID, ReasonV1::E_MALFORMED_REQUEST],
+            constraints: None,
+            escalation: None,
+            decision_digest: [0; 32],
+            policy_digest: [0; 32],
+            registry_digest: [0; 32],
+            evidence_digest: [0; 32],
+        };
+        e.body(&body).unwrap();
+
+        let diagnostics = expected("0000000200030014");
+        // Outcome and primary are the two two-byte tags before diagnostics.
+        assert_eq!(&e.0[4..4 + diagnostics.len()], diagnostics);
     }
 }
