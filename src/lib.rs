@@ -4,6 +4,7 @@
 //! Extraction changes distributability, not the bounded isolation proof. Runtime
 //! interception and non-bypassability remain unproven.
 
+pub mod commerce;
 pub mod founder_approval_store;
 pub mod founder_approval_timeout;
 pub mod founder_authored_guard;
