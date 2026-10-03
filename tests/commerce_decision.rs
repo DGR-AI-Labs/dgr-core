@@ -498,6 +498,7 @@ fn extension_rejection_before_authorizer() {
     for expr in cases {
         let mut source = preparation_source();
         source.permissions_text = format!("permit(principal, action, resource) when {{ {expr} }};");
+        recommit(&mut source);
         assert_eq!(
             prep_error(&source),
             BundleErrorV1::UnsupportedFeature,
@@ -506,8 +507,10 @@ fn extension_rejection_before_authorizer() {
     }
     let mut source = preparation_source();
     source.permissions_text.push_str("permit(principal == HermesCommerce::Principal::\"never\", action, resource) when { decimal(\"1.0\") == decimal(\"1.0\") };");
+    recommit(&mut source);
     assert_eq!(prep_error(&source), BundleErrorV1::UnsupportedFeature);
     source.permissions_text = "permit(principal == ?principal, action, resource);".into();
+    recommit(&mut source);
     assert_eq!(prep_error(&source), BundleErrorV1::UnsupportedFeature);
     for ty in ["decimal", "ipaddr", "datetime", "duration"] {
         source = preparation_source();
@@ -518,6 +521,7 @@ fn extension_rejection_before_authorizer() {
             }}
         });
         source.schema_text = schema.to_string();
+        recommit(&mut source);
         assert_eq!(
             prep_error(&source),
             BundleErrorV1::UnsupportedFeature,
@@ -534,6 +538,7 @@ fn extension_rejection_before_authorizer() {
         schema["HermesCommerce"]["actions"]["RefundCreate"]["attributes"] =
             serde_json::json!({"x":literal});
         source.schema_text = schema.to_string();
+        recommit(&mut source);
         assert_eq!(prep_error(&source), BundleErrorV1::UnsupportedFeature);
     }
 }

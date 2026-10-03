@@ -1100,8 +1100,9 @@ fn validate_settings(entries: &[(CommerceActionV1, CommerceActionSettingsV1)]) -
 }
 
 /// Commit source bytes and typed settings in the V1 bundle frame. This checks
-/// representation only: callers still must prepare and verify the declared
-/// identity. It does not parse policy or establish registry trust.
+/// source/setting bounds and configuration: callers still must prepare and
+/// verify the declared identity. It does not parse policy or establish registry
+/// trust, and it is not an encoder for intentionally unconfigured test inputs.
 pub fn bundle_digest_v1(source: &CommerceBundleSourceV1) -> BundleResult<[u8; 32]> {
     Ok(Sha256::digest(encode_bundle_v1(source)?).into())
 }
