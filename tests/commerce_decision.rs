@@ -1724,3 +1724,181 @@ fn review_validity_time_high_bits_are_not_truncated() {
         Err(vec![ReasonV1::E_APPROVAL_EXPIRED])
     );
 }
+
+fn provenance_state_cases(state: ProvenanceStateV1, expected: [Vec<ReasonV1>; 3]) {
+    for required in [false, true] {
+        for attestation_enabled in [false, true] {
+            let (request, context, bundle) = review_fixture(|s| {
+                s.require_provenance = required;
+                s.attestation_enabled = attestation_enabled;
+            });
+            for (binding_case, reasons) in expected.iter().enumerate() {
+                let mut c = context.clone();
+                c.evidence.provenance = state;
+                match binding_case {
+                    0 => {}
+                    1 => c.evidence.provenance_binding_digest = None,
+                    2 => c.evidence.provenance_binding_digest.as_mut().unwrap()[0] ^= 1,
+                    _ => unreachable!(),
+                }
+                assert_eq!(
+                    validate_provenance_and_reviews_v1(&request, &c, &bundle),
+                    if reasons.is_empty() {
+                        Ok(state)
+                    } else {
+                        Err(reasons.clone())
+                    },
+                    "state {state:?}, binding {binding_case}, required {required}, attestation {attestation_enabled}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn provenance_trusted_requires_present_matching_binding() {
+    provenance_state_cases(
+        ProvenanceStateV1::TrustedBoundUnused,
+        [
+            vec![],
+            vec![ReasonV1::E_MISSING_EVIDENCE],
+            vec![ReasonV1::E_BINDING_MISMATCH],
+        ],
+    );
+}
+#[test]
+fn provenance_missing_is_preserved_not_upgraded_by_a_digest_or_review() {
+    provenance_state_cases(
+        ProvenanceStateV1::Missing,
+        [vec![], vec![], vec![ReasonV1::E_BINDING_MISMATCH]],
+    );
+}
+#[test]
+fn provenance_invalid_is_terminal_even_if_optional_or_attested() {
+    provenance_state_cases(
+        ProvenanceStateV1::Invalid,
+        [
+            vec![ReasonV1::E_PROVENANCE_UNVERIFIABLE],
+            vec![
+                ReasonV1::E_MISSING_EVIDENCE,
+                ReasonV1::E_PROVENANCE_UNVERIFIABLE,
+            ],
+            vec![
+                ReasonV1::E_BINDING_MISMATCH,
+                ReasonV1::E_PROVENANCE_UNVERIFIABLE,
+            ],
+        ],
+    );
+}
+#[test]
+fn provenance_consumed_is_terminal_even_if_optional_or_attested() {
+    provenance_state_cases(
+        ProvenanceStateV1::Consumed,
+        [
+            vec![ReasonV1::E_REPLAY],
+            vec![ReasonV1::E_REPLAY, ReasonV1::E_MISSING_EVIDENCE],
+            vec![ReasonV1::E_BINDING_MISMATCH, ReasonV1::E_REPLAY],
+        ],
+    );
+}
+
+#[test]
+fn provenance_and_reviewer_separation_form_one_combined_check() {
+    let (request, mut context, bundle) = review_fixture(|s| s.require_monetary_review = true);
+    context.review.attestation.as_mut().unwrap().reviewer_id = "reviewer".into();
+    for (state, reason) in [
+        (ProvenanceStateV1::Missing, ReasonV1::E_REVIEWER_SEPARATION),
+        (
+            ProvenanceStateV1::Invalid,
+            ReasonV1::E_PROVENANCE_UNVERIFIABLE,
+        ),
+        (ProvenanceStateV1::Consumed, ReasonV1::E_REPLAY),
+    ] {
+        context.evidence.provenance = state;
+        assert_eq!(
+            validate_provenance_and_reviews_v1(&request, &context, &bundle),
+            Err(vec![reason])
+        );
+        if state != ProvenanceStateV1::Missing {
+            // The narrower review-only API remains insufficient on its own.
+            assert_eq!(
+                validate_review_artifacts_v1(&request, &context, &bundle),
+                Ok(())
+            );
+        }
+    }
+    context.evidence.provenance = ProvenanceStateV1::TrustedBoundUnused;
+    assert_eq!(
+        validate_provenance_and_reviews_v1(&request, &context, &bundle),
+        Ok(ProvenanceStateV1::TrustedBoundUnused)
+    );
+}
+
+#[test]
+fn provenance_keeps_independent_review_defects_sorted_and_deduplicated() {
+    let (mut request, mut context, bundle) = review_fixture(|_| {});
+    context.evidence.provenance = ProvenanceStateV1::Invalid;
+    context.evidence.provenance_binding_digest = None;
+    request.resource_id.push('x');
+    let grant = context.review.grant.as_mut().unwrap();
+    grant.kind = ReviewKindV1::Attestation;
+    grant.authorized = false;
+    grant.consumed = true;
+    grant.expires_at_ms = context.now_ms;
+    context.review.attestation.as_mut().unwrap().consumed = true;
+    assert_eq!(
+        validate_provenance_and_reviews_v1(&request, &context, &bundle),
+        Err(vec![
+            ReasonV1::E_MALFORMED_REQUEST,
+            ReasonV1::E_BINDING_MISMATCH,
+            ReasonV1::E_REPLAY,
+            ReasonV1::E_MISSING_EVIDENCE,
+            ReasonV1::E_PROVENANCE_UNVERIFIABLE,
+            ReasonV1::E_APPROVAL_EXPIRED,
+            ReasonV1::E_APPROVAL_INVALID,
+        ])
+    );
+    context.evidence.provenance = ProvenanceStateV1::Consumed;
+    assert_eq!(
+        validate_provenance_and_reviews_v1(&request, &context, &bundle),
+        Err(vec![
+            ReasonV1::E_MALFORMED_REQUEST,
+            ReasonV1::E_BINDING_MISMATCH,
+            ReasonV1::E_REPLAY,
+            ReasonV1::E_MISSING_EVIDENCE,
+            ReasonV1::E_APPROVAL_EXPIRED,
+            ReasonV1::E_APPROVAL_INVALID,
+        ])
+    );
+}
+
+#[test]
+fn provenance_unrepresentable_input_stops_semantic_collection() {
+    let (mut request, mut context, bundle) = review_fixture(|_| {});
+    context.evidence.provenance = ProvenanceStateV1::Invalid;
+    request.currency = Some("usd".into());
+    assert_eq!(
+        validate_provenance_and_reviews_v1(&request, &context, &bundle),
+        Err(vec![ReasonV1::E_MALFORMED_REQUEST])
+    );
+    request.currency = None;
+    context.now_ms = u64::MAX;
+    assert_eq!(
+        validate_provenance_and_reviews_v1(&request, &context, &bundle),
+        Err(vec![ReasonV1::E_MALFORMED_REQUEST])
+    );
+}
+
+#[test]
+fn provenance_success_is_not_policy_permission_or_proof_of_authentication() {
+    let (request, mut context, bundle) = review_fixture(|s| s.enabled = false);
+    context.evidence.provenance = ProvenanceStateV1::Missing;
+    context.evidence.provenance_binding_digest = None;
+    context.review.grant = None;
+    context.review.attestation = None;
+    context.review_request = None;
+    assert_eq!(
+        validate_provenance_and_reviews_v1(&request, &context, &bundle),
+        Ok(ProvenanceStateV1::Missing)
+    );
+}
