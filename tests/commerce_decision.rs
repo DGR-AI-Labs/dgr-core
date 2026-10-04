@@ -1436,3 +1436,291 @@ fn request_binding_success_is_not_artifact_acceptance() {
         Err(ReasonV1::E_MALFORMED_REQUEST)
     );
 }
+
+fn review_fixture(
+    edit: impl Fn(&mut CommerceActionSettingsV1),
+) -> (
+    CommerceRequestV1,
+    DecisionContextV1,
+    PreparedCommerceBundleV1,
+) {
+    let mut source = preparation_source();
+    source.schema_text = NATIVE_SCHEMA.into();
+    for (_, settings) in &mut source.action_settings {
+        edit(settings);
+    }
+    recommit(&mut source);
+    let bundle = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+    let (request, mut context) = bound_frame(&bundle);
+    context.now_ms = 50;
+    context.review.grant.as_mut().unwrap().expires_at_ms = 1000;
+    let attestation = context.review.attestation.as_mut().unwrap();
+    attestation.id = "attestation".into();
+    attestation.reviewer_id = "other-reviewer".into();
+    attestation.expires_at_ms = 1000;
+    context.review_request.as_mut().unwrap().expires_at_ms = 1000;
+    (request, context, bundle)
+}
+
+fn review_interval(context: &mut DecisionContextV1, slot: usize, start: u64, end: u64) {
+    match slot {
+        0 | 1 => {
+            let fact = if slot == 0 {
+                &mut context.review.grant
+            } else {
+                &mut context.review.attestation
+            };
+            let fact = fact.as_mut().unwrap();
+            fact.issued_at_ms = start;
+            fact.expires_at_ms = end;
+        }
+        2 => {
+            let pending = context.review_request.as_mut().unwrap();
+            pending.created_at_ms = start;
+            pending.expires_at_ms = end;
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn review_time_cases(slot: usize) {
+    let (request, context, bundle) = review_fixture(|_| {});
+    assert_eq!(
+        validate_review_artifacts_v1(&request, &context, &bundle),
+        Ok(())
+    );
+    for (now, result) in [
+        (99, Ok(())),
+        (100, Err(vec![ReasonV1::E_APPROVAL_EXPIRED])),
+        (101, Err(vec![ReasonV1::E_APPROVAL_EXPIRED])),
+    ] {
+        let mut c = context.clone();
+        c.now_ms = now;
+        review_interval(&mut c, slot, 0, 100);
+        assert_eq!(
+            validate_review_artifacts_v1(&request, &c, &bundle),
+            result,
+            "slot {slot}, now {now}"
+        );
+    }
+    for (start, end) in [(51, 100), (10, 10), (10, 9)] {
+        let mut c = context.clone();
+        review_interval(&mut c, slot, start, end);
+        assert_eq!(
+            validate_review_artifacts_v1(&request, &c, &bundle),
+            Err(vec![ReasonV1::E_MALFORMED_REQUEST]),
+            "slot {slot}, interval {start}..{end}"
+        );
+    }
+    let mut c = context.clone();
+    review_interval(&mut c, slot, 0, 1001);
+    assert_eq!(
+        validate_review_artifacts_v1(&request, &c, &bundle),
+        Err(vec![ReasonV1::E_APPROVAL_INVALID])
+    );
+}
+
+#[test]
+fn review_validity_grant_time_boundaries() {
+    review_time_cases(0);
+}
+#[test]
+fn review_validity_attestation_time_boundaries() {
+    review_time_cases(1);
+}
+#[test]
+fn review_validity_request_time_boundaries() {
+    review_time_cases(2);
+}
+
+fn review_fact_cases(grant: bool) {
+    let (request, context, bundle) = review_fixture(|s| {
+        s.require_monetary_review = false;
+        s.require_provenance = false;
+        s.attestation_enabled = false;
+    });
+    for (fault, expected) in [
+        (0, ReasonV1::E_APPROVAL_INVALID),
+        (1, ReasonV1::E_REPLAY),
+        (2, ReasonV1::E_MALFORMED_REQUEST),
+    ] {
+        let mut c = context.clone();
+        let f = if grant {
+            &mut c.review.grant
+        } else {
+            &mut c.review.attestation
+        }
+        .as_mut()
+        .unwrap();
+        match fault {
+            0 => f.authorized = false,
+            1 => f.consumed = true,
+            2 => {
+                f.kind = if grant {
+                    ReviewKindV1::Attestation
+                } else {
+                    ReviewKindV1::Grant
+                }
+            }
+            _ => unreachable!(),
+        }
+        assert_eq!(
+            validate_review_artifacts_v1(&request, &c, &bundle),
+            Err(vec![expected]),
+            "grant {grant}, fault {fault}"
+        );
+    }
+}
+#[test]
+fn review_validity_optional_grant_still_validated() {
+    review_fact_cases(true);
+}
+#[test]
+fn review_validity_optional_attestation_still_validated() {
+    review_fact_cases(false);
+}
+
+fn review_limit_cases(slot: usize) {
+    for limit in [None, Some(0)] {
+        let (request, mut context, bundle) = review_fixture(|s| {
+            s.require_monetary_review = false;
+            s.require_provenance = false;
+            s.attestation_enabled = false;
+            match slot {
+                0 => s.grant_max_lifetime_ms = limit,
+                1 => s.attestation_max_lifetime_ms = limit,
+                2 => s.review_request_timeout_ms = limit,
+                _ => unreachable!(),
+            }
+        });
+        assert_eq!(
+            validate_review_artifacts_v1(&request, &context, &bundle),
+            Err(vec![ReasonV1::E_POLICY_UNCONFIGURED])
+        );
+        match slot {
+            0 => context.review.grant = None,
+            1 => context.review.attestation = None,
+            2 => context.review_request = None,
+            _ => unreachable!(),
+        }
+        assert_eq!(
+            validate_review_artifacts_v1(&request, &context, &bundle),
+            Ok(())
+        );
+    }
+}
+#[test]
+fn review_validity_grant_requires_positive_limit() {
+    review_limit_cases(0);
+}
+#[test]
+fn review_validity_attestation_requires_positive_limit() {
+    review_limit_cases(1);
+}
+#[test]
+fn review_validity_request_requires_positive_limit() {
+    review_limit_cases(2);
+}
+
+#[test]
+fn review_validity_reviewer_separation_is_conditional() {
+    for required in [false, true] {
+        let (request, mut context, bundle) =
+            review_fixture(|s| s.require_monetary_review = required);
+        assert_eq!(
+            validate_review_artifacts_v1(&request, &context, &bundle),
+            Ok(())
+        );
+        context.review.attestation.as_mut().unwrap().reviewer_id = "reviewer".into();
+        assert_eq!(
+            validate_review_artifacts_v1(&request, &context, &bundle),
+            if required {
+                Err(vec![ReasonV1::E_REVIEWER_SEPARATION])
+            } else {
+                Ok(())
+            }
+        );
+        context.evidence.provenance = ProvenanceStateV1::TrustedBoundUnused;
+        assert_eq!(
+            validate_review_artifacts_v1(&request, &context, &bundle),
+            Ok(())
+        );
+    }
+}
+
+#[test]
+fn review_validity_retains_independent_causes_in_registry_order() {
+    let (mut request, mut context, bundle) = review_fixture(|s| s.require_monetary_review = true);
+    request.resource_id.push('x');
+    let grant = context.review.grant.as_mut().unwrap();
+    grant.kind = ReviewKindV1::Attestation;
+    grant.authorized = false;
+    grant.consumed = true;
+    grant.expires_at_ms = 50;
+    let att = context.review.attestation.as_mut().unwrap();
+    att.reviewer_id = "reviewer".into();
+    att.authorized = false;
+    att.consumed = true;
+    assert_eq!(
+        validate_review_artifacts_v1(&request, &context, &bundle),
+        Err(vec![
+            ReasonV1::E_MALFORMED_REQUEST,
+            ReasonV1::E_BINDING_MISMATCH,
+            ReasonV1::E_REPLAY,
+            ReasonV1::E_APPROVAL_EXPIRED,
+            ReasonV1::E_REVIEWER_SEPARATION,
+            ReasonV1::E_APPROVAL_INVALID
+        ])
+    );
+}
+
+#[test]
+fn review_validity_binding_and_representation_are_prerequisites() {
+    let (mut request, context, bundle) = review_fixture(|_| {});
+    request.payload_digest[0] ^= 1;
+    assert_eq!(
+        validate_review_artifacts_v1(&request, &context, &bundle),
+        Err(vec![ReasonV1::E_BINDING_MISMATCH])
+    );
+    request.currency = Some("usd".into());
+    assert_eq!(
+        validate_review_artifacts_v1(&request, &context, &bundle),
+        Err(vec![ReasonV1::E_MALFORMED_REQUEST])
+    );
+}
+
+#[test]
+fn review_validity_success_is_not_permission_or_artifact_authentication() {
+    let (request, mut context, bundle) = review_fixture(|s| s.enabled = false);
+    context.review.grant = None;
+    context.review.attestation = None;
+    context.review_request = None;
+    context.evidence.provenance = ProvenanceStateV1::Invalid;
+    assert_eq!(
+        validate_review_artifacts_v1(&request, &context, &bundle),
+        Ok(())
+    );
+}
+
+#[test]
+fn review_validity_time_high_bits_are_not_truncated() {
+    let (request, mut context, bundle) = review_fixture(|s| {
+        s.grant_max_lifetime_ms = Some(100_000);
+        s.attestation_max_lifetime_ms = Some(100_000);
+        s.review_request_timeout_ms = Some(100_000);
+    });
+    for slot in 0..3 {
+        review_interval(&mut context, slot, 0, 100_000);
+    }
+    context.now_ms = 65_535;
+    review_interval(&mut context, 0, 0, 65_536);
+    assert_eq!(
+        validate_review_artifacts_v1(&request, &context, &bundle),
+        Ok(())
+    );
+    context.now_ms = 65_536;
+    assert_eq!(
+        validate_review_artifacts_v1(&request, &context, &bundle),
+        Err(vec![ReasonV1::E_APPROVAL_EXPIRED])
+    );
+}

@@ -105,6 +105,119 @@ pub fn validate_request_bindings_v1(
     Ok(())
 }
 
+/// Validate supplied review-state defects after checking request/artifact bindings.
+///
+/// Returns distinct reasons in registry order, not a decision or permission.
+/// Every supplied fact is checked even when unused by the configured policy.
+/// Missing facts, provenance state, review-ID uniqueness/use, commerce predicates
+/// and provider evidence remain separate obligations. This does not invoke Cedar.
+/// Unrepresentable inputs short-circuit; otherwise independently established
+/// defects are retained. An empty result never means the action is authorized.
+pub fn validate_review_artifacts_v1(
+    request: &CommerceRequestV1,
+    context: &DecisionContextV1,
+    bundle: &PreparedCommerceBundleV1,
+) -> Result<(), Vec<ReasonV1>> {
+    let mut causes = Vec::new();
+    if let Err(reason) = validate_request_bindings_v1(request, context, bundle) {
+        // Representation bounds must hold before further semantic inspection.
+        if reason == INVALID {
+            return Err(vec![reason]);
+        }
+        causes.push(reason);
+    }
+    let Some((_, settings)) = bundle
+        .settings
+        .iter()
+        .find(|(action, _)| *action == request.action)
+    else {
+        return Err(vec![ReasonV1::E_INTERNAL_EVALUATION]);
+    };
+    for (fact, kind, limit) in [
+        (
+            &context.review.grant,
+            ReviewKindV1::Grant,
+            settings.grant_max_lifetime_ms,
+        ),
+        (
+            &context.review.attestation,
+            ReviewKindV1::Attestation,
+            settings.attestation_max_lifetime_ms,
+        ),
+    ] {
+        if let Some(fact) = fact {
+            if fact.kind != kind {
+                causes.push(INVALID);
+            }
+            if !fact.authorized {
+                causes.push(ReasonV1::E_APPROVAL_INVALID);
+            }
+            if fact.consumed {
+                causes.push(ReasonV1::E_REPLAY);
+            }
+            review_interval_causes(
+                fact.issued_at_ms,
+                fact.expires_at_ms,
+                context.now_ms,
+                limit,
+                &mut causes,
+            );
+        }
+    }
+    if let Some(pending) = &context.review_request {
+        review_interval_causes(
+            pending.created_at_ms,
+            pending.expires_at_ms,
+            context.now_ms,
+            settings.review_request_timeout_ms,
+            &mut causes,
+        );
+    }
+    // Separation applies when both review requirements apply, not merely when
+    // two optional artifacts happen to be supplied. Their other defects persist.
+    let requires_attestation = settings.require_provenance
+        && settings.attestation_enabled
+        && context.evidence.provenance == ProvenanceStateV1::Missing;
+    if settings.require_monetary_review
+        && requires_attestation
+        && let (Some(grant), Some(attestation)) =
+            (&context.review.grant, &context.review.attestation)
+        && grant.reviewer_id == attestation.reviewer_id
+    {
+        causes.push(ReasonV1::E_REVIEWER_SEPARATION);
+    }
+    causes.sort_unstable_by_key(|reason| reason.rank());
+    causes.dedup();
+    if causes.is_empty() {
+        Ok(())
+    } else {
+        Err(causes)
+    }
+}
+
+fn review_interval_causes(
+    created: u64,
+    expires: u64,
+    now: u64,
+    max_lifetime: Option<u64>,
+    causes: &mut Vec<ReasonV1>,
+) {
+    let configured = max_lifetime.filter(|limit| *limit > 0);
+    if configured.is_none() {
+        causes.push(ReasonV1::E_POLICY_UNCONFIGURED);
+    }
+    if created > now || expires <= created {
+        causes.push(INVALID);
+        return; // Do not call malformed intervals expired or subtract unsigned times.
+    }
+    if now >= expires {
+        causes.push(ReasonV1::E_APPROVAL_EXPIRED);
+    }
+    if configured.is_some_and(|limit| expires - created > limit) {
+        causes.push(ReasonV1::E_APPROVAL_INVALID);
+    }
+}
+
 struct Encoder(Vec<u8>);
 impl Encoder {
     fn string(&mut self, s: &str) -> EncodingResult {
