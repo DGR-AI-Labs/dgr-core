@@ -47,6 +47,64 @@ pub fn decision_digest_v1(
     .into())
 }
 
+/// Canonical request identity used by provenance and review artifacts.
+/// This is not the payload digest, a signature, or execution authority.
+pub fn request_binding_digest_v1(request: &CommerceRequestV1) -> EncodingResult<[u8; 32]> {
+    let mut e = Encoder(b"DGR-HERMES-REQUEST-V1\0".to_vec());
+    let start = e.0.len();
+    e.request(request)?;
+    if e.0.len() - start > 64 * 1024 {
+        return Err(INVALID);
+    }
+    Ok(Sha256::digest(e.0).into())
+}
+
+/// Check identity and every supplied request-bound artifact, including optional
+/// unused reviews. Missing artifacts are left to the applicable policy checks.
+///
+/// Success means only that these bindings match. It does not validate provenance
+/// state, reviewer authorization, kind, expiry, consumption, budget or policy.
+/// Template and recipient digests have distinct domains and are not compared to
+/// the request binding. No Cedar conversion or Authorizer call occurs here.
+/// This primitive is not a decision evaluator and grants no permission.
+pub fn validate_request_bindings_v1(
+    request: &CommerceRequestV1,
+    context: &DecisionContextV1,
+    bundle: &PreparedCommerceBundleV1,
+) -> EncodingResult {
+    let expected = request_binding_digest_v1(request)?;
+    Encoder(Vec::new()).context(context)?;
+    if request.profile_id != context.authenticated_profile
+        || request.shop_id != context.authenticated_shop
+        || request.subject_id != context.authenticated_subject
+        || context.policy_digest != bundle.digest
+        || context.registry_digest != bundle.registry_digest
+    {
+        return Err(ReasonV1::E_BINDING_MISMATCH);
+    }
+    if context
+        .evidence
+        .provenance_binding_digest
+        .is_some_and(|digest| digest != expected)
+    {
+        return Err(ReasonV1::E_BINDING_MISMATCH);
+    }
+    for fact in [&context.review.grant, &context.review.attestation]
+        .into_iter()
+        .flatten()
+    {
+        if fact.binding_digest != expected || fact.policy_digest != bundle.digest {
+            return Err(ReasonV1::E_BINDING_MISMATCH);
+        }
+    }
+    if context.review_request.as_ref().is_some_and(|pending| {
+        pending.binding_digest != expected || pending.policy_digest != bundle.digest
+    }) {
+        return Err(ReasonV1::E_BINDING_MISMATCH);
+    }
+    Ok(())
+}
+
 struct Encoder(Vec<u8>);
 impl Encoder {
     fn string(&mut self, s: &str) -> EncodingResult {

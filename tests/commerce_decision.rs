@@ -1275,3 +1275,164 @@ fn native_cedar_request_and_entity_schema_checks_are_independent() {
         );
     }
 }
+
+fn bound_frame(bundle: &PreparedCommerceBundleV1) -> (CommerceRequestV1, DecisionContextV1) {
+    let (request, mut context) = native_frame(bundle);
+    let digest = request_binding_digest_v1(&request).unwrap();
+    context.evidence.provenance_binding_digest = Some(digest);
+    for (slot, kind) in [
+        (&mut context.review.grant, ReviewKindV1::Grant),
+        (&mut context.review.attestation, ReviewKindV1::Attestation),
+    ] {
+        *slot = Some(ReviewFactV1 {
+            id: "review".into(),
+            reviewer_id: "reviewer".into(),
+            authorized: true,
+            issued_at_ms: 0,
+            expires_at_ms: 100,
+            binding_digest: digest,
+            policy_digest: *bundle.digest(),
+            consumed: false,
+            kind,
+        });
+    }
+    context.review_request = Some(ReviewRequestV1 {
+        id: "pending".into(),
+        created_at_ms: 0,
+        expires_at_ms: 100,
+        binding_digest: digest,
+        policy_digest: *bundle.digest(),
+    });
+    (request, context)
+}
+
+#[test]
+fn request_binding_golden_and_every_field() {
+    let (request, _, _) = frame();
+    // Literal derived from the declared frame, not from the Rust encoder output:
+    // domain, five length-prefixed a strings, action 0, two None tags, digest, u64 length.
+    assert_eq!(
+        hex(&request_binding_digest_v1(&request).unwrap()),
+        "e0e844423b1d9c0b6a4aa75a3de4b75dcf67a489ad4e8a618ab1464d1c72d0ed"
+    );
+    let original = request_binding_digest_v1(&request).unwrap();
+    for field in 0..10 {
+        let mut changed = request.clone();
+        match field {
+            0 => changed.profile_id.push('b'),
+            1 => changed.shop_id.push('b'),
+            2 => changed.subject_id.push('b'),
+            3 => changed.operation_id.push('b'),
+            4 => changed.resource_id.push('b'),
+            5 => changed.action = CommerceActionV1::OrderCancel,
+            6 => changed.amount_minor = Some(0),
+            7 => changed.currency = Some("USD".into()),
+            8 => changed.payload_digest[0] = 1,
+            9 => changed.payload_length = 1,
+            _ => unreachable!(),
+        }
+        assert_ne!(
+            request_binding_digest_v1(&changed).unwrap(),
+            original,
+            "field {field}"
+        );
+    }
+    let mut invalid = request.clone();
+    invalid.currency = Some("usd".into());
+    assert_eq!(
+        request_binding_digest_v1(&invalid),
+        Err(ReasonV1::E_MALFORMED_REQUEST)
+    );
+}
+
+#[test]
+fn request_binding_each_artifact_and_policy_is_independent() {
+    let bundle = native_bundle(true);
+    let (request, context) = bound_frame(&bundle);
+    assert_eq!(
+        validate_request_bindings_v1(&request, &context, &bundle),
+        Ok(())
+    );
+    for field in 0..12 {
+        let mut c = context.clone();
+        match field {
+            0 => c.evidence.provenance_binding_digest.as_mut().unwrap()[0] ^= 1,
+            1 => c.review.grant.as_mut().unwrap().binding_digest[0] ^= 1,
+            2 => c.review.attestation.as_mut().unwrap().binding_digest[0] ^= 1,
+            3 => c.review_request.as_mut().unwrap().binding_digest[0] ^= 1,
+            4 => c.review.grant.as_mut().unwrap().policy_digest[0] ^= 1,
+            5 => c.review.attestation.as_mut().unwrap().policy_digest[0] ^= 1,
+            6 => c.review_request.as_mut().unwrap().policy_digest[0] ^= 1,
+            7 => c.authenticated_profile.push('b'),
+            8 => c.authenticated_shop.push('b'),
+            9 => c.authenticated_subject.push('b'),
+            10 => c.policy_digest[0] ^= 1,
+            11 => c.registry_digest[0] ^= 1,
+            _ => unreachable!(),
+        }
+        assert_eq!(
+            validate_request_bindings_v1(&request, &c, &bundle),
+            Err(ReasonV1::E_BINDING_MISMATCH),
+            "field {field}"
+        );
+    }
+}
+
+#[test]
+fn request_binding_substitution_and_consistent_rebinding() {
+    let bundle = native_bundle(true);
+    let (request, context) = bound_frame(&bundle);
+    for resource in [true, false] {
+        let mut changed = request.clone();
+        if resource {
+            changed.resource_id.push('b');
+        } else {
+            changed.payload_digest[0] ^= 1;
+        }
+        // Valid UID construction alone cannot detect retained-artifact substitution.
+        assert!(build_cedar_request_v1(&changed, &context, &bundle).is_ok());
+        assert_eq!(
+            validate_request_bindings_v1(&changed, &context, &bundle),
+            Err(ReasonV1::E_BINDING_MISMATCH)
+        );
+        let mut rebound = context.clone();
+        let digest = request_binding_digest_v1(&changed).unwrap();
+        rebound.evidence.provenance_binding_digest = Some(digest);
+        rebound.review.grant.as_mut().unwrap().binding_digest = digest;
+        rebound.review.attestation.as_mut().unwrap().binding_digest = digest;
+        rebound.review_request.as_mut().unwrap().binding_digest = digest;
+        assert_eq!(
+            validate_request_bindings_v1(&changed, &rebound, &bundle),
+            Ok(())
+        );
+    }
+}
+
+#[test]
+fn request_binding_success_is_not_artifact_acceptance() {
+    let bundle = native_bundle(false);
+    let (request, mut context) = bound_frame(&bundle);
+    context.evidence.provenance = ProvenanceStateV1::Invalid;
+    context.evidence.approved_template_digest = Some([42; 32]);
+    context.evidence.derived_recipient_digest = Some([43; 32]);
+    context.review.grant.as_mut().unwrap().authorized = false;
+    context.review.attestation.as_mut().unwrap().consumed = true;
+    // These semantic defects are deliberately NOT validated by this binding primitive.
+    assert_eq!(
+        validate_request_bindings_v1(&request, &context, &bundle),
+        Ok(())
+    );
+    context.evidence.provenance_binding_digest = None;
+    context.review.grant = None;
+    context.review.attestation = None;
+    context.review_request = None;
+    assert_eq!(
+        validate_request_bindings_v1(&request, &context, &bundle),
+        Ok(())
+    );
+    context.now_ms = u64::MAX;
+    assert_eq!(
+        validate_request_bindings_v1(&request, &context, &bundle),
+        Err(ReasonV1::E_MALFORMED_REQUEST)
+    );
+}
