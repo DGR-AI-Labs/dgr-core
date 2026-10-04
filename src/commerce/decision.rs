@@ -59,6 +59,17 @@ pub fn request_binding_digest_v1(request: &CommerceRequestV1) -> EncodingResult<
     Ok(Sha256::digest(e.0).into())
 }
 
+// One representation boundary for both the binding and combined validators.
+// Return the checked request digest so the binding validator need not re-encode it.
+fn validated_request_digest_v1(
+    request: &CommerceRequestV1,
+    context: &DecisionContextV1,
+) -> EncodingResult<[u8; 32]> {
+    let digest = request_binding_digest_v1(request)?;
+    Encoder(Vec::new()).context(context)?;
+    Ok(digest)
+}
+
 /// Check identity and every supplied request-bound artifact, including optional
 /// unused reviews. Missing artifacts are left to the applicable policy checks.
 ///
@@ -72,8 +83,7 @@ pub fn validate_request_bindings_v1(
     context: &DecisionContextV1,
     bundle: &PreparedCommerceBundleV1,
 ) -> EncodingResult {
-    let expected = request_binding_digest_v1(request)?;
-    Encoder(Vec::new()).context(context)?;
+    let expected = validated_request_digest_v1(request, context)?;
     if request.profile_id != context.authenticated_profile
         || request.shop_id != context.authenticated_shop
         || request.subject_id != context.authenticated_subject
@@ -218,6 +228,30 @@ fn review_interval_causes(
     }
 }
 
+/// Failed provenance/review validation, retaining the supplied provenance state.
+///
+/// This is an intermediate validation error, not a serialized decision. The state
+/// is retained even for malformed representations; it is not authenticated here.
+/// Consumers must honor `requires_terminal_deny()` before considering any review
+/// route permitted by an individual reason. A false result grants no permission:
+/// other causes and the remaining policy checks may still require Deny.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProvenanceReviewErrorV1 {
+    pub provenance: ProvenanceStateV1,
+    pub causes: Vec<ReasonV1>,
+}
+
+impl ProvenanceReviewErrorV1 {
+    /// Invalid or consumed provenance cannot be routed to review or repaired.
+    /// This requirement is independent of reason order and registry allowances.
+    pub fn requires_terminal_deny(&self) -> bool {
+        matches!(
+            self.provenance,
+            ProvenanceStateV1::Invalid | ProvenanceStateV1::Consumed
+        )
+    }
+}
+
 /// Combine terminal provenance defects with supplied-review validity checks.
 ///
 /// Success classifies the trusted input as `TrustedBoundUnused` or `Missing`;
@@ -232,12 +266,14 @@ pub fn validate_provenance_and_reviews_v1(
     request: &CommerceRequestV1,
     context: &DecisionContextV1,
     bundle: &PreparedCommerceBundleV1,
-) -> Result<ProvenanceStateV1, Vec<ReasonV1>> {
+) -> Result<ProvenanceStateV1, ProvenanceReviewErrorV1> {
     // Distinguish unrepresentable inputs from a representable kind/time defect:
     // only the former prevents further semantic inspection.
-    if request_binding_digest_v1(request).is_err() || Encoder(Vec::new()).context(context).is_err()
-    {
-        return Err(vec![INVALID]);
+    if let Err(reason) = validated_request_digest_v1(request, context) {
+        return Err(ProvenanceReviewErrorV1 {
+            provenance: context.evidence.provenance,
+            causes: vec![reason],
+        });
     }
     let mut causes = validate_review_artifacts_v1(request, context, bundle)
         .err()
@@ -256,7 +292,10 @@ pub fn validate_provenance_and_reviews_v1(
     if causes.is_empty() {
         Ok(state)
     } else {
-        Err(causes)
+        Err(ProvenanceReviewErrorV1 {
+            provenance: state,
+            causes,
+        })
     }
 }
 
@@ -1685,4 +1724,25 @@ fn build_cedar_entities_v1(
     }
     cedar_policy::Entities::from_entities(entities, Some(&bundle.schema))
         .map_err(|_| ReasonV1::E_INTERNAL_EVALUATION)
+}
+
+#[cfg(test)]
+mod terminal_error_tests {
+    use super::*;
+
+    #[test]
+    fn terminal_error_veto_does_not_follow_reason_allowances() {
+        let invalid = ProvenanceReviewErrorV1 {
+            provenance: ProvenanceStateV1::Invalid,
+            causes: vec![ReasonV1::E_PROVENANCE_UNVERIFIABLE],
+        };
+        assert!(invalid.causes[0].permits_outcome(CommerceOutcomeV1::Escalate));
+        assert!(invalid.requires_terminal_deny());
+        let missing = ProvenanceReviewErrorV1 {
+            provenance: ProvenanceStateV1::Missing,
+            causes: vec![ReasonV1::E_REPLAY],
+        };
+        assert!(!missing.causes[0].permits_outcome(CommerceOutcomeV1::Escalate));
+        assert!(!missing.requires_terminal_deny());
+    }
 }
