@@ -7,8 +7,8 @@
 mod decision;
 mod reasons;
 pub use decision::{
-    PreparedCommerceBundleV1, bundle_digest_v1, decision_digest_v1, encode_decision_v1,
-    prepare_bundle_v1,
+    PreparedCedarInputsV1, PreparedCommerceBundleV1, build_cedar_request_v1, bundle_digest_v1,
+    decision_digest_v1, encode_decision_v1, prepare_bundle_v1,
 };
 pub use reasons::ReasonV1;
 

@@ -883,3 +883,377 @@ fn aggregate_policy_bound_precedes_template_rejection() {
         .push_str("permit(principal == ?principal, action, resource);");
     assert_eq!(prep_error(&source), BundleErrorV1::UnsupportedFeature);
 }
+
+const NATIVE_SCHEMA: &str = r###"{
+  "HermesCommerce": {
+    "entityTypes": {
+      "Principal": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "profileId": {
+              "type": "String"
+            },
+            "shopId": {
+              "type": "String"
+            }
+          }
+        }
+      },
+      "Resource": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "profileId": {
+              "type": "String"
+            },
+            "shopId": {
+              "type": "String"
+            }
+          }
+        }
+      }
+    },
+    "actions": {
+      "commerce.refund.create": {
+        "appliesTo": {
+          "principalTypes": [
+            "Principal"
+          ],
+          "resourceTypes": [
+            "Resource"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "profileId": {
+                "type": "String"
+              },
+              "shopId": {
+                "type": "String"
+              },
+              "actionEnabled": {
+                "type": "Boolean"
+              }
+            }
+          }
+        }
+      },
+      "commerce.order.address_update": {
+        "appliesTo": {
+          "principalTypes": [
+            "Principal"
+          ],
+          "resourceTypes": [
+            "Resource"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "profileId": {
+                "type": "String"
+              },
+              "shopId": {
+                "type": "String"
+              },
+              "actionEnabled": {
+                "type": "Boolean"
+              }
+            }
+          }
+        }
+      },
+      "commerce.order.cancel": {
+        "appliesTo": {
+          "principalTypes": [
+            "Principal"
+          ],
+          "resourceTypes": [
+            "Resource"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "profileId": {
+                "type": "String"
+              },
+              "shopId": {
+                "type": "String"
+              },
+              "actionEnabled": {
+                "type": "Boolean"
+              }
+            }
+          }
+        }
+      },
+      "commerce.discount.create": {
+        "appliesTo": {
+          "principalTypes": [
+            "Principal"
+          ],
+          "resourceTypes": [
+            "Resource"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "profileId": {
+                "type": "String"
+              },
+              "shopId": {
+                "type": "String"
+              },
+              "actionEnabled": {
+                "type": "Boolean"
+              }
+            }
+          }
+        }
+      },
+      "comms.customer_email.send": {
+        "appliesTo": {
+          "principalTypes": [
+            "Principal"
+          ],
+          "resourceTypes": [
+            "Resource"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "profileId": {
+                "type": "String"
+              },
+              "shopId": {
+                "type": "String"
+              },
+              "actionEnabled": {
+                "type": "Boolean"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"###;
+
+fn native_bundle(enabled: bool) -> PreparedCommerceBundleV1 {
+    let mut source = preparation_source();
+    source.schema_text = NATIVE_SCHEMA.into();
+    for (_, setting) in &mut source.action_settings {
+        setting.enabled = enabled;
+    }
+    recommit(&mut source);
+    prepare_bundle_v1(&source, &[7; 32]).unwrap()
+}
+fn native_frame(bundle: &PreparedCommerceBundleV1) -> (CommerceRequestV1, DecisionContextV1) {
+    let (request, mut context, _) = frame();
+    context.policy_digest = *bundle.digest();
+    context.registry_digest = *bundle.registry_digest();
+    (request, context)
+}
+
+#[test]
+fn native_cedar_mapping_all_actions() {
+    let bundle = native_bundle(true);
+    let (mut request, context) = native_frame(&bundle);
+    for (action, id) in [
+        (CommerceActionV1::RefundCreate, "commerce.refund.create"),
+        (
+            CommerceActionV1::OrderAddressUpdate,
+            "commerce.order.address_update",
+        ),
+        (CommerceActionV1::OrderCancel, "commerce.order.cancel"),
+        (CommerceActionV1::DiscountCreate, "commerce.discount.create"),
+        (
+            CommerceActionV1::CustomerEmailSend,
+            "comms.customer_email.send",
+        ),
+    ] {
+        request.action = action;
+        let inputs = build_cedar_request_v1(&request, &context, &bundle).unwrap();
+        assert_eq!(
+            inputs.request().action().unwrap().to_string(),
+            format!("HermesCommerce::Action::\"{id}\"")
+        );
+        let native = inputs.request().context().unwrap();
+        assert_eq!(
+            native.get("profileId"),
+            Some(cedar_policy::EvalResult::String("a".into()))
+        );
+        assert_eq!(
+            native.get("shopId"),
+            Some(cedar_policy::EvalResult::String("a".into()))
+        );
+        assert_eq!(
+            native.get("actionEnabled"),
+            Some(cedar_policy::EvalResult::Bool(true))
+        );
+        assert!(
+            inputs
+                .entities()
+                .get(inputs.request().principal().unwrap())
+                .is_some()
+        );
+        assert!(
+            inputs
+                .entities()
+                .get(inputs.request().resource().unwrap())
+                .is_some()
+        );
+        assert_ne!(inputs.request().principal(), inputs.request().resource());
+        assert_eq!(
+            inputs.request().principal().unwrap().to_string(),
+            r#"HermesCommerce::Principal::"a1079fb65eb44b610a35023ac9b01632cc1f9cdbcf3f4412fe396faed00384fb""#
+        );
+        assert_eq!(
+            inputs.request().resource().unwrap().to_string(),
+            r#"HermesCommerce::Resource::"312a5f15bb15781c745d8f20b71b5b49c98b6522961a631ce8dda17ebffdba13""#
+        );
+    }
+}
+
+#[test]
+fn native_cedar_scoping_and_literal_strings() {
+    let bundle = native_bundle(true);
+    let (mut request, mut context) = native_frame(&bundle);
+    let original = build_cedar_request_v1(&request, &context, &bundle).unwrap();
+    // Cedar-looking syntax is passed as string data, never parsed as an expression.
+    request.profile_id = "decimal(\"1.0\")".into();
+    context.authenticated_profile = request.profile_id.clone();
+    let changed = build_cedar_request_v1(&request, &context, &bundle).unwrap();
+    assert_ne!(
+        original.request().principal(),
+        changed.request().principal()
+    );
+    assert_ne!(original.request().resource(), changed.request().resource());
+    assert_eq!(
+        changed.request().context().unwrap().get("profileId"),
+        Some(cedar_policy::EvalResult::String(request.profile_id.clone()))
+    );
+    let disabled = native_bundle(false);
+    let (request, context) = native_frame(&disabled);
+    let inputs = build_cedar_request_v1(&request, &context, &disabled).unwrap();
+    assert_eq!(
+        inputs.request().context().unwrap().get("actionEnabled"),
+        Some(cedar_policy::EvalResult::Bool(false))
+    );
+}
+
+#[test]
+fn native_cedar_rejects_bad_bindings_and_representations() {
+    let bundle = native_bundle(true);
+    let (request, context) = native_frame(&bundle);
+    for field in 0..5 {
+        let mut bad = context.clone();
+        match field {
+            0 => bad.authenticated_profile.push('x'),
+            1 => bad.authenticated_shop.push('x'),
+            2 => bad.authenticated_subject.push('x'),
+            3 => bad.policy_digest[0] ^= 1,
+            _ => bad.registry_digest[0] ^= 1,
+        }
+        assert_eq!(
+            build_cedar_request_v1(&request, &bad, &bundle).unwrap_err(),
+            ReasonV1::E_BINDING_MISMATCH
+        );
+    }
+    let mut bad = request.clone();
+    bad.currency = Some("usd".into());
+    assert_eq!(
+        build_cedar_request_v1(&bad, &context, &bundle).unwrap_err(),
+        ReasonV1::E_MALFORMED_REQUEST
+    );
+    let mut bad = context.clone();
+    bad.now_ms = i64::MAX as u64 + 1;
+    assert_eq!(
+        build_cedar_request_v1(&request, &bad, &bundle).unwrap_err(),
+        ReasonV1::E_MALFORMED_REQUEST
+    );
+    // A prepared but incompatible native schema must not fall back to unvalidated construction.
+    let source = preparation_source();
+    let incompatible = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+    let (request, context) = native_frame(&incompatible);
+    assert_eq!(
+        build_cedar_request_v1(&request, &context, &incompatible).unwrap_err(),
+        ReasonV1::E_INTERNAL_EVALUATION
+    );
+}
+
+#[test]
+fn native_cedar_uid_components_are_bound_without_concatenation_ambiguity() {
+    let bundle = native_bundle(true);
+    let (request, context) = native_frame(&bundle);
+    let original = build_cedar_request_v1(&request, &context, &bundle).unwrap();
+    for part in 0..4 {
+        let mut r = request.clone();
+        let mut c = context.clone();
+        match part {
+            0 => {
+                r.profile_id.push('b');
+                c.authenticated_profile = r.profile_id.clone();
+            }
+            1 => {
+                r.shop_id.push('b');
+                c.authenticated_shop = r.shop_id.clone();
+            }
+            2 => {
+                r.subject_id.push('b');
+                c.authenticated_subject = r.subject_id.clone();
+            }
+            _ => r.resource_id.push('b'),
+        }
+        let changed = build_cedar_request_v1(&r, &c, &bundle).unwrap();
+        assert_eq!(
+            original.request().principal() != changed.request().principal(),
+            part != 3
+        );
+        assert_eq!(
+            original.request().resource() != changed.request().resource(),
+            part != 2
+        );
+    }
+    let mut r = request.clone();
+    let mut c = context.clone();
+    r.profile_id = "ab".into();
+    r.shop_id = "c".into();
+    c.authenticated_profile = r.profile_id.clone();
+    c.authenticated_shop = r.shop_id.clone();
+    let first = build_cedar_request_v1(&r, &c, &bundle).unwrap();
+    r.profile_id = "a".into();
+    r.shop_id = "bc".into();
+    c.authenticated_profile = r.profile_id.clone();
+    c.authenticated_shop = r.shop_id.clone();
+    let second = build_cedar_request_v1(&r, &c, &bundle).unwrap();
+    assert_ne!(first.request().principal(), second.request().principal());
+    assert_ne!(first.request().resource(), second.request().resource());
+}
+
+#[test]
+fn native_cedar_request_and_entity_schema_checks_are_independent() {
+    for entity_fault in [false, true] {
+        let mut source = preparation_source();
+        let mut schema: serde_json::Value = serde_json::from_str(NATIVE_SCHEMA).unwrap();
+        if entity_fault {
+            schema["HermesCommerce"]["entityTypes"]["Principal"]["shape"]["attributes"]["profileId"]
+                ["type"] = "Boolean".into();
+        } else {
+            schema["HermesCommerce"]["actions"]["commerce.refund.create"]["appliesTo"]["context"]
+                ["attributes"]["profileId"]["type"] = "Boolean".into();
+        }
+        source.schema_text = schema.to_string();
+        recommit(&mut source);
+        let bundle = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+        let (request, context) = native_frame(&bundle);
+        assert_eq!(
+            build_cedar_request_v1(&request, &context, &bundle).unwrap_err(),
+            ReasonV1::E_INTERNAL_EVALUATION,
+            "entity fault: {entity_fault}"
+        );
+    }
+}

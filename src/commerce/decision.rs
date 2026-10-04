@@ -1320,3 +1320,156 @@ mod bundle_encoding_tests {
         );
     }
 }
+
+/// Native Cedar inputs for the pinned HermesCommerce schema. Construction is
+/// not an authorization decision; no Authorizer is invoked here.
+///
+/// ```compile_fail
+/// use dgr_core::commerce::PreparedCedarInputsV1;
+/// let inputs = PreparedCedarInputsV1 {};
+/// ```
+#[derive(Debug)]
+pub struct PreparedCedarInputsV1 {
+    request: cedar_policy::Request,
+    entities: cedar_policy::Entities,
+}
+impl PreparedCedarInputsV1 {
+    pub fn request(&self) -> &cedar_policy::Request {
+        &self.request
+    }
+    pub fn entities(&self) -> &cedar_policy::Entities {
+        &self.entities
+    }
+}
+
+/// Construct only native restricted literals, never parse caller JSON or Cedar
+/// expressions. The complete typed request/context is representation-checked
+/// before any extension-capable Cedar value constructor is reached.
+///
+/// This is the pinned three-field context projection, not an arbitrary schema
+/// adapter. Other evidence, budget and review predicates belong to the decision
+/// wrapper. Success neither checks those predicates nor grants permission.
+pub fn build_cedar_request_v1(
+    request: &CommerceRequestV1,
+    context: &DecisionContextV1,
+    bundle: &PreparedCommerceBundleV1,
+) -> Result<PreparedCedarInputsV1, ReasonV1> {
+    let mut bounds = Encoder(Vec::new());
+    bounds.request(request)?;
+    bounds.context(context)?;
+    if request.profile_id != context.authenticated_profile
+        || request.shop_id != context.authenticated_shop
+        || request.subject_id != context.authenticated_subject
+        || context.policy_digest != bundle.digest
+        || context.registry_digest != bundle.registry_digest
+    {
+        return Err(ReasonV1::E_BINDING_MISMATCH);
+    }
+    let settings = bundle
+        .settings
+        .iter()
+        .find(|(a, _)| *a == request.action)
+        .map(|(_, s)| s)
+        .ok_or(ReasonV1::E_INTERNAL_EVALUATION)?;
+    let principal = scoped_cedar_uid(
+        "Principal",
+        &request.profile_id,
+        &request.shop_id,
+        &request.subject_id,
+    )?;
+    let resource = scoped_cedar_uid(
+        "Resource",
+        &request.profile_id,
+        &request.shop_id,
+        &request.resource_id,
+    )?;
+    let action_name = match request.action {
+        CommerceActionV1::RefundCreate => "commerce.refund.create",
+        CommerceActionV1::OrderAddressUpdate => "commerce.order.address_update",
+        CommerceActionV1::OrderCancel => "commerce.order.cancel",
+        CommerceActionV1::DiscountCreate => "commerce.discount.create",
+        CommerceActionV1::CustomerEmailSend => "comms.customer_email.send",
+    };
+    let action = cedar_uid("Action", action_name.to_owned())?;
+    // No caller-supplied RestrictedExpression can enter this closed literal set.
+    let native_pairs = [
+        (
+            "profileId".to_owned(),
+            cedar_policy::RestrictedExpression::new_string(request.profile_id.clone()),
+        ),
+        (
+            "shopId".to_owned(),
+            cedar_policy::RestrictedExpression::new_string(request.shop_id.clone()),
+        ),
+        (
+            "actionEnabled".to_owned(),
+            cedar_policy::RestrictedExpression::new_bool(settings.enabled),
+        ),
+    ];
+    let native_context = cedar_policy::Context::from_pairs(native_pairs)
+        .map_err(|_| ReasonV1::E_INTERNAL_EVALUATION)?;
+    let entities = build_cedar_entities_v1(request, principal.clone(), resource.clone(), bundle)?;
+    let request = cedar_policy::Request::new(
+        principal,
+        action,
+        resource,
+        native_context,
+        Some(&bundle.schema),
+    )
+    .map_err(|_| ReasonV1::E_INTERNAL_EVALUATION)?;
+    Ok(PreparedCedarInputsV1 { request, entities })
+}
+
+fn cedar_uid(kind: &str, id: String) -> Result<cedar_policy::EntityUid, ReasonV1> {
+    let name = format!("HermesCommerce::{kind}")
+        .parse()
+        .map_err(|_| ReasonV1::E_INTERNAL_EVALUATION)?;
+    Ok(cedar_policy::EntityUid::from_type_name_and_id(
+        name,
+        cedar_policy::EntityId::new(id),
+    ))
+}
+
+fn scoped_cedar_uid(
+    kind: &str,
+    profile: &str,
+    shop: &str,
+    id: &str,
+) -> Result<cedar_policy::EntityUid, ReasonV1> {
+    let mut frame = Encoder(format!("HermesCommerce.{kind}\0").into_bytes());
+    for value in [profile, shop, id] {
+        frame.string(value)?;
+    }
+    let digest = Sha256::digest(frame.0);
+    let hex = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    cedar_uid(kind, hex)
+}
+
+fn build_cedar_entities_v1(
+    request: &CommerceRequestV1,
+    principal: cedar_policy::EntityUid,
+    resource: cedar_policy::EntityUid,
+    bundle: &PreparedCommerceBundleV1,
+) -> Result<cedar_policy::Entities, ReasonV1> {
+    let mut entities = Vec::new();
+    for uid in [principal, resource] {
+        let attrs = [
+            (
+                "profileId".to_owned(),
+                cedar_policy::RestrictedExpression::new_string(request.profile_id.clone()),
+            ),
+            (
+                "shopId".to_owned(),
+                cedar_policy::RestrictedExpression::new_string(request.shop_id.clone()),
+            ),
+        ]
+        .into_iter()
+        .collect();
+        entities.push(
+            cedar_policy::Entity::new(uid, attrs, Default::default())
+                .map_err(|_| ReasonV1::E_INTERNAL_EVALUATION)?,
+        );
+    }
+    cedar_policy::Entities::from_entities(entities, Some(&bundle.schema))
+        .map_err(|_| ReasonV1::E_INTERNAL_EVALUATION)
+}
