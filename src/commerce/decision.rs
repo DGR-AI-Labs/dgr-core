@@ -218,6 +218,48 @@ fn review_interval_causes(
     }
 }
 
+/// Combine terminal provenance defects with supplied-review validity checks.
+///
+/// Success classifies the trusted input as `TrustedBoundUnused` or `Missing`;
+/// it never authenticates that input, accepts an attestation, grants permission,
+/// or decides whether missing provenance can be remedied. Requirement resolution
+/// and the final evaluator remain separate. Invalid and consumed provenance are
+/// terminal even when provenance is optional; an attestation cannot repair them.
+/// Non-missing provenance requires a matching immutable request binding.
+/// Independent review defects are retained in registry order. This is the
+/// combined entry point for provenance/review diagnostics, not an Authorizer.
+pub fn validate_provenance_and_reviews_v1(
+    request: &CommerceRequestV1,
+    context: &DecisionContextV1,
+    bundle: &PreparedCommerceBundleV1,
+) -> Result<ProvenanceStateV1, Vec<ReasonV1>> {
+    // Distinguish unrepresentable inputs from a representable kind/time defect:
+    // only the former prevents further semantic inspection.
+    if request_binding_digest_v1(request).is_err() || Encoder(Vec::new()).context(context).is_err()
+    {
+        return Err(vec![INVALID]);
+    }
+    let mut causes = validate_review_artifacts_v1(request, context, bundle)
+        .err()
+        .unwrap_or_default();
+    let state = context.evidence.provenance;
+    if state != ProvenanceStateV1::Missing && context.evidence.provenance_binding_digest.is_none() {
+        causes.push(ReasonV1::E_MISSING_EVIDENCE);
+    }
+    match state {
+        ProvenanceStateV1::TrustedBoundUnused | ProvenanceStateV1::Missing => {}
+        ProvenanceStateV1::Invalid => causes.push(ReasonV1::E_PROVENANCE_UNVERIFIABLE),
+        ProvenanceStateV1::Consumed => causes.push(ReasonV1::E_REPLAY),
+    }
+    causes.sort_unstable_by_key(|reason| reason.rank());
+    causes.dedup();
+    if causes.is_empty() {
+        Ok(state)
+    } else {
+        Err(causes)
+    }
+}
+
 struct Encoder(Vec<u8>);
 impl Encoder {
     fn string(&mut self, s: &str) -> EncodingResult {
