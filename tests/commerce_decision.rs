@@ -1136,6 +1136,24 @@ fn native_cedar_scoping_and_literal_strings() {
         changed.request().context().unwrap().get("profileId"),
         Some(cedar_policy::EvalResult::String(request.profile_id.clone()))
     );
+    assert_eq!(
+        changed.request().context().unwrap().get("shopId"),
+        Some(cedar_policy::EvalResult::String(request.shop_id.clone()))
+    );
+    for uid in [
+        changed.request().principal().unwrap(),
+        changed.request().resource().unwrap(),
+    ] {
+        let entity = changed.entities().get(uid).unwrap();
+        assert_eq!(
+            entity.attr("profileId").unwrap().unwrap(),
+            cedar_policy::EvalResult::String(request.profile_id.clone())
+        );
+        assert_eq!(
+            entity.attr("shopId").unwrap().unwrap(),
+            cedar_policy::EvalResult::String(request.shop_id.clone())
+        );
+    }
     let disabled = native_bundle(false);
     let (request, context) = native_frame(&disabled);
     let inputs = build_cedar_request_v1(&request, &context, &disabled).unwrap();
