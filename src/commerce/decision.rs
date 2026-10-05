@@ -123,6 +123,14 @@ pub fn validate_request_bindings_v1(
 /// Representation errors short-circuit before time arithmetic. Other causes are
 /// deduplicated in registry order. No Cedar evaluation or I/O occurs here.
 ///
+/// For the non-optional SourceRevision, FetchedAtMs, EvidenceDigest and Provenance
+/// fields, a required_evidence entry constrains snapshot age only. In particular,
+/// requiring Provenance here accepts a structurally present Missing state; it does
+/// not require usable provenance. The separate require_provenance setting expresses
+/// that policy requirement. Resolving required-but-missing provenance belongs to
+/// the future requirement/evaluator layer; validate_provenance_and_reviews_v1 does
+/// not complete that resolution either.
+///
 /// Success does not authenticate evidence, recompute its digest, check request
 /// bindings, validate provenance/reviews, enforce action-specific mandatory facts,
 /// or grant permission. Those remain separate evaluator obligations.
