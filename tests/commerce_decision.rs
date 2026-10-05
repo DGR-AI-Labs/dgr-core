@@ -2043,3 +2043,238 @@ fn terminal_error_public_accessors_preserve_validated_value() {
     assert!(error.requires_terminal_deny());
     assert!(clone.requires_terminal_deny());
 }
+
+fn evidence_fixture(
+    fields: Vec<(EvidenceFieldV1, u64)>,
+) -> (
+    CommerceRequestV1,
+    DecisionContextV1,
+    PreparedCommerceBundleV1,
+) {
+    let (r, mut c, b) = review_fixture(|s| s.required_evidence = fields.clone());
+    c.now_ms = 100;
+    c.evidence.fetched_at_ms = 90;
+    c.approved_evidence_revision = None;
+    c.evidence.captured_minor = Some(0);
+    c.evidence.prior_refunds_minor = Some(0);
+    c.evidence.order_age_seconds = Some(0);
+    c.evidence.line_items_eligible = Some(false);
+    c.evidence.any_fulfillment = Some(false);
+    c.evidence.cancellation_eligible = Some(false);
+    c.evidence.discount_conflict = Some(false);
+    c.evidence.derived_recipient_digest = Some([0; 32]);
+    c.evidence.approved_template_digest = Some([0; 32]);
+    c.evidence.recipient_count = Some(0);
+    (r, c, b)
+}
+
+#[test]
+fn evidence_snapshot_every_field_age_boundary() {
+    use EvidenceFieldV1::*;
+    for field in [
+        SourceRevision,
+        FetchedAtMs,
+        EvidenceDigest,
+        CapturedMinor,
+        PriorRefundsMinor,
+        OrderAgeSeconds,
+        LineItemsEligible,
+        AnyFulfillment,
+        CancellationEligible,
+        DiscountConflict,
+        DerivedRecipientDigest,
+        ApprovedTemplateDigest,
+        RecipientCount,
+        Provenance,
+        ProvenanceBindingDigest,
+    ] {
+        let (r, mut c, b) = evidence_fixture(vec![(field, 10)]);
+        for (now, expected) in [
+            (99, Ok(())),
+            (100, Ok(())),
+            (101, Err(vec![ReasonV1::E_MISSING_EVIDENCE])),
+        ] {
+            c.now_ms = now;
+            assert_eq!(
+                validate_evidence_snapshot_v1(&r, &c, &b),
+                expected,
+                "{field:?}: {now}"
+            );
+        }
+    }
+}
+
+#[test]
+fn evidence_snapshot_optional_presence_false_zero_are_present() {
+    use EvidenceFieldV1::*;
+    for field in [
+        CapturedMinor,
+        PriorRefundsMinor,
+        OrderAgeSeconds,
+        LineItemsEligible,
+        AnyFulfillment,
+        CancellationEligible,
+        DiscountConflict,
+        DerivedRecipientDigest,
+        ApprovedTemplateDigest,
+        RecipientCount,
+        ProvenanceBindingDigest,
+    ] {
+        let (r, mut c, b) = evidence_fixture(vec![(field, 10)]);
+        assert_eq!(
+            validate_evidence_snapshot_v1(&r, &c, &b),
+            Ok(()),
+            "present {field:?}"
+        );
+        match field {
+            CapturedMinor => c.evidence.captured_minor = None,
+            PriorRefundsMinor => c.evidence.prior_refunds_minor = None,
+            OrderAgeSeconds => c.evidence.order_age_seconds = None,
+            LineItemsEligible => c.evidence.line_items_eligible = None,
+            AnyFulfillment => c.evidence.any_fulfillment = None,
+            CancellationEligible => c.evidence.cancellation_eligible = None,
+            DiscountConflict => c.evidence.discount_conflict = None,
+            DerivedRecipientDigest => c.evidence.derived_recipient_digest = None,
+            ApprovedTemplateDigest => c.evidence.approved_template_digest = None,
+            RecipientCount => c.evidence.recipient_count = None,
+            ProvenanceBindingDigest => c.evidence.provenance_binding_digest = None,
+            _ => unreachable!(),
+        }
+        assert_eq!(
+            validate_evidence_snapshot_v1(&r, &c, &b),
+            Err(vec![ReasonV1::E_MISSING_EVIDENCE]),
+            "absent {field:?}"
+        );
+    }
+}
+
+#[test]
+fn evidence_snapshot_future_and_unsigned_extremes() {
+    for fields in [vec![], vec![(EvidenceFieldV1::FetchedAtMs, 10)]] {
+        let (r, mut c, b) = evidence_fixture(fields);
+        for now in [0, 100, i64::MAX as u64 - 1] {
+            c.now_ms = now;
+            c.evidence.fetched_at_ms = now;
+            assert_eq!(validate_evidence_snapshot_v1(&r, &c, &b), Ok(()));
+            c.evidence.fetched_at_ms = now + 1;
+            assert_eq!(
+                validate_evidence_snapshot_v1(&r, &c, &b),
+                Err(vec![ReasonV1::E_MALFORMED_REQUEST])
+            );
+        }
+        c.evidence.fetched_at_ms = u64::MAX;
+        assert_eq!(
+            validate_evidence_snapshot_v1(&r, &c, &b),
+            Err(vec![ReasonV1::E_MALFORMED_REQUEST])
+        );
+    }
+}
+
+#[test]
+fn evidence_snapshot_revision_is_exact_and_optional() {
+    let (r, mut c, b) = evidence_fixture(vec![]);
+    assert_eq!(validate_evidence_snapshot_v1(&r, &c, &b), Ok(()));
+    c.approved_evidence_revision = Some(c.evidence.source_revision.clone());
+    assert_eq!(validate_evidence_snapshot_v1(&r, &c, &b), Ok(()));
+    c.approved_evidence_revision.as_mut().unwrap().push('x');
+    assert_eq!(
+        validate_evidence_snapshot_v1(&r, &c, &b),
+        Err(vec![ReasonV1::E_STALE_STATE])
+    );
+}
+
+#[test]
+fn evidence_snapshot_causes_are_complete_ordered_unique() {
+    let (r, mut c, b) = evidence_fixture(vec![
+        (EvidenceFieldV1::CapturedMinor, 10),
+        (EvidenceFieldV1::RecipientCount, 10),
+    ]);
+    c.evidence.captured_minor = None;
+    c.evidence.recipient_count = None;
+    c.evidence.fetched_at_ms = 101;
+    c.approved_evidence_revision = Some("other".into());
+    assert_eq!(
+        validate_evidence_snapshot_v1(&r, &c, &b),
+        Err(vec![
+            ReasonV1::E_MALFORMED_REQUEST,
+            ReasonV1::E_MISSING_EVIDENCE,
+            ReasonV1::E_STALE_STATE
+        ])
+    );
+    c.evidence.source_revision.clear();
+    assert_eq!(
+        validate_evidence_snapshot_v1(&r, &c, &b),
+        Err(vec![ReasonV1::E_MALFORMED_REQUEST])
+    );
+}
+
+#[test]
+fn evidence_snapshot_uses_selected_action_and_individual_maximum() {
+    let mut source = preparation_source();
+    source.schema_text = NATIVE_SCHEMA.into();
+    for (action, s) in &mut source.action_settings {
+        s.required_evidence = if *action == CommerceActionV1::RefundCreate {
+            vec![
+                (EvidenceFieldV1::CapturedMinor, 20),
+                (EvidenceFieldV1::RecipientCount, 5),
+            ]
+        } else {
+            vec![]
+        };
+    }
+    recommit(&mut source);
+    let b = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+    let (mut r, mut c, _) = evidence_fixture(vec![]);
+    assert_eq!(
+        validate_evidence_snapshot_v1(&r, &c, &b),
+        Err(vec![ReasonV1::E_MISSING_EVIDENCE])
+    );
+    c.evidence.fetched_at_ms = 95;
+    assert_eq!(validate_evidence_snapshot_v1(&r, &c, &b), Ok(()));
+    c.evidence.fetched_at_ms = 0;
+    r.action = CommerceActionV1::OrderCancel;
+    assert_eq!(validate_evidence_snapshot_v1(&r, &c, &b), Ok(()));
+}
+
+#[test]
+fn evidence_snapshot_success_is_not_permission_or_digest_authentication() {
+    let (r, mut c, b) = evidence_fixture(vec![]);
+    c.evidence.provenance = ProvenanceStateV1::Invalid;
+    c.evidence.evidence_digest = [42; 32];
+    c.evidence.provenance_binding_digest = None;
+    c.review.grant.as_mut().unwrap().authorized = false;
+    c.authenticated_subject = "different".into();
+    assert_eq!(validate_evidence_snapshot_v1(&r, &c, &b), Ok(()));
+}
+
+#[test]
+fn evidence_snapshot_age_does_not_truncate_and_zero_limit_is_inclusive() {
+    let (r, mut c, b) = evidence_fixture(vec![(EvidenceFieldV1::FetchedAtMs, 10)]);
+    c.evidence.fetched_at_ms = 0;
+    c.now_ms = 65546;
+    assert_eq!(
+        validate_evidence_snapshot_v1(&r, &c, &b),
+        Err(vec![ReasonV1::E_MISSING_EVIDENCE])
+    );
+    let (r, mut c, b) = evidence_fixture(vec![(EvidenceFieldV1::FetchedAtMs, 0)]);
+    c.evidence.fetched_at_ms = c.now_ms;
+    assert_eq!(validate_evidence_snapshot_v1(&r, &c, &b), Ok(()));
+    c.now_ms += 1;
+    assert_eq!(
+        validate_evidence_snapshot_v1(&r, &c, &b),
+        Err(vec![ReasonV1::E_MISSING_EVIDENCE])
+    );
+}
+
+#[test]
+fn evidence_snapshot_unrequired_absence_and_request_bounds() {
+    let (mut r, mut c, b) = evidence_fixture(vec![]);
+    c.evidence.captured_minor = None;
+    c.evidence.fetched_at_ms = 0;
+    assert_eq!(validate_evidence_snapshot_v1(&r, &c, &b), Ok(()));
+    r.operation_id.clear();
+    assert_eq!(
+        validate_evidence_snapshot_v1(&r, &c, &b),
+        Err(vec![ReasonV1::E_MALFORMED_REQUEST])
+    );
+}
