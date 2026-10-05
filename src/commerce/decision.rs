@@ -170,6 +170,18 @@ pub fn validate_action_eligibility_v1(
 /// balances are inclusive ceilings; exceeding either contributes E_AMOUNT_LIMIT.
 /// Independently established causes are deduplicated in registry order.
 ///
+/// Preparation guarantees a present amount ceiling and non-empty currency set
+/// for enabled monetary entries. The E_POLICY_UNCONFIGURED branches here are
+/// defence-in-depth classifications reachable through prepared disabled entries,
+/// not live unconfigured-policy paths. Their absence tests use disabled settings.
+///
+/// Configuration and predicates have separate roles: required_evidence adds
+/// snapshot presence/age checks but does not define every hard requirement.
+/// A structural Provenance field can still be Missing; require_provenance and
+/// final provenance resolution remain separate. Applicable hard eligibility and
+/// monetary inputs are mandatory even when omitted from required_evidence.
+/// These classifiers do not enforce enabled; the final evaluator must do so.
+///
 /// This classifies supplied facts even for disabled settings; action enablement
 /// remains an evaluator obligation. Success is not permission and does not check
 /// bindings, freshness, provenance, reviews or budget scope/window/count/value.
