@@ -235,13 +235,56 @@ fn review_interval_causes(
 /// Consumers must honor `requires_terminal_deny()` before considering any review
 /// route permitted by an individual reason. A false result grants no permission:
 /// other causes and the remaining policy checks may still require Deny.
+///
+/// Safe external callers cannot construct or mutate this value directly:
+///
+/// ```compile_fail
+/// use dgr_core::commerce::{ProvenanceReviewErrorV1, ProvenanceStateV1};
+/// let _ = ProvenanceReviewErrorV1 {
+///     provenance: ProvenanceStateV1::Missing,
+///     causes: vec![],
+/// };
+/// ```
+///
+/// ```compile_fail
+/// use dgr_core::commerce::{ProvenanceReviewErrorV1, ProvenanceStateV1};
+/// fn replace_state(mut error: ProvenanceReviewErrorV1) {
+///     error.provenance = ProvenanceStateV1::Missing;
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use dgr_core::commerce::ProvenanceReviewErrorV1;
+/// fn replace_causes(mut error: ProvenanceReviewErrorV1) {
+///     error.causes.clear();
+/// }
+/// ```
+///
+/// Access to causes is read-only, including through a mutable error reference:
+///
+/// ```compile_fail
+/// use dgr_core::commerce::{ProvenanceReviewErrorV1, ReasonV1};
+/// fn edit_causes(error: &mut ProvenanceReviewErrorV1) {
+///     error.causes()[0] = ReasonV1::E_INTERNAL_EVALUATION;
+/// }
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProvenanceReviewErrorV1 {
-    pub provenance: ProvenanceStateV1,
-    pub causes: Vec<ReasonV1>,
+    provenance: ProvenanceStateV1,
+    causes: Vec<ReasonV1>,
 }
 
 impl ProvenanceReviewErrorV1 {
+    /// The supplied state retained by validation; this is not authentication.
+    pub fn provenance(&self) -> ProvenanceStateV1 {
+        self.provenance
+    }
+
+    /// Read-only access to the distinct causes in registry order.
+    pub fn causes(&self) -> &[ReasonV1] {
+        &self.causes
+    }
+
     /// Invalid or consumed provenance cannot be routed to review or repaired.
     /// This requirement is independent of reason order and registry allowances.
     pub fn requires_terminal_deny(&self) -> bool {
