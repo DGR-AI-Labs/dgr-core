@@ -115,6 +115,46 @@ pub fn validate_request_bindings_v1(
     Ok(())
 }
 
+/// Check the four hard action-specific eligibility predicates.
+///
+/// RefundCreate requires line_items_eligible=true; OrderAddressUpdate requires
+/// any_fulfillment=false; OrderCancel requires cancellation_eligible=true; and
+/// CustomerEmailSend requires recipient_count=1. Missing applicable facts return
+/// E_MISSING_EVIDENCE; present disallowed values return E_CONSTRAINT_VIOLATION.
+/// Each rule applies only to its named action. Review facts and policy routes
+/// cannot override it. Representation validation precedes semantic checks.
+///
+/// These applicable facts are mandatory independently of required_evidence:
+/// configured entries add requirements; omitting an entry cannot disable a hard
+/// predicate. This primitive does not consult settings.enabled and classifies
+/// eligibility even for a disabled action. The final evaluator must separately
+/// enforce action enablement and compose the other applicable checks.
+///
+/// DiscountCreate has no predicate in this primitive; success there does not
+/// establish discount eligibility. Success for any action is not permission:
+/// bindings, freshness, provenance, reviews, monetary limits, order windows,
+/// discount conflicts, recipient/template domains and Cedar remain separate.
+/// No evidence acquisition, Cedar evaluation or provider effect occurs here.
+pub fn validate_action_eligibility_v1(
+    request: &CommerceRequestV1,
+    context: &DecisionContextV1,
+) -> EncodingResult {
+    validated_request_digest_v1(request, context)?;
+    let evidence = &context.evidence;
+    let eligible = match request.action {
+        CommerceActionV1::RefundCreate => evidence.line_items_eligible,
+        CommerceActionV1::OrderAddressUpdate => evidence.any_fulfillment.map(|value| !value),
+        CommerceActionV1::OrderCancel => evidence.cancellation_eligible,
+        CommerceActionV1::CustomerEmailSend => evidence.recipient_count.map(|count| count == 1),
+        CommerceActionV1::DiscountCreate => return Ok(()),
+    };
+    match eligible {
+        None => Err(ReasonV1::E_MISSING_EVIDENCE),
+        Some(false) => Err(ReasonV1::E_CONSTRAINT_VIOLATION),
+        Some(true) => Ok(()),
+    }
+}
+
 /// Check configured evidence presence/age and the supplied approved revision.
 ///
 /// Future acquisition timestamps are malformed, even with no configured fields.

@@ -2278,3 +2278,171 @@ fn evidence_snapshot_unrequired_absence_and_request_bounds() {
         Err(vec![ReasonV1::E_MALFORMED_REQUEST])
     );
 }
+
+fn eligibility_frame(action: CommerceActionV1) -> (CommerceRequestV1, DecisionContextV1) {
+    let (mut r, mut c, _) = frame();
+    r.action = action;
+    c.evidence.line_items_eligible = Some(true);
+    c.evidence.any_fulfillment = Some(false);
+    c.evidence.cancellation_eligible = Some(true);
+    c.evidence.recipient_count = Some(1);
+    (r, c)
+}
+
+macro_rules! eligibility_boolean_cases {
+    ($name:ident,$action:ident,$field:ident,$good:expr) => {
+        #[test]
+        fn $name() {
+            let (r, mut c) = eligibility_frame(CommerceActionV1::$action);
+            for (value, expected) in [
+                (Some($good), Ok(())),
+                (Some(!$good), Err(ReasonV1::E_CONSTRAINT_VIOLATION)),
+                (None, Err(ReasonV1::E_MISSING_EVIDENCE)),
+            ] {
+                c.evidence.$field = value;
+                assert_eq!(
+                    validate_action_eligibility_v1(&r, &c),
+                    expected,
+                    "{value:?}"
+                );
+            }
+        }
+    };
+}
+eligibility_boolean_cases!(
+    action_eligibility_refund,
+    RefundCreate,
+    line_items_eligible,
+    true
+);
+eligibility_boolean_cases!(
+    action_eligibility_address,
+    OrderAddressUpdate,
+    any_fulfillment,
+    false
+);
+eligibility_boolean_cases!(
+    action_eligibility_cancel,
+    OrderCancel,
+    cancellation_eligible,
+    true
+);
+
+#[test]
+fn action_eligibility_recipient_count_exact() {
+    let (r, mut c) = eligibility_frame(CommerceActionV1::CustomerEmailSend);
+    for value in [0, 1, 2, 65537, u32::MAX] {
+        c.evidence.recipient_count = Some(value);
+        assert_eq!(
+            validate_action_eligibility_v1(&r, &c),
+            if value == 1 {
+                Ok(())
+            } else {
+                Err(ReasonV1::E_CONSTRAINT_VIOLATION)
+            },
+            "{value}"
+        );
+    }
+    c.evidence.recipient_count = None;
+    assert_eq!(
+        validate_action_eligibility_v1(&r, &c),
+        Err(ReasonV1::E_MISSING_EVIDENCE)
+    );
+}
+
+macro_rules! eligibility_off_target {
+    ($name:ident,$target:ident,$field:ident,$bad:expr) => {
+        #[test]
+        fn $name() {
+            for action in [
+                CommerceActionV1::RefundCreate,
+                CommerceActionV1::OrderAddressUpdate,
+                CommerceActionV1::OrderCancel,
+                CommerceActionV1::DiscountCreate,
+                CommerceActionV1::CustomerEmailSend,
+            ] {
+                if action == CommerceActionV1::$target {
+                    continue;
+                }
+                let (r, mut c) = eligibility_frame(action);
+                assert_eq!(validate_action_eligibility_v1(&r, &c), Ok(()));
+                c.evidence.$field = Some($bad);
+                assert_eq!(
+                    validate_action_eligibility_v1(&r, &c),
+                    Ok(()),
+                    "off-target {action:?}"
+                );
+                c.evidence.$field = None;
+                assert_eq!(
+                    validate_action_eligibility_v1(&r, &c),
+                    Ok(()),
+                    "unrequired absence {action:?}"
+                );
+            }
+        }
+    };
+}
+eligibility_off_target!(
+    action_eligibility_refund_scope,
+    RefundCreate,
+    line_items_eligible,
+    false
+);
+eligibility_off_target!(
+    action_eligibility_address_scope,
+    OrderAddressUpdate,
+    any_fulfillment,
+    true
+);
+eligibility_off_target!(
+    action_eligibility_cancel_scope,
+    OrderCancel,
+    cancellation_eligible,
+    false
+);
+eligibility_off_target!(
+    action_eligibility_zero_recipient_scope,
+    CustomerEmailSend,
+    recipient_count,
+    0
+);
+eligibility_off_target!(
+    action_eligibility_two_recipient_scope,
+    CustomerEmailSend,
+    recipient_count,
+    2
+);
+
+#[test]
+fn action_eligibility_request_and_context_representation() {
+    let (mut r, mut c) = eligibility_frame(CommerceActionV1::DiscountCreate);
+    r.operation_id.clear();
+    assert_eq!(
+        validate_action_eligibility_v1(&r, &c),
+        Err(ReasonV1::E_MALFORMED_REQUEST)
+    );
+    r.operation_id = "operation".into();
+    c.now_ms = u64::MAX;
+    assert_eq!(
+        validate_action_eligibility_v1(&r, &c),
+        Err(ReasonV1::E_MALFORMED_REQUEST)
+    );
+}
+
+#[test]
+fn action_eligibility_reviews_do_not_override_and_success_is_not_permission() {
+    let b = native_bundle(true);
+    let (mut r, mut c) = bound_frame(&b);
+    r.action = CommerceActionV1::RefundCreate;
+    c.evidence.line_items_eligible = Some(false);
+    assert!(c.review.grant.is_some() && c.review.attestation.is_some());
+    assert_eq!(
+        validate_action_eligibility_v1(&r, &c),
+        Err(ReasonV1::E_CONSTRAINT_VIOLATION)
+    );
+    c.evidence.line_items_eligible = Some(true);
+    c.evidence.provenance = ProvenanceStateV1::Invalid;
+    c.evidence.provenance_binding_digest = None;
+    c.authenticated_subject = "other".into();
+    assert_eq!(validate_action_eligibility_v1(&r, &c), Ok(()));
+}
