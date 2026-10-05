@@ -115,6 +115,79 @@ pub fn validate_request_bindings_v1(
     Ok(())
 }
 
+/// Check configured evidence presence/age and the supplied approved revision.
+///
+/// Future acquisition timestamps are malformed, even with no configured fields.
+/// Age is inclusive at each configured maximum. False and zero are present facts.
+/// All fields share one acquisition timestamp; this does not support mixed snapshots.
+/// Representation errors short-circuit before time arithmetic. Other causes are
+/// deduplicated in registry order. No Cedar evaluation or I/O occurs here.
+///
+/// Success does not authenticate evidence, recompute its digest, check request
+/// bindings, validate provenance/reviews, enforce action-specific mandatory facts,
+/// or grant permission. Those remain separate evaluator obligations.
+pub fn validate_evidence_snapshot_v1(
+    request: &CommerceRequestV1,
+    context: &DecisionContextV1,
+    bundle: &PreparedCommerceBundleV1,
+) -> Result<(), Vec<ReasonV1>> {
+    if let Err(reason) = validated_request_digest_v1(request, context) {
+        return Err(vec![reason]);
+    }
+    let Some((_, settings)) = bundle
+        .settings
+        .iter()
+        .find(|(action, _)| *action == request.action)
+    else {
+        return Err(vec![ReasonV1::E_INTERNAL_EVALUATION]);
+    };
+    let evidence = &context.evidence;
+    let mut causes = Vec::new();
+    // Check the future boundary before subtracting unsigned timestamps.
+    let age = context.now_ms.checked_sub(evidence.fetched_at_ms);
+    if age.is_none() {
+        causes.push(INVALID);
+    }
+    for (field, maximum_age) in &settings.required_evidence {
+        let present = match field {
+            EvidenceFieldV1::SourceRevision
+            | EvidenceFieldV1::FetchedAtMs
+            | EvidenceFieldV1::EvidenceDigest
+            | EvidenceFieldV1::Provenance => true,
+            EvidenceFieldV1::CapturedMinor => evidence.captured_minor.is_some(),
+            EvidenceFieldV1::PriorRefundsMinor => evidence.prior_refunds_minor.is_some(),
+            EvidenceFieldV1::OrderAgeSeconds => evidence.order_age_seconds.is_some(),
+            EvidenceFieldV1::LineItemsEligible => evidence.line_items_eligible.is_some(),
+            EvidenceFieldV1::AnyFulfillment => evidence.any_fulfillment.is_some(),
+            EvidenceFieldV1::CancellationEligible => evidence.cancellation_eligible.is_some(),
+            EvidenceFieldV1::DiscountConflict => evidence.discount_conflict.is_some(),
+            EvidenceFieldV1::DerivedRecipientDigest => evidence.derived_recipient_digest.is_some(),
+            EvidenceFieldV1::ApprovedTemplateDigest => evidence.approved_template_digest.is_some(),
+            EvidenceFieldV1::RecipientCount => evidence.recipient_count.is_some(),
+            EvidenceFieldV1::ProvenanceBindingDigest => {
+                evidence.provenance_binding_digest.is_some()
+            }
+        };
+        if !present || age.is_some_and(|age| age > *maximum_age) {
+            causes.push(ReasonV1::E_MISSING_EVIDENCE);
+        }
+    }
+    if context
+        .approved_evidence_revision
+        .as_ref()
+        .is_some_and(|revision| revision != &evidence.source_revision)
+    {
+        causes.push(ReasonV1::E_STALE_STATE);
+    }
+    causes.sort_by_key(|reason| reason.rank());
+    causes.dedup();
+    if causes.is_empty() {
+        Ok(())
+    } else {
+        Err(causes)
+    }
+}
+
 /// Validate supplied review-state defects after checking request/artifact bindings.
 ///
 /// Returns distinct reasons in registry order, not a decision or permission.
