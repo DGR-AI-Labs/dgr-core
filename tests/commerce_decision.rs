@@ -2446,3 +2446,443 @@ fn action_eligibility_reviews_do_not_override_and_success_is_not_permission() {
     c.authenticated_subject = "other".into();
     assert_eq!(validate_action_eligibility_v1(&r, &c), Ok(()));
 }
+
+fn monetary_fixture(
+    action: CommerceActionV1,
+    ceiling: i64,
+) -> (
+    CommerceRequestV1,
+    DecisionContextV1,
+    PreparedCommerceBundleV1,
+) {
+    let mut source = preparation_source();
+    for (_, settings) in &mut source.action_settings {
+        settings.amount_ceiling_minor = Some(ceiling);
+    }
+    recommit(&mut source);
+    let bundle = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+    let (mut request, mut context) = bound_frame(&bundle);
+    request.action = action;
+    request.amount_minor = Some(1000);
+    request.currency = Some("USD".into());
+    context.evidence.captured_minor = Some(10000);
+    context.evidence.prior_refunds_minor = Some(2000);
+    (request, context, bundle)
+}
+
+fn monetary_check(
+    r: &CommerceRequestV1,
+    c: &DecisionContextV1,
+    b: &PreparedCommerceBundleV1,
+    causes: &[ReasonV1],
+) {
+    assert_eq!(
+        validate_monetary_constraints_v1(r, c, b),
+        if causes.is_empty() {
+            Ok(())
+        } else {
+            Err(causes.to_vec())
+        }
+    );
+}
+
+macro_rules! monetary_amount_cases {
+    ($name:ident, $action:ident) => {
+        #[test]
+        fn $name() {
+            let (mut r, c, b) = monetary_fixture(CommerceActionV1::$action, 1000);
+            for value in [0, 999, 1000, 1001, 65537, i64::MAX] {
+                r.amount_minor = Some(value);
+                monetary_check(
+                    &r,
+                    &c,
+                    &b,
+                    if value > 1000 {
+                        &[ReasonV1::E_AMOUNT_LIMIT]
+                    } else {
+                        &[]
+                    },
+                );
+            }
+        }
+    };
+}
+monetary_amount_cases!(monetary_refund_amount_ceiling, RefundCreate);
+monetary_amount_cases!(monetary_discount_amount_ceiling, DiscountCreate);
+
+macro_rules! monetary_input_cases {
+    ($name:ident, $action:ident, $field:ident) => {
+        #[test]
+        fn $name() {
+            let (mut r, c, b) = monetary_fixture(CommerceActionV1::$action, 5000);
+            monetary_check(&r, &c, &b, &[]);
+            r.$field = None;
+            monetary_check(&r, &c, &b, &[ReasonV1::E_UNDERSPECIFIED_ACTION]);
+        }
+    };
+}
+monetary_input_cases!(monetary_refund_amount_required, RefundCreate, amount_minor);
+monetary_input_cases!(monetary_refund_currency_required, RefundCreate, currency);
+monetary_input_cases!(
+    monetary_discount_amount_required,
+    DiscountCreate,
+    amount_minor
+);
+monetary_input_cases!(
+    monetary_discount_currency_required,
+    DiscountCreate,
+    currency
+);
+
+#[test]
+fn monetary_refund_captured_required_without_configured_requirement() {
+    let (r, mut c, b) = monetary_fixture(CommerceActionV1::RefundCreate, 5000);
+    assert!(
+        b.action_settings()[0]
+            .1
+            .required_evidence
+            .iter()
+            .all(|(f, _)| *f != EvidenceFieldV1::CapturedMinor)
+    );
+    c.evidence.captured_minor = None;
+    monetary_check(&r, &c, &b, &[ReasonV1::E_MISSING_EVIDENCE]);
+}
+
+#[test]
+fn monetary_refund_prior_refunds_required_without_configured_requirement() {
+    let (r, mut c, b) = monetary_fixture(CommerceActionV1::RefundCreate, 5000);
+    assert!(
+        b.action_settings()[0]
+            .1
+            .required_evidence
+            .iter()
+            .all(|(f, _)| *f != EvidenceFieldV1::PriorRefundsMinor)
+    );
+    c.evidence.prior_refunds_minor = None;
+    monetary_check(&r, &c, &b, &[ReasonV1::E_MISSING_EVIDENCE]);
+}
+
+#[test]
+fn monetary_refund_net_balance_boundary() {
+    let (mut r, c, b) = monetary_fixture(CommerceActionV1::RefundCreate, 10000);
+    for amount in [7999, 8000, 8001] {
+        r.amount_minor = Some(amount);
+        monetary_check(
+            &r,
+            &c,
+            &b,
+            if amount > 8000 {
+                &[ReasonV1::E_AMOUNT_LIMIT]
+            } else {
+                &[]
+            },
+        );
+    }
+}
+
+#[test]
+fn monetary_refund_captured_operand_is_used() {
+    let (r, mut c, b) = monetary_fixture(CommerceActionV1::RefundCreate, 5000);
+    c.evidence.prior_refunds_minor = Some(0);
+    for captured in [1001, 1000, 999] {
+        c.evidence.captured_minor = Some(captured);
+        monetary_check(
+            &r,
+            &c,
+            &b,
+            if captured < 1000 {
+                &[ReasonV1::E_AMOUNT_LIMIT]
+            } else {
+                &[]
+            },
+        );
+    }
+}
+
+#[test]
+fn monetary_refund_prior_refunds_operand_is_used() {
+    let (r, mut c, b) = monetary_fixture(CommerceActionV1::RefundCreate, 5000);
+    for prior in [8999, 9000, 9001] {
+        c.evidence.prior_refunds_minor = Some(prior);
+        monetary_check(
+            &r,
+            &c,
+            &b,
+            if prior > 9000 {
+                &[ReasonV1::E_AMOUNT_LIMIT]
+            } else {
+                &[]
+            },
+        );
+    }
+}
+
+#[test]
+fn monetary_discount_does_not_require_refund_balance() {
+    let (r, mut c, b) = monetary_fixture(CommerceActionV1::DiscountCreate, 5000);
+    c.evidence.captured_minor = None;
+    c.evidence.prior_refunds_minor = None;
+    monetary_check(&r, &c, &b, &[]);
+    c.evidence.captured_minor = Some(0);
+    c.evidence.prior_refunds_minor = Some(i64::MAX);
+    monetary_check(&r, &c, &b, &[]);
+}
+
+macro_rules! monetary_off_target {
+    ($name:ident, $action:ident) => {
+        #[test]
+        fn $name() {
+            let (mut r, mut c, b) = monetary_fixture(CommerceActionV1::$action, 0);
+            r.amount_minor = Some(i64::MAX);
+            r.currency = Some("ZZZ".into());
+            c.evidence.captured_minor = Some(0);
+            c.evidence.prior_refunds_minor = Some(i64::MAX);
+            monetary_check(&r, &c, &b, &[]);
+            r.amount_minor = None;
+            r.currency = None;
+            c.evidence.captured_minor = None;
+            c.evidence.prior_refunds_minor = None;
+            monetary_check(&r, &c, &b, &[]);
+        }
+    };
+}
+monetary_off_target!(monetary_address_scope, OrderAddressUpdate);
+monetary_off_target!(monetary_cancel_scope, OrderCancel);
+monetary_off_target!(monetary_email_scope, CustomerEmailSend);
+
+#[test]
+fn monetary_exact_i64_max_and_zero_balance() {
+    for action in [
+        CommerceActionV1::RefundCreate,
+        CommerceActionV1::DiscountCreate,
+    ] {
+        let (mut r, mut c, b) = monetary_fixture(action, i64::MAX);
+        r.amount_minor = Some(i64::MAX);
+        c.evidence.captured_minor = Some(i64::MAX);
+        c.evidence.prior_refunds_minor = Some(0);
+        monetary_check(&r, &c, &b, &[]);
+        if action == CommerceActionV1::RefundCreate {
+            c.evidence.prior_refunds_minor = Some(1);
+            monetary_check(&r, &c, &b, &[ReasonV1::E_AMOUNT_LIMIT]);
+            r.amount_minor = Some(0);
+            c.evidence.prior_refunds_minor = Some(i64::MAX);
+            monetary_check(&r, &c, &b, &[]);
+            r.amount_minor = Some(1);
+            monetary_check(&r, &c, &b, &[ReasonV1::E_AMOUNT_LIMIT]);
+        }
+    }
+}
+
+#[test]
+fn monetary_representation_precedes_semantics() {
+    let (r, c, b) = monetary_fixture(CommerceActionV1::RefundCreate, 5000);
+    for field in 0..6 {
+        let (mut r, mut c) = (r.clone(), c.clone());
+        match field {
+            0 => r.amount_minor = Some(-1),
+            1 => r.currency = Some("usd".into()),
+            2 => c.evidence.captured_minor = Some(-1),
+            3 => c.evidence.prior_refunds_minor = Some(-1),
+            4 => r.operation_id.clear(),
+            _ => c.now_ms = u64::MAX,
+        }
+        monetary_check(&r, &c, &b, &[ReasonV1::E_MALFORMED_REQUEST]);
+    }
+}
+
+#[test]
+fn monetary_missing_causes_are_complete_and_deduplicated() {
+    let (mut r, mut c, b) = monetary_fixture(CommerceActionV1::RefundCreate, 5000);
+    r.amount_minor = None;
+    r.currency = None;
+    c.evidence.captured_minor = None;
+    c.evidence.prior_refunds_minor = None;
+    monetary_check(
+        &r,
+        &c,
+        &b,
+        &[
+            ReasonV1::E_UNDERSPECIFIED_ACTION,
+            ReasonV1::E_MISSING_EVIDENCE,
+        ],
+    );
+}
+
+#[test]
+fn monetary_reviews_do_not_override_amount_limit() {
+    let (mut r, c, b) = monetary_fixture(CommerceActionV1::RefundCreate, 5000);
+    assert!(c.review.grant.is_some() && c.review.attestation.is_some());
+    r.amount_minor = Some(5001);
+    monetary_check(&r, &c, &b, &[ReasonV1::E_AMOUNT_LIMIT]);
+}
+
+#[test]
+fn monetary_success_is_not_permission_or_budget_validation() {
+    let (r, mut c, b) = monetary_fixture(CommerceActionV1::RefundCreate, 5000);
+    c.authenticated_subject = "different".into();
+    c.evidence.provenance = ProvenanceStateV1::Invalid;
+    c.evidence.provenance_binding_digest = None;
+    c.evidence.fetched_at_ms = 0;
+    c.budget.subject_id = "another".into();
+    c.budget.currency = Some("EUR".into());
+    c.budget.count_used = i64::MAX;
+    c.budget.value_used_minor = i64::MAX;
+    monetary_check(&r, &c, &b, &[]);
+}
+
+fn monetary_edited_bundle(
+    edit: impl Fn(CommerceActionV1, &mut CommerceActionSettingsV1),
+) -> PreparedCommerceBundleV1 {
+    let mut source = preparation_source();
+    for (action, settings) in &mut source.action_settings {
+        edit(*action, settings);
+    }
+    recommit(&mut source);
+    prepare_bundle_v1(&source, &[7; 32]).unwrap()
+}
+
+macro_rules! monetary_currency_cases {
+    ($name:ident, $action:ident) => {
+        #[test]
+        fn $name() {
+            let (mut r, c, b) = monetary_fixture(CommerceActionV1::$action, 5000);
+            monetary_check(&r, &c, &b, &[]);
+            r.currency = Some("EUR".into());
+            monetary_check(&r, &c, &b, &[ReasonV1::E_CONSTRAINT_VIOLATION]);
+            r.currency = Some("ZZZ".into());
+            monetary_check(&r, &c, &b, &[ReasonV1::E_CONSTRAINT_VIOLATION]);
+            let b = monetary_edited_bundle(|_, s| s.currencies.push("EUR".into()));
+            r.currency = Some("EUR".into());
+            monetary_check(&r, &c, &b, &[]);
+        }
+    };
+}
+monetary_currency_cases!(monetary_refund_currency_membership, RefundCreate);
+monetary_currency_cases!(monetary_discount_currency_membership, DiscountCreate);
+
+#[test]
+fn monetary_refund_conflicting_balance_is_not_zero() {
+    let (mut r, mut c, b) = monetary_fixture(CommerceActionV1::RefundCreate, 0);
+    r.amount_minor = Some(0);
+    for (captured, prior) in [(1, 2), (0, i64::MAX), (i64::MAX - 1, i64::MAX)] {
+        c.evidence.captured_minor = Some(captured);
+        c.evidence.prior_refunds_minor = Some(prior);
+        monetary_check(&r, &c, &b, &[ReasonV1::E_EVIDENCE_CONFLICT]);
+    }
+    c.evidence.captured_minor = Some(i64::MAX);
+    c.evidence.prior_refunds_minor = Some(i64::MAX);
+    monetary_check(&r, &c, &b, &[]);
+}
+
+#[test]
+fn monetary_action_selects_its_own_settings() {
+    let (mut r, c, _) = monetary_fixture(CommerceActionV1::RefundCreate, 5000);
+    let b = monetary_edited_bundle(|action, s| {
+        if action == CommerceActionV1::RefundCreate {
+            s.amount_ceiling_minor = Some(1000);
+        } else if action == CommerceActionV1::DiscountCreate {
+            s.amount_ceiling_minor = Some(2000);
+            s.currencies = vec!["EUR".into()];
+        }
+    });
+    monetary_check(&r, &c, &b, &[]);
+    r.action = CommerceActionV1::DiscountCreate;
+    r.amount_minor = Some(2000);
+    r.currency = Some("EUR".into());
+    monetary_check(&r, &c, &b, &[]);
+    r.action = CommerceActionV1::RefundCreate;
+    monetary_check(
+        &r,
+        &c,
+        &b,
+        &[ReasonV1::E_AMOUNT_LIMIT, ReasonV1::E_CONSTRAINT_VIOLATION],
+    );
+}
+
+#[test]
+fn monetary_missing_ceiling_never_defaults_to_unlimited() {
+    for action in [
+        CommerceActionV1::RefundCreate,
+        CommerceActionV1::DiscountCreate,
+    ] {
+        let (r, c, _) = monetary_fixture(action, 5000);
+        let b = monetary_edited_bundle(|_, s| {
+            s.enabled = false;
+            s.amount_ceiling_minor = None;
+        });
+        monetary_check(&r, &c, &b, &[ReasonV1::E_POLICY_UNCONFIGURED]);
+    }
+}
+
+#[test]
+fn monetary_empty_currency_set_never_defaults_to_any_currency() {
+    for action in [
+        CommerceActionV1::RefundCreate,
+        CommerceActionV1::DiscountCreate,
+    ] {
+        let (r, c, _) = monetary_fixture(action, 5000);
+        let b = monetary_edited_bundle(|_, s| {
+            s.enabled = false;
+            s.currencies.clear();
+        });
+        monetary_check(&r, &c, &b, &[ReasonV1::E_POLICY_UNCONFIGURED]);
+    }
+}
+
+#[test]
+fn monetary_disabled_settings_classify_without_enabling() {
+    let (mut r, c, _) = monetary_fixture(CommerceActionV1::DiscountCreate, 5000);
+    let b = monetary_edited_bundle(|_, s| {
+        s.enabled = false;
+        s.require_monetary_review = false;
+        s.required_evidence.clear();
+    });
+    monetary_check(&r, &c, &b, &[]);
+    r.amount_minor = None;
+    monetary_check(&r, &c, &b, &[ReasonV1::E_UNDERSPECIFIED_ACTION]);
+}
+
+#[test]
+fn monetary_causes_are_complete_ordered_and_deduplicated() {
+    let (mut r, mut c, b) = monetary_fixture(CommerceActionV1::RefundCreate, 1000);
+    r.amount_minor = Some(1001);
+    r.currency = Some("ZZZ".into());
+    c.evidence.captured_minor = Some(1);
+    c.evidence.prior_refunds_minor = Some(2);
+    monetary_check(
+        &r,
+        &c,
+        &b,
+        &[
+            ReasonV1::E_EVIDENCE_CONFLICT,
+            ReasonV1::E_AMOUNT_LIMIT,
+            ReasonV1::E_CONSTRAINT_VIOLATION,
+        ],
+    );
+    c.evidence.prior_refunds_minor = Some(0);
+    monetary_check(
+        &r,
+        &c,
+        &b,
+        &[ReasonV1::E_AMOUNT_LIMIT, ReasonV1::E_CONSTRAINT_VIOLATION],
+    );
+    let b = monetary_edited_bundle(|_, s| {
+        s.enabled = false;
+        s.amount_ceiling_minor = None;
+        s.currencies.clear();
+    });
+    r.amount_minor = None;
+    r.currency = None;
+    c.evidence.captured_minor = None;
+    c.evidence.prior_refunds_minor = None;
+    monetary_check(
+        &r,
+        &c,
+        &b,
+        &[
+            ReasonV1::E_UNDERSPECIFIED_ACTION,
+            ReasonV1::E_MISSING_EVIDENCE,
+            ReasonV1::E_POLICY_UNCONFIGURED,
+        ],
+    );
+}
