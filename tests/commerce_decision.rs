@@ -1742,7 +1742,8 @@ fn provenance_state_cases(state: ProvenanceStateV1, expected: [Vec<ReasonV1>; 3]
                     _ => unreachable!(),
                 }
                 assert_eq!(
-                    validate_provenance_and_reviews_v1(&request, &c, &bundle),
+                    validate_provenance_and_reviews_v1(&request, &c, &bundle)
+                        .map_err(|e| e.causes().to_vec()),
                     if reasons.is_empty() {
                         Ok(state)
                     } else {
@@ -1816,7 +1817,8 @@ fn provenance_and_reviewer_separation_form_one_combined_check() {
     ] {
         context.evidence.provenance = state;
         assert_eq!(
-            validate_provenance_and_reviews_v1(&request, &context, &bundle),
+            validate_provenance_and_reviews_v1(&request, &context, &bundle)
+                .map_err(|e| e.causes().to_vec()),
             Err(vec![reason])
         );
         if state != ProvenanceStateV1::Missing {
@@ -1829,7 +1831,8 @@ fn provenance_and_reviewer_separation_form_one_combined_check() {
     }
     context.evidence.provenance = ProvenanceStateV1::TrustedBoundUnused;
     assert_eq!(
-        validate_provenance_and_reviews_v1(&request, &context, &bundle),
+        validate_provenance_and_reviews_v1(&request, &context, &bundle)
+            .map_err(|e| e.causes().to_vec()),
         Ok(ProvenanceStateV1::TrustedBoundUnused)
     );
 }
@@ -1847,7 +1850,8 @@ fn provenance_keeps_independent_review_defects_sorted_and_deduplicated() {
     grant.expires_at_ms = context.now_ms;
     context.review.attestation.as_mut().unwrap().consumed = true;
     assert_eq!(
-        validate_provenance_and_reviews_v1(&request, &context, &bundle),
+        validate_provenance_and_reviews_v1(&request, &context, &bundle)
+            .map_err(|e| e.causes().to_vec()),
         Err(vec![
             ReasonV1::E_MALFORMED_REQUEST,
             ReasonV1::E_BINDING_MISMATCH,
@@ -1860,7 +1864,8 @@ fn provenance_keeps_independent_review_defects_sorted_and_deduplicated() {
     );
     context.evidence.provenance = ProvenanceStateV1::Consumed;
     assert_eq!(
-        validate_provenance_and_reviews_v1(&request, &context, &bundle),
+        validate_provenance_and_reviews_v1(&request, &context, &bundle)
+            .map_err(|e| e.causes().to_vec()),
         Err(vec![
             ReasonV1::E_MALFORMED_REQUEST,
             ReasonV1::E_BINDING_MISMATCH,
@@ -1878,13 +1883,15 @@ fn provenance_unrepresentable_input_stops_semantic_collection() {
     context.evidence.provenance = ProvenanceStateV1::Invalid;
     request.currency = Some("usd".into());
     assert_eq!(
-        validate_provenance_and_reviews_v1(&request, &context, &bundle),
+        validate_provenance_and_reviews_v1(&request, &context, &bundle)
+            .map_err(|e| e.causes().to_vec()),
         Err(vec![ReasonV1::E_MALFORMED_REQUEST])
     );
     request.currency = None;
     context.now_ms = u64::MAX;
     assert_eq!(
-        validate_provenance_and_reviews_v1(&request, &context, &bundle),
+        validate_provenance_and_reviews_v1(&request, &context, &bundle)
+            .map_err(|e| e.causes().to_vec()),
         Err(vec![ReasonV1::E_MALFORMED_REQUEST])
     );
 }
@@ -1898,7 +1905,141 @@ fn provenance_success_is_not_policy_permission_or_proof_of_authentication() {
     context.review.attestation = None;
     context.review_request = None;
     assert_eq!(
-        validate_provenance_and_reviews_v1(&request, &context, &bundle),
+        validate_provenance_and_reviews_v1(&request, &context, &bundle)
+            .map_err(|e| e.causes().to_vec()),
         Ok(ProvenanceStateV1::Missing)
     );
+}
+
+#[test]
+fn terminal_error_invalid_retains_state_despite_escalatable_reason() {
+    for required in [false, true] {
+        for attestation_enabled in [false, true] {
+            let (request, mut context, bundle) = review_fixture(|s| {
+                s.require_provenance = required;
+                s.attestation_enabled = attestation_enabled;
+            });
+            context.evidence.provenance = ProvenanceStateV1::Invalid;
+            let error =
+                validate_provenance_and_reviews_v1(&request, &context, &bundle).unwrap_err();
+            assert_eq!(error.provenance(), ProvenanceStateV1::Invalid);
+            assert_eq!(error.causes(), vec![ReasonV1::E_PROVENANCE_UNVERIFIABLE]);
+            // Registry permission is not outcome selection. A future router must
+            // honor this state-derived veto even when the sole reason allows review.
+            assert!(error.requires_terminal_deny());
+        }
+    }
+}
+
+#[test]
+fn terminal_error_consumed_retains_state_and_veto() {
+    let (request, mut context, bundle) = review_fixture(|_| {});
+    context.evidence.provenance = ProvenanceStateV1::Consumed;
+    let error = validate_provenance_and_reviews_v1(&request, &context, &bundle).unwrap_err();
+    assert_eq!(error.provenance(), ProvenanceStateV1::Consumed);
+    assert_eq!(error.causes(), vec![ReasonV1::E_REPLAY]);
+    assert!(error.requires_terminal_deny());
+}
+
+#[test]
+fn terminal_error_nonterminal_state_is_not_reclassified_by_other_defects() {
+    let (request, mut context, bundle) = review_fixture(|_| {});
+    context.review.grant.as_mut().unwrap().consumed = true;
+    for state in [
+        ProvenanceStateV1::Missing,
+        ProvenanceStateV1::TrustedBoundUnused,
+    ] {
+        context.evidence.provenance = state;
+        let error = validate_provenance_and_reviews_v1(&request, &context, &bundle).unwrap_err();
+        assert_eq!(error.provenance(), state);
+        assert_eq!(error.causes(), vec![ReasonV1::E_REPLAY]);
+        // The replay cause still demands Deny; false only means that the
+        // provenance state itself is not Invalid or Consumed.
+        assert!(!error.requires_terminal_deny());
+    }
+}
+
+#[test]
+fn terminal_error_representation_boundary_matches_binding_validator() {
+    for state in [
+        ProvenanceStateV1::TrustedBoundUnused,
+        ProvenanceStateV1::Missing,
+        ProvenanceStateV1::Invalid,
+        ProvenanceStateV1::Consumed,
+    ] {
+        for malformed in 0..6 {
+            let (mut request, mut context, bundle) = review_fixture(|_| {});
+            context.evidence.provenance = state;
+            match malformed {
+                0 => request.profile_id.clear(),
+                1 => request.currency = Some("usd".into()),
+                2 => request.resource_id = "x".repeat(129),
+                3 => context.now_ms = u64::MAX,
+                4 => context.authenticated_subject.clear(),
+                5 => context.review.grant.as_mut().unwrap().reviewer_id.clear(),
+                _ => unreachable!(),
+            }
+            assert_eq!(
+                validate_request_bindings_v1(&request, &context, &bundle),
+                Err(ReasonV1::E_MALFORMED_REQUEST),
+                "case {malformed}"
+            );
+            let error =
+                validate_provenance_and_reviews_v1(&request, &context, &bundle).unwrap_err();
+            assert_eq!(error.provenance(), state, "case {malformed}");
+            assert_eq!(
+                error.causes(),
+                vec![ReasonV1::E_MALFORMED_REQUEST],
+                "case {malformed}"
+            );
+            assert_eq!(
+                error.requires_terminal_deny(),
+                matches!(
+                    state,
+                    ProvenanceStateV1::Invalid | ProvenanceStateV1::Consumed
+                )
+            );
+        }
+    }
+}
+
+#[test]
+fn terminal_error_representable_fact_keeps_state_and_multiple_causes() {
+    let (request, mut context, bundle) = review_fixture(|_| {});
+    context.evidence.provenance = ProvenanceStateV1::Invalid;
+    context.review.grant.as_mut().unwrap().kind = ReviewKindV1::Attestation;
+    assert_eq!(
+        validate_request_bindings_v1(&request, &context, &bundle),
+        Ok(())
+    );
+    let error = validate_provenance_and_reviews_v1(&request, &context, &bundle).unwrap_err();
+    assert_eq!(error.provenance(), ProvenanceStateV1::Invalid);
+    assert_eq!(
+        error.causes(),
+        vec![
+            ReasonV1::E_MALFORMED_REQUEST,
+            ReasonV1::E_PROVENANCE_UNVERIFIABLE
+        ]
+    );
+    assert!(error.requires_terminal_deny());
+}
+
+#[test]
+fn terminal_error_public_accessors_preserve_validated_value() {
+    let (request, mut context, bundle) = review_fixture(|_| {});
+    context.evidence.provenance = ProvenanceStateV1::Invalid;
+    let error = validate_provenance_and_reviews_v1(&request, &context, &bundle).unwrap_err();
+    let clone = error.clone();
+    let mut copied_state = error.provenance();
+    assert_eq!(copied_state, ProvenanceStateV1::Invalid);
+    copied_state = ProvenanceStateV1::Missing;
+    let mut copied_causes = error.causes().to_vec();
+    copied_causes.clear();
+    assert_eq!(copied_state, ProvenanceStateV1::Missing);
+    assert!(copied_causes.is_empty());
+    assert_eq!(error, clone);
+    assert_eq!(error.provenance(), ProvenanceStateV1::Invalid);
+    assert_eq!(error.causes(), &[ReasonV1::E_PROVENANCE_UNVERIFIABLE]);
+    assert!(error.requires_terminal_deny());
+    assert!(clone.requires_terminal_deny());
 }
