@@ -124,6 +124,12 @@ pub fn validate_request_bindings_v1(
 /// Each rule applies only to its named action. Review facts and policy routes
 /// cannot override it. Representation validation precedes semantic checks.
 ///
+/// These applicable facts are mandatory independently of required_evidence:
+/// configured entries add requirements; omitting an entry cannot disable a hard
+/// predicate. This primitive does not consult settings.enabled and classifies
+/// eligibility even for a disabled action. The final evaluator must separately
+/// enforce action enablement and compose the other applicable checks.
+///
 /// DiscountCreate has no predicate in this primitive; success there does not
 /// establish discount eligibility. Success for any action is not permission:
 /// bindings, freshness, provenance, reviews, monetary limits, order windows,
