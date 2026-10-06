@@ -155,6 +155,104 @@ pub fn validate_action_eligibility_v1(
     }
 }
 
+/// Check the two monetary classes, policy amount ceilings and refund balances.
+///
+/// RefundCreate and DiscountCreate require amount/currency independently of
+/// review flags or required_evidence. Other actions have no monetary semantic
+/// requirements here. Representation validation always runs first.
+/// Well-formed nonmember currencies contribute E_CONSTRAINT_VIOLATION; missing
+/// inputs contribute E_UNDERSPECIFIED_ACTION. An absent amount ceiling or empty
+/// permitted set contributes E_POLICY_UNCONFIGURED, never a live default.
+///
+/// RefundCreate also requires captured/prior-refund facts. Their difference is
+/// checked before comparison; prior refunds above capture contribute
+/// E_EVIDENCE_CONFLICT, not a usable zero balance. Policy and valid remaining
+/// balances are inclusive ceilings; exceeding either contributes E_AMOUNT_LIMIT.
+/// Independently established causes are deduplicated in registry order.
+///
+/// Preparation guarantees a present amount ceiling and non-empty currency set
+/// for enabled monetary entries. The E_POLICY_UNCONFIGURED branches here are
+/// defence-in-depth classifications reachable through prepared disabled entries,
+/// not live unconfigured-policy paths. Their absence tests use disabled settings.
+///
+/// Configuration and predicates have separate roles: required_evidence adds
+/// snapshot presence/age checks but does not define every hard requirement.
+/// A structural Provenance field can still be Missing; require_provenance and
+/// final provenance resolution remain separate. Applicable hard eligibility and
+/// monetary inputs are mandatory even when omitted from required_evidence.
+/// These classifiers do not enforce enabled; the final evaluator must do so.
+///
+/// This classifies supplied facts even for disabled settings; action enablement
+/// remains an evaluator obligation. Success is not permission and does not check
+/// bindings, freshness, provenance, reviews or budget scope/window/count/value.
+/// It does not invoke Cedar, authenticate evidence, acquire facts or cause effects.
+pub fn validate_monetary_constraints_v1(
+    request: &CommerceRequestV1,
+    context: &DecisionContextV1,
+    bundle: &PreparedCommerceBundleV1,
+) -> Result<(), Vec<ReasonV1>> {
+    if let Err(reason) = validated_request_digest_v1(request, context) {
+        return Err(vec![reason]);
+    }
+    if !matches!(
+        request.action,
+        CommerceActionV1::RefundCreate | CommerceActionV1::DiscountCreate
+    ) {
+        return Ok(());
+    }
+    let Some((_, settings)) = bundle
+        .settings
+        .iter()
+        .find(|(action, _)| *action == request.action)
+    else {
+        return Err(vec![ReasonV1::E_INTERNAL_EVALUATION]);
+    };
+    let amount = request.amount_minor;
+    let currency = request.currency.as_deref();
+    let mut causes = Vec::new();
+    if amount.is_none() || currency.is_none() {
+        causes.push(ReasonV1::E_UNDERSPECIFIED_ACTION);
+    }
+    match settings.amount_ceiling_minor {
+        None => causes.push(ReasonV1::E_POLICY_UNCONFIGURED),
+        Some(ceiling) => {
+            if amount.is_some_and(|amount| amount > ceiling) {
+                causes.push(ReasonV1::E_AMOUNT_LIMIT);
+            }
+        }
+    }
+    if settings.currencies.is_empty() {
+        causes.push(ReasonV1::E_POLICY_UNCONFIGURED);
+    } else if currency.is_some_and(|currency| !settings.currencies.iter().any(|c| c == currency)) {
+        causes.push(ReasonV1::E_CONSTRAINT_VIOLATION);
+    }
+    if request.action == CommerceActionV1::RefundCreate {
+        match (
+            context.evidence.captured_minor,
+            context.evidence.prior_refunds_minor,
+        ) {
+            (Some(captured), Some(prior)) => {
+                match captured.checked_sub(prior).filter(|net| *net >= 0) {
+                    None => causes.push(ReasonV1::E_EVIDENCE_CONFLICT),
+                    Some(net) => {
+                        if amount.is_some_and(|amount| amount > net) {
+                            causes.push(ReasonV1::E_AMOUNT_LIMIT);
+                        }
+                    }
+                }
+            }
+            _ => causes.push(ReasonV1::E_MISSING_EVIDENCE),
+        }
+    }
+    causes.sort_by_key(|reason| reason.rank());
+    causes.dedup();
+    if causes.is_empty() {
+        Ok(())
+    } else {
+        Err(causes)
+    }
+}
+
 /// Check configured evidence presence/age and the supplied approved revision.
 ///
 /// Future acquisition timestamps are malformed, even with no configured fields.
