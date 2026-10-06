@@ -256,6 +256,9 @@ pub struct CommerceActionSettingsV1 {
     pub order_age_limit_seconds: Option<u64>,
     pub require_provenance: bool,
     pub attestation_enabled: bool,
+    /// Requires a Grant for this action when true, including nonmonetary actions.
+    /// The historical field name does not restrict applicability to monetary classes.
+    /// This flag alone never adds amount/currency requirements or grants permission.
     pub require_monetary_review: bool,
     pub review_request_timeout_ms: Option<u64>,
     pub grant_max_lifetime_ms: Option<u64>,

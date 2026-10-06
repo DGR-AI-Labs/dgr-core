@@ -180,6 +180,9 @@ pub fn validate_action_eligibility_v1(
 /// A structural Provenance field can still be Missing; require_provenance and
 /// final provenance resolution remain separate. Applicable hard eligibility and
 /// monetary inputs are mandatory even when omitted from required_evidence.
+/// Despite its historical name, require_monetary_review requires a Grant on
+/// every selected action class when true, including nonmonetary actions; it
+/// does not add amount/currency requirements to those actions.
 /// These classifiers do not enforce enabled; the final evaluator must do so.
 ///
 /// This classifies supplied facts even for disabled settings; action enablement
@@ -808,7 +811,10 @@ impl ResolvedCommerceReviewsV1 {
 /// bindings, kind, authorization, consumption, lifetime, expiry and applicable
 /// reviewer-separation checks. A defective fact returns actual causes, not a
 /// manufactured missing-kind requirement. Representation failure short-circuits;
-/// other independently established causes are sorted and deduplicated.
+/// other independently established causes are sorted and deduplicated. A missing
+/// action-settings entry instead returns E_INTERNAL_EVALUATION alone, replacing
+/// earlier causes. Preparation guarantees all action entries, so this branch is
+/// defence in depth and unreachable through a valid prepared bundle.
 ///
 /// Ok reports used IDs and missing kinds only. Err is not review-remediable through
 /// this result, even when requires_terminal_deny() is false: that method identifies
