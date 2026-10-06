@@ -253,6 +253,124 @@ pub fn validate_monetary_constraints_v1(
     }
 }
 
+/// Classify prospective count and monetary value against the supplied budget.
+///
+/// This pure classifier does not reserve or reset budget, consume an artifact,
+/// invoke Cedar or authorize an effect. Count increments by one for every action;
+/// value increments by the requested amount for RefundCreate/DiscountCreate only.
+/// Exact ceilings pass, while checked-add overflow contributes the corresponding
+/// E_COUNT_LIMIT or E_VALUE_LIMIT. Required missing limits fail closed.
+///
+/// Profile/shop/subject/action, monetary currency and configured window length
+/// must match. Nonmonetary budget currency must be absent. Missing monetary request
+/// currency is underspecified; membership remains a separate monetary check.
+/// Scope/length mismatches contribute E_BINDING_MISMATCH. Windows are [start,end):
+/// a future start or unrepresentable end is E_MALFORMED_REQUEST; a well-formed
+/// expired window is E_STALE_STATE. End must fit the signed-64-bit time domain.
+/// A supplied zero length cannot match a configured positive window. No window
+/// rollover or reset occurs here. Established causes are registry-sorted/deduped.
+///
+/// Preparation guarantees count/window limits for enabled actions and value
+/// limits for enabled monetary actions. Unconfigured controls therefore use
+/// disabled entries; this classifier does not enforce enabled. Authentication,
+/// bindings of other facts, budget revision freshness, durable reservations,
+/// evidence/review validity, hard predicates and Cedar remain separate. Budget
+/// revision is representation-checked, not reconciled with a durable store here.
+/// Success classifies the supplied snapshot only and is never permission.
+pub fn validate_budget_constraints_v1(
+    request: &CommerceRequestV1,
+    context: &DecisionContextV1,
+    bundle: &PreparedCommerceBundleV1,
+) -> Result<(), Vec<ReasonV1>> {
+    if let Err(reason) = validated_request_digest_v1(request, context) {
+        return Err(vec![reason]);
+    }
+    let Some((_, settings)) = bundle
+        .settings
+        .iter()
+        .find(|(action, _)| *action == request.action)
+    else {
+        return Err(vec![ReasonV1::E_INTERNAL_EVALUATION]);
+    };
+    let budget = &context.budget;
+    let monetary = matches!(
+        request.action,
+        CommerceActionV1::RefundCreate | CommerceActionV1::DiscountCreate
+    );
+    let mut causes = Vec::new();
+    if budget.profile_id != request.profile_id
+        || budget.shop_id != request.shop_id
+        || budget.subject_id != request.subject_id
+        || budget.action != request.action
+        || if monetary {
+            request
+                .currency
+                .as_ref()
+                .is_some_and(|currency| budget.currency.as_ref() != Some(currency))
+        } else {
+            budget.currency.is_some()
+        }
+    {
+        causes.push(ReasonV1::E_BINDING_MISMATCH);
+    }
+    match settings.budget_window_ms.filter(|window| *window > 0) {
+        None => causes.push(ReasonV1::E_POLICY_UNCONFIGURED),
+        Some(window) => {
+            if budget.window_length_ms != window {
+                causes.push(ReasonV1::E_BINDING_MISMATCH);
+            }
+        }
+    }
+    // The computed end must fit the same signed-64-bit time domain as the inputs.
+    // Compute once, before comparing; never reset a stale or mismatched snapshot.
+    let end = budget
+        .window_start_ms
+        .checked_add(budget.window_length_ms)
+        .filter(|end| *end <= 9_223_372_036_854_775_807);
+    if budget.window_start_ms > context.now_ms || end.is_none() {
+        causes.push(INVALID);
+    } else if budget.window_length_ms > 0 && end.is_some_and(|end| context.now_ms >= end) {
+        causes.push(ReasonV1::E_STALE_STATE);
+    }
+    match settings.count_ceiling {
+        None => causes.push(ReasonV1::E_POLICY_UNCONFIGURED),
+        Some(ceiling) => {
+            if budget
+                .count_used
+                .checked_add(1)
+                .is_none_or(|next| next > ceiling)
+            {
+                causes.push(ReasonV1::E_COUNT_LIMIT);
+            }
+        }
+    }
+    if monetary {
+        if request.amount_minor.is_none() || request.currency.is_none() {
+            causes.push(ReasonV1::E_UNDERSPECIFIED_ACTION);
+        }
+        match settings.value_ceiling_minor {
+            None => causes.push(ReasonV1::E_POLICY_UNCONFIGURED),
+            Some(ceiling) => {
+                if let Some(amount) = request.amount_minor
+                    && budget
+                        .value_used_minor
+                        .checked_add(amount)
+                        .is_none_or(|next| next > ceiling)
+                {
+                    causes.push(ReasonV1::E_VALUE_LIMIT);
+                }
+            }
+        }
+    }
+    causes.sort_by_key(|reason| reason.rank());
+    causes.dedup();
+    if causes.is_empty() {
+        Ok(())
+    } else {
+        Err(causes)
+    }
+}
+
 /// Check configured evidence presence/age and the supplied approved revision.
 ///
 /// Future acquisition timestamps are malformed, even with no configured fields.
