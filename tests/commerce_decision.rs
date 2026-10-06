@@ -2886,3 +2886,441 @@ fn monetary_causes_are_complete_ordered_and_deduplicated() {
         ],
     );
 }
+
+fn budget_fixture(
+    action: CommerceActionV1,
+) -> (
+    CommerceRequestV1,
+    DecisionContextV1,
+    PreparedCommerceBundleV1,
+) {
+    let b = prepare_bundle_v1(&preparation_source(), &[7; 32]).unwrap();
+    let (mut r, mut c) = bound_frame(&b);
+    r.action = action;
+    if matches!(
+        action,
+        CommerceActionV1::RefundCreate | CommerceActionV1::DiscountCreate
+    ) {
+        r.amount_minor = Some(1000);
+        r.currency = Some("USD".into());
+    } else {
+        r.amount_minor = None;
+        r.currency = None;
+    }
+    c.now_ms = 1000;
+    c.budget = CommerceBudgetV1 {
+        profile_id: r.profile_id.clone(),
+        shop_id: r.shop_id.clone(),
+        subject_id: r.subject_id.clone(),
+        action,
+        currency: r.currency.clone(),
+        window_start_ms: 0,
+        window_length_ms: 60000,
+        count_used: 1,
+        value_used_minor: 2000,
+        revision: "budget-revision".into(),
+    };
+    (r, c, b)
+}
+
+fn budget_check(
+    r: &CommerceRequestV1,
+    c: &DecisionContextV1,
+    b: &PreparedCommerceBundleV1,
+    causes: &[ReasonV1],
+) {
+    assert_eq!(
+        validate_budget_constraints_v1(r, c, b),
+        if causes.is_empty() {
+            Ok(())
+        } else {
+            Err(causes.to_vec())
+        }
+    );
+}
+
+macro_rules! budget_count_cases {
+    ($name:ident, $action:ident) => {
+        #[test]
+        fn $name() {
+            let (r, mut c, b) = budget_fixture(CommerceActionV1::$action);
+            for used in [0, 1, 2, 3, 65537, i64::MAX] {
+                c.budget.count_used = used;
+                budget_check(
+                    &r,
+                    &c,
+                    &b,
+                    if used >= 3 {
+                        &[ReasonV1::E_COUNT_LIMIT]
+                    } else {
+                        &[]
+                    },
+                );
+            }
+        }
+    };
+}
+budget_count_cases!(budget_count_refund, RefundCreate);
+budget_count_cases!(budget_count_address, OrderAddressUpdate);
+budget_count_cases!(budget_count_cancel, OrderCancel);
+budget_count_cases!(budget_count_discount, DiscountCreate);
+budget_count_cases!(budget_count_email, CustomerEmailSend);
+
+macro_rules! budget_value_cases {
+    ($name:ident, $action:ident) => {
+        #[test]
+        fn $name() {
+            let (mut r, mut c, b) = budget_fixture(CommerceActionV1::$action);
+            for (used, amount, fails) in [
+                (0, 0, false),
+                (4000, 999, false),
+                (4000, 1000, false),
+                (4000, 1001, true),
+                (0, 5001, true),
+                (5000, 0, false),
+                (5001, 0, true),
+                (i64::MAX, 1, true),
+            ] {
+                c.budget.value_used_minor = used;
+                r.amount_minor = Some(amount);
+                budget_check(
+                    &r,
+                    &c,
+                    &b,
+                    if fails {
+                        &[ReasonV1::E_VALUE_LIMIT]
+                    } else {
+                        &[]
+                    },
+                );
+            }
+        }
+    };
+}
+budget_value_cases!(budget_value_refund, RefundCreate);
+budget_value_cases!(budget_value_discount, DiscountCreate);
+
+#[test]
+fn budget_count_maximum_is_checked_and_inclusive() {
+    let (r, mut c, _) = budget_fixture(CommerceActionV1::RefundCreate);
+    let mut source = preparation_source();
+    source.action_settings[0].1.count_ceiling = Some(i64::MAX);
+    recommit(&mut source);
+    let b = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+    c.budget.count_used = i64::MAX - 1;
+    budget_check(&r, &c, &b, &[]);
+    c.budget.count_used = i64::MAX;
+    budget_check(&r, &c, &b, &[ReasonV1::E_COUNT_LIMIT]);
+    // A shortened integer representation collapses this used count to 1.
+    c.budget.count_used = 65537;
+    source.action_settings[0].1.count_ceiling = Some(3);
+    recommit(&mut source);
+    let b = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+    budget_check(&r, &c, &b, &[ReasonV1::E_COUNT_LIMIT]);
+}
+
+#[test]
+fn budget_value_maximum_is_checked_and_inclusive() {
+    let (mut r, mut c, _) = budget_fixture(CommerceActionV1::RefundCreate);
+    let mut source = preparation_source();
+    source.action_settings[0].1.value_ceiling_minor = Some(i64::MAX);
+    recommit(&mut source);
+    let b = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+    for (used, amount, fails) in [
+        (i64::MAX, 0, false),
+        (i64::MAX - 1, 1, false),
+        (0, i64::MAX, false),
+        (i64::MAX, 1, true),
+        (1, i64::MAX, true),
+    ] {
+        c.budget.value_used_minor = used;
+        r.amount_minor = Some(amount);
+        budget_check(
+            &r,
+            &c,
+            &b,
+            if fails {
+                &[ReasonV1::E_VALUE_LIMIT]
+            } else {
+                &[]
+            },
+        );
+    }
+}
+
+macro_rules! budget_value_off_target {
+    ($name:ident, $action:ident) => {
+        #[test]
+        fn $name() {
+            let (mut r, mut c, _) = budget_fixture(CommerceActionV1::$action);
+            let mut source = preparation_source();
+            for (action, s) in &mut source.action_settings {
+                if *action == r.action {
+                    s.value_ceiling_minor = None;
+                }
+            }
+            recommit(&mut source);
+            let b = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+            c.budget.value_used_minor = i64::MAX;
+            budget_check(&r, &c, &b, &[]);
+            r.amount_minor = Some(i64::MAX);
+            budget_check(&r, &c, &b, &[]);
+        }
+    };
+}
+budget_value_off_target!(budget_value_address_off_target, OrderAddressUpdate);
+budget_value_off_target!(budget_value_cancel_off_target, OrderCancel);
+budget_value_off_target!(budget_value_email_off_target, CustomerEmailSend);
+
+#[test]
+fn budget_zero_count_refuses_first_operation() {
+    let (r, mut c, _) = budget_fixture(CommerceActionV1::RefundCreate);
+    let mut source = preparation_source();
+    source.action_settings[0].1.count_ceiling = Some(0);
+    recommit(&mut source);
+    let b = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+    c.budget.count_used = 0;
+    budget_check(&r, &c, &b, &[ReasonV1::E_COUNT_LIMIT]);
+}
+
+#[test]
+fn budget_zero_value_accepts_zero_and_refuses_positive() {
+    let (mut r, mut c, _) = budget_fixture(CommerceActionV1::RefundCreate);
+    let mut source = preparation_source();
+    source.action_settings[0].1.value_ceiling_minor = Some(0);
+    recommit(&mut source);
+    let b = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+    c.budget.value_used_minor = 0;
+    r.amount_minor = Some(0);
+    budget_check(&r, &c, &b, &[]);
+    r.amount_minor = Some(1);
+    budget_check(&r, &c, &b, &[ReasonV1::E_VALUE_LIMIT]);
+}
+
+macro_rules! budget_missing_input {
+    ($name:ident, $field:ident) => {
+        #[test]
+        fn $name() {
+            let (mut r, c, b) = budget_fixture(CommerceActionV1::RefundCreate);
+            r.$field = None;
+            budget_check(&r, &c, &b, &[ReasonV1::E_UNDERSPECIFIED_ACTION]);
+        }
+    };
+}
+budget_missing_input!(budget_amount_required, amount_minor);
+budget_missing_input!(budget_currency_required, currency);
+
+macro_rules! budget_missing_limit {
+    ($name:ident, $field:ident) => {
+        #[test]
+        fn $name() {
+            let (r, c, _) = budget_fixture(CommerceActionV1::RefundCreate);
+            let mut source = preparation_source();
+            let s = &mut source.action_settings[0].1;
+            s.enabled = false;
+            s.$field = None;
+            recommit(&mut source);
+            let b = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+            budget_check(&r, &c, &b, &[ReasonV1::E_POLICY_UNCONFIGURED]);
+        }
+    };
+}
+budget_missing_limit!(budget_count_configuration_defence_in_depth, count_ceiling);
+budget_missing_limit!(
+    budget_value_configuration_defence_in_depth,
+    value_ceiling_minor
+);
+
+#[test]
+fn budget_uses_named_action_settings() {
+    let (r, c, _) = budget_fixture(CommerceActionV1::DiscountCreate);
+    let mut source = preparation_source();
+    source.action_settings[0].1.count_ceiling = Some(0);
+    source.action_settings[0].1.value_ceiling_minor = Some(0);
+    recommit(&mut source);
+    let b = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+    budget_check(&r, &c, &b, &[]);
+}
+
+#[test]
+fn budget_representation_precedes_semantic_arithmetic() {
+    let (mut r, mut c, b) = budget_fixture(CommerceActionV1::RefundCreate);
+    c.budget.count_used = -1;
+    c.budget.value_used_minor = i64::MAX;
+    budget_check(&r, &c, &b, &[ReasonV1::E_MALFORMED_REQUEST]);
+    c.budget.count_used = 1;
+    c.budget.value_used_minor = -1;
+    budget_check(&r, &c, &b, &[ReasonV1::E_MALFORMED_REQUEST]);
+    c.budget.value_used_minor = 2000;
+    r.operation_id.clear();
+    budget_check(&r, &c, &b, &[ReasonV1::E_MALFORMED_REQUEST]);
+}
+
+macro_rules! budget_scope_case {
+    ($name:ident, $field:ident, $bad:expr) => {
+        #[test]
+        fn $name() {
+            let (r, mut c, b) = budget_fixture(CommerceActionV1::RefundCreate);
+            budget_check(&r, &c, &b, &[]);
+            c.budget.$field = $bad;
+            budget_check(&r, &c, &b, &[ReasonV1::E_BINDING_MISMATCH]);
+        }
+    };
+}
+budget_scope_case!(budget_profile_binding, profile_id, "another-profile".into());
+budget_scope_case!(budget_shop_binding, shop_id, "another-shop".into());
+budget_scope_case!(budget_subject_binding, subject_id, "another-subject".into());
+budget_scope_case!(budget_action_binding, action, CommerceActionV1::OrderCancel);
+budget_scope_case!(budget_window_length_binding, window_length_ms, 60001);
+
+#[test]
+fn budget_monetary_currency_binding() {
+    for action in [
+        CommerceActionV1::RefundCreate,
+        CommerceActionV1::DiscountCreate,
+    ] {
+        let (r, mut c, b) = budget_fixture(action);
+        budget_check(&r, &c, &b, &[]);
+        for currency in [None, Some("EUR".into())] {
+            c.budget.currency = currency;
+            budget_check(&r, &c, &b, &[ReasonV1::E_BINDING_MISMATCH]);
+        }
+    }
+}
+
+#[test]
+fn budget_nonmonetary_currency_scope() {
+    for action in [
+        CommerceActionV1::OrderAddressUpdate,
+        CommerceActionV1::OrderCancel,
+        CommerceActionV1::CustomerEmailSend,
+    ] {
+        let (mut r, mut c, b) = budget_fixture(action);
+        r.currency = Some("USD".into()); // Optional request money does not create monetary budget scope.
+        budget_check(&r, &c, &b, &[]);
+        c.budget.currency = Some("USD".into());
+        budget_check(&r, &c, &b, &[ReasonV1::E_BINDING_MISMATCH]);
+    }
+}
+
+#[test]
+fn budget_window_is_half_open_without_rollover() {
+    let (r, mut c, b) = budget_fixture(CommerceActionV1::RefundCreate);
+    c.budget.window_start_ms = 100;
+    for (now, causes) in [
+        (99, vec![ReasonV1::E_MALFORMED_REQUEST]),
+        (100, vec![]),
+        (60099, vec![]),
+        (60100, vec![ReasonV1::E_STALE_STATE]),
+        (60101, vec![ReasonV1::E_STALE_STATE]),
+    ] {
+        c.now_ms = now;
+        budget_check(&r, &c, &b, &causes);
+        assert_eq!(c.budget.window_start_ms, 100);
+        assert_eq!(c.budget.window_length_ms, 60000);
+        assert_eq!(c.budget.count_used, 1);
+        assert_eq!(c.budget.value_used_minor, 2000);
+    }
+}
+
+#[test]
+fn budget_window_end_must_fit_time_domain() {
+    let (r, mut c, b) = budget_fixture(CommerceActionV1::RefundCreate);
+    let maximum = u64::try_from(i64::MAX).unwrap();
+    c.budget.window_start_ms = maximum - 60000;
+    c.now_ms = maximum - 1;
+    budget_check(&r, &c, &b, &[]);
+    c.now_ms = maximum;
+    budget_check(&r, &c, &b, &[ReasonV1::E_STALE_STATE]);
+    c.budget.window_start_ms += 1;
+    budget_check(&r, &c, &b, &[ReasonV1::E_MALFORMED_REQUEST]);
+    c.budget.window_start_ms = maximum;
+    budget_check(&r, &c, &b, &[ReasonV1::E_MALFORMED_REQUEST]);
+    c.budget.window_length_ms = u64::MAX;
+    budget_check(&r, &c, &b, &[ReasonV1::E_MALFORMED_REQUEST]); // Representation short-circuit.
+}
+
+#[test]
+fn budget_zero_length_cannot_match_configured_window() {
+    let (r, mut c, b) = budget_fixture(CommerceActionV1::RefundCreate);
+    c.budget.window_length_ms = 0;
+    budget_check(&r, &c, &b, &[ReasonV1::E_BINDING_MISMATCH]);
+}
+
+#[test]
+fn budget_disabled_window_configuration_has_no_default() {
+    let (r, c, _) = budget_fixture(CommerceActionV1::RefundCreate);
+    for window in [None, Some(0)] {
+        let mut source = preparation_source();
+        let s = &mut source.action_settings[0].1;
+        s.enabled = false;
+        s.budget_window_ms = window;
+        recommit(&mut source);
+        let b = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+        budget_check(&r, &c, &b, &[ReasonV1::E_POLICY_UNCONFIGURED]);
+    }
+}
+
+#[test]
+fn budget_complete_causes_are_sorted_and_deduplicated() {
+    let (r, mut c, b) = budget_fixture(CommerceActionV1::RefundCreate);
+    c.budget.profile_id = "other".into();
+    c.budget.shop_id = "other".into();
+    c.budget.currency = Some("EUR".into());
+    c.budget.window_length_ms = 59999;
+    c.now_ms = 59999;
+    c.budget.count_used = 3;
+    c.budget.value_used_minor = 5000;
+    budget_check(
+        &r,
+        &c,
+        &b,
+        &[
+            ReasonV1::E_BINDING_MISMATCH,
+            ReasonV1::E_STALE_STATE,
+            ReasonV1::E_COUNT_LIMIT,
+            ReasonV1::E_VALUE_LIMIT,
+        ],
+    );
+    c.budget.window_start_ms = 60000;
+    budget_check(
+        &r,
+        &c,
+        &b,
+        &[
+            ReasonV1::E_MALFORMED_REQUEST,
+            ReasonV1::E_BINDING_MISMATCH,
+            ReasonV1::E_COUNT_LIMIT,
+            ReasonV1::E_VALUE_LIMIT,
+        ],
+    );
+}
+
+#[test]
+fn budget_unconfigured_causes_deduplicate() {
+    let (r, c, _) = budget_fixture(CommerceActionV1::RefundCreate);
+    let mut source = preparation_source();
+    let s = &mut source.action_settings[0].1;
+    s.enabled = false;
+    s.count_ceiling = None;
+    s.value_ceiling_minor = None;
+    s.budget_window_ms = None;
+    recommit(&mut source);
+    let b = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+    budget_check(&r, &c, &b, &[ReasonV1::E_POLICY_UNCONFIGURED]);
+}
+
+#[test]
+fn budget_snapshot_classification_is_not_permission_or_authentication() {
+    let (r, mut c, b) = budget_fixture(CommerceActionV1::RefundCreate);
+    c.authenticated_subject = "another".into();
+    c.evidence.provenance = ProvenanceStateV1::Invalid;
+    c.evidence.captured_minor = None;
+    c.evidence.prior_refunds_minor = None;
+    c.evidence.line_items_eligible = Some(false);
+    c.budget.revision = "unverified-revision".into();
+    c.review.grant = None;
+    c.review.attestation = None;
+    budget_check(&r, &c, &b, &[]);
+    assert_eq!(c.budget.revision, "unverified-revision");
+}
