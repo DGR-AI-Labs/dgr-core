@@ -371,6 +371,79 @@ pub fn validate_budget_constraints_v1(
     }
 }
 
+/// Classify configured order-age windows and action-specific discount conflicts.
+///
+/// A present age limit applies to its selected action, including non-refund
+/// actions. Equality passes; a greater age contributes E_ORDER_WINDOW. A
+/// configured limit requires the age fact independently of required_evidence.
+/// RefundCreate additionally requires an explicit limit; its absence contributes
+/// E_POLICY_UNCONFIGURED. A zero limit is valid and accepts only age zero.
+/// Missing applicable age contributes E_MISSING_EVIDENCE, never an age default.
+///
+/// DiscountCreate requires discount_conflict independently of the configured
+/// evidence list: absent contributes E_MISSING_EVIDENCE, true contributes
+/// E_DISCOUNT_CONFLICT, false passes. Other actions ignore this fact semantically.
+/// Representation validation precedes all semantic checks. Established causes
+/// are deduplicated in registry order, including independent simultaneous faults.
+///
+/// Enabled refunds already have an age limit guaranteed by bundle preparation;
+/// missing-limit controls use prepared disabled entries as defence in depth.
+/// This classifier does not enforce enabled. Configured review routes and
+/// supplied reviews never erase a cause or turn this result into permission.
+/// The final evaluator must default to Deny and may route only explicitly enabled
+/// review predicates after all hard checks and Cedar permissions pass. Neither
+/// an Escalate outcome nor review acceptance is decided by this primitive.
+///
+/// Success is not permission. Bindings, freshness, provenance, review validity,
+/// monetary/budget and other hard predicates remain separate. No trusted clock,
+/// evidence acquisition, Cedar evaluation, artifact consumption or effects occur.
+pub fn validate_order_window_and_discount_v1(
+    request: &CommerceRequestV1,
+    context: &DecisionContextV1,
+    bundle: &PreparedCommerceBundleV1,
+) -> Result<(), Vec<ReasonV1>> {
+    if let Err(reason) = validated_request_digest_v1(request, context) {
+        return Err(vec![reason]);
+    }
+    let Some((_, settings)) = bundle
+        .settings
+        .iter()
+        .find(|(action, _)| *action == request.action)
+    else {
+        return Err(vec![ReasonV1::E_INTERNAL_EVALUATION]);
+    };
+    let mut causes = Vec::new();
+    let age = context.evidence.order_age_seconds;
+    let limit = settings.order_age_limit_seconds;
+    let refund = request.action == CommerceActionV1::RefundCreate;
+    if (limit.is_some() || refund) && age.is_none() {
+        causes.push(ReasonV1::E_MISSING_EVIDENCE);
+    }
+    match limit {
+        None if refund => causes.push(ReasonV1::E_POLICY_UNCONFIGURED),
+        Some(limit) => {
+            if age.is_some_and(|age| age > limit) {
+                causes.push(ReasonV1::E_ORDER_WINDOW);
+            }
+        }
+        None => (),
+    }
+    if request.action == CommerceActionV1::DiscountCreate {
+        match context.evidence.discount_conflict {
+            None => causes.push(ReasonV1::E_MISSING_EVIDENCE),
+            Some(true) => causes.push(ReasonV1::E_DISCOUNT_CONFLICT),
+            Some(false) => (),
+        }
+    }
+    causes.sort_by_key(|reason| reason.rank());
+    causes.dedup();
+    if causes.is_empty() {
+        Ok(())
+    } else {
+        Err(causes)
+    }
+}
+
 /// Check configured evidence presence/age and the supplied approved revision.
 ///
 /// Future acquisition timestamps are malformed, even with no configured fields.

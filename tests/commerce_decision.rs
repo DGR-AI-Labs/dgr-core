@@ -3324,3 +3324,351 @@ fn budget_snapshot_classification_is_not_permission_or_authentication() {
     budget_check(&r, &c, &b, &[]);
     assert_eq!(c.budget.revision, "unverified-revision");
 }
+
+fn window_fixture(
+    action: CommerceActionV1,
+    limit: Option<u64>,
+    enabled: bool,
+    routes: Vec<ReviewRouteV1>,
+) -> (
+    CommerceRequestV1,
+    DecisionContextV1,
+    PreparedCommerceBundleV1,
+) {
+    let mut source = preparation_source();
+    for (a, s) in &mut source.action_settings {
+        s.order_age_limit_seconds = if *a == CommerceActionV1::RefundCreate {
+            Some(1000)
+        } else {
+            None
+        };
+        if *a == action {
+            s.order_age_limit_seconds = limit;
+            s.enabled = enabled;
+            s.review_routes = routes.clone();
+        }
+    }
+    recommit(&mut source);
+    let b = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+    let (mut r, mut c) = bound_frame(&b);
+    r.action = action;
+    c.evidence.order_age_seconds = Some(100);
+    c.evidence.discount_conflict = Some(false);
+    (r, c, b)
+}
+fn window_check(
+    r: &CommerceRequestV1,
+    c: &DecisionContextV1,
+    b: &PreparedCommerceBundleV1,
+    expected: &[ReasonV1],
+) {
+    assert_eq!(
+        validate_order_window_and_discount_v1(r, c, b),
+        if expected.is_empty() {
+            Ok(())
+        } else {
+            Err(expected.to_vec())
+        }
+    );
+}
+macro_rules! window_age_cells {
+    ($boundary:ident, $missing:ident, $action:ident) => {
+        #[test]
+        fn $boundary() {
+            let (r, mut c, b) = window_fixture(CommerceActionV1::$action, Some(100), true, vec![]);
+            for (age, fails) in [
+                (0, false),
+                (99, false),
+                (100, false),
+                (101, true),
+                (65537, true),
+            ] {
+                c.evidence.order_age_seconds = Some(age);
+                window_check(
+                    &r,
+                    &c,
+                    &b,
+                    if fails {
+                        &[ReasonV1::E_ORDER_WINDOW]
+                    } else {
+                        &[]
+                    },
+                );
+            }
+        }
+        #[test]
+        fn $missing() {
+            let (r, mut c, b) = window_fixture(CommerceActionV1::$action, Some(100), true, vec![]);
+            // required_evidence contains SourceRevision only. The configured age limit
+            // adds a mandatory age fact even without OrderAgeSeconds in that list.
+            assert!(
+                !b.action_settings()
+                    .iter()
+                    .find(|(a, _)| *a == r.action)
+                    .unwrap()
+                    .1
+                    .required_evidence
+                    .iter()
+                    .any(|(f, _)| *f == EvidenceFieldV1::OrderAgeSeconds)
+            );
+            c.evidence.order_age_seconds = None;
+            window_check(&r, &c, &b, &[ReasonV1::E_MISSING_EVIDENCE]);
+        }
+    };
+}
+window_age_cells!(
+    window_refund_boundaries,
+    window_refund_missing_age,
+    RefundCreate
+);
+window_age_cells!(
+    window_address_boundaries,
+    window_address_missing_age,
+    OrderAddressUpdate
+);
+window_age_cells!(
+    window_cancel_boundaries,
+    window_cancel_missing_age,
+    OrderCancel
+);
+window_age_cells!(
+    window_discount_boundaries,
+    window_discount_missing_age,
+    DiscountCreate
+);
+window_age_cells!(
+    window_email_boundaries,
+    window_email_missing_age,
+    CustomerEmailSend
+);
+
+macro_rules! window_no_limit_cells {
+    ($name:ident, $action:ident) => {
+        #[test]
+        fn $name() {
+            let (r, mut c, b) = window_fixture(CommerceActionV1::$action, None, true, vec![]);
+            for age in [None, Some(0), Some(i64::MAX as u64)] {
+                c.evidence.order_age_seconds = age;
+                window_check(&r, &c, &b, &[]);
+            }
+        }
+    };
+}
+window_no_limit_cells!(window_address_without_limit, OrderAddressUpdate);
+window_no_limit_cells!(window_cancel_without_limit, OrderCancel);
+window_no_limit_cells!(window_discount_without_limit, DiscountCreate);
+window_no_limit_cells!(window_email_without_limit, CustomerEmailSend);
+
+#[test]
+fn window_refund_missing_limit_defence_in_depth() {
+    let (r, mut c, b) = window_fixture(CommerceActionV1::RefundCreate, None, false, vec![]);
+    window_check(&r, &c, &b, &[ReasonV1::E_POLICY_UNCONFIGURED]);
+    c.evidence.order_age_seconds = None;
+    window_check(
+        &r,
+        &c,
+        &b,
+        &[
+            ReasonV1::E_MISSING_EVIDENCE,
+            ReasonV1::E_POLICY_UNCONFIGURED,
+        ],
+    );
+    // Enabled refunds cannot construct this prepared configuration.
+    let mut source = preparation_source();
+    source.action_settings[0].1.order_age_limit_seconds = None;
+    assert_eq!(
+        bundle_digest_v1(&source),
+        Err(BundleErrorV1::SettingsInvalid)
+    );
+}
+
+#[test]
+fn window_zero_limit_is_explicit_and_inclusive() {
+    for action in [
+        CommerceActionV1::RefundCreate,
+        CommerceActionV1::OrderAddressUpdate,
+        CommerceActionV1::OrderCancel,
+        CommerceActionV1::DiscountCreate,
+        CommerceActionV1::CustomerEmailSend,
+    ] {
+        let (r, mut c, b) = window_fixture(action, Some(0), true, vec![]);
+        c.evidence.order_age_seconds = Some(0);
+        window_check(&r, &c, &b, &[]);
+        c.evidence.order_age_seconds = Some(1);
+        window_check(&r, &c, &b, &[ReasonV1::E_ORDER_WINDOW]);
+        c.evidence.order_age_seconds = None;
+        window_check(&r, &c, &b, &[ReasonV1::E_MISSING_EVIDENCE]);
+    }
+}
+
+#[test]
+fn window_maximum_domain_and_no_unsigned_truncation() {
+    let max = i64::MAX as u64;
+    let (r, mut c, b) = window_fixture(CommerceActionV1::RefundCreate, Some(max), true, vec![]);
+    c.evidence.order_age_seconds = Some(max);
+    window_check(&r, &c, &b, &[]);
+    let (r, c, b) = window_fixture(CommerceActionV1::RefundCreate, Some(max - 1), true, vec![]);
+    let mut c = c;
+    c.evidence.order_age_seconds = Some(max);
+    window_check(&r, &c, &b, &[ReasonV1::E_ORDER_WINDOW]);
+}
+
+#[test]
+fn window_discount_conflict_cells() {
+    let (r, mut c, b) = window_fixture(CommerceActionV1::DiscountCreate, None, true, vec![]);
+    for (value, reasons) in [
+        (Some(false), &[][..]),
+        (Some(true), &[ReasonV1::E_DISCOUNT_CONFLICT][..]),
+        (None, &[ReasonV1::E_MISSING_EVIDENCE][..]),
+    ] {
+        c.evidence.discount_conflict = value;
+        window_check(&r, &c, &b, reasons);
+    }
+}
+macro_rules! window_discount_off_target {
+    ($name:ident, $action:ident) => {
+        #[test]
+        fn $name() {
+            let (r, mut c, b) = window_fixture(CommerceActionV1::$action, Some(100), true, vec![]);
+            for conflict in [None, Some(false), Some(true)] {
+                c.evidence.discount_conflict = conflict;
+                window_check(&r, &c, &b, &[]);
+            }
+        }
+    };
+}
+window_discount_off_target!(window_conflict_refund_off_target, RefundCreate);
+window_discount_off_target!(window_conflict_address_off_target, OrderAddressUpdate);
+window_discount_off_target!(window_conflict_cancel_off_target, OrderCancel);
+window_discount_off_target!(window_conflict_email_off_target, CustomerEmailSend);
+
+#[test]
+fn window_complete_causes_are_registry_ordered() {
+    let (r, mut c, b) = window_fixture(CommerceActionV1::DiscountCreate, Some(100), true, vec![]);
+    c.evidence.order_age_seconds = Some(101);
+    c.evidence.discount_conflict = Some(true);
+    window_check(
+        &r,
+        &c,
+        &b,
+        &[ReasonV1::E_ORDER_WINDOW, ReasonV1::E_DISCOUNT_CONFLICT],
+    );
+    c.evidence.order_age_seconds = None;
+    window_check(
+        &r,
+        &c,
+        &b,
+        &[ReasonV1::E_MISSING_EVIDENCE, ReasonV1::E_DISCOUNT_CONFLICT],
+    );
+}
+#[test]
+fn window_conflict_absence_sorts_a_later_discovered_evidence_cause() {
+    let (r, mut c, b) = window_fixture(CommerceActionV1::DiscountCreate, Some(100), true, vec![]);
+    c.evidence.order_age_seconds = Some(101);
+    c.evidence.discount_conflict = None;
+    window_check(
+        &r,
+        &c,
+        &b,
+        &[ReasonV1::E_MISSING_EVIDENCE, ReasonV1::E_ORDER_WINDOW],
+    );
+}
+
+#[test]
+fn window_missing_causes_deduplicate() {
+    let (r, mut c, b) = window_fixture(CommerceActionV1::DiscountCreate, Some(100), true, vec![]);
+    c.evidence.order_age_seconds = None;
+    c.evidence.discount_conflict = None;
+    window_check(&r, &c, &b, &[ReasonV1::E_MISSING_EVIDENCE]);
+}
+#[test]
+fn window_routes_and_reviews_do_not_override() {
+    let (r, mut c, b) = window_fixture(
+        CommerceActionV1::DiscountCreate,
+        Some(100),
+        true,
+        vec![ReviewRouteV1::OrderWindow, ReviewRouteV1::DiscountConflict],
+    );
+    assert!(c.review.grant.is_some() && c.review.attestation.is_some());
+    c.evidence.order_age_seconds = Some(101);
+    c.evidence.discount_conflict = Some(true);
+    window_check(
+        &r,
+        &c,
+        &b,
+        &[ReasonV1::E_ORDER_WINDOW, ReasonV1::E_DISCOUNT_CONFLICT],
+    );
+}
+#[test]
+fn window_disabled_action_still_classifies() {
+    let (r, mut c, b) = window_fixture(CommerceActionV1::DiscountCreate, Some(100), false, vec![]);
+    c.evidence.order_age_seconds = Some(101);
+    c.evidence.discount_conflict = Some(true);
+    window_check(
+        &r,
+        &c,
+        &b,
+        &[ReasonV1::E_ORDER_WINDOW, ReasonV1::E_DISCOUNT_CONFLICT],
+    );
+}
+#[test]
+fn window_request_representation_precedes_semantics() {
+    let (mut r, mut c, b) =
+        window_fixture(CommerceActionV1::DiscountCreate, Some(100), true, vec![]);
+    r.operation_id.clear();
+    c.evidence.order_age_seconds = Some(101);
+    c.evidence.discount_conflict = Some(true);
+    window_check(&r, &c, &b, &[ReasonV1::E_MALFORMED_REQUEST]);
+}
+#[test]
+fn window_context_representation_precedes_semantics() {
+    let (r, mut c, b) = window_fixture(CommerceActionV1::DiscountCreate, Some(100), true, vec![]);
+    c.now_ms = u64::MAX;
+    c.evidence.order_age_seconds = Some(101);
+    c.evidence.discount_conflict = Some(true);
+    window_check(&r, &c, &b, &[ReasonV1::E_MALFORMED_REQUEST]);
+}
+#[test]
+fn window_settings_are_selected_by_action() {
+    // The refund entry has limit 1000; this action's entry has limit 100.
+    let (r, mut c, b) = window_fixture(
+        CommerceActionV1::OrderAddressUpdate,
+        Some(100),
+        true,
+        vec![],
+    );
+    c.evidence.order_age_seconds = Some(101);
+    window_check(&r, &c, &b, &[ReasonV1::E_ORDER_WINDOW]);
+}
+#[test]
+fn window_success_is_not_permission_or_snapshot_validation() {
+    let (r, mut c, b) = window_fixture(CommerceActionV1::DiscountCreate, Some(100), false, vec![]);
+    c.evidence.order_age_seconds = Some(100);
+    c.evidence.discount_conflict = Some(false);
+    c.authenticated_subject = "other".into();
+    c.evidence.provenance = ProvenanceStateV1::Invalid;
+    c.evidence.fetched_at_ms = 0;
+    c.now_ms = 10000;
+    c.review.grant = None;
+    c.review.attestation = None;
+    let before = c.clone();
+    window_check(&r, &c, &b, &[]);
+    assert_eq!(c, before);
+}
+
+#[test]
+fn window_full_unsigned_age_is_not_a_malformed_timestamp() {
+    // Age uses the full unsigned number encoding; configured limits use the
+    // signed-64-bit time representation. A valid age may exceed every limit.
+    let (r, mut c, b) = window_fixture(
+        CommerceActionV1::RefundCreate,
+        Some(i64::MAX as u64),
+        true,
+        vec![],
+    );
+    c.evidence.order_age_seconds = Some(u64::MAX);
+    window_check(&r, &c, &b, &[ReasonV1::E_ORDER_WINDOW]);
+    let (r, mut c, b) = window_fixture(CommerceActionV1::OrderCancel, None, true, vec![]);
+    c.evidence.order_age_seconds = Some(u64::MAX);
+    window_check(&r, &c, &b, &[]);
+}
