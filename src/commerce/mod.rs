@@ -8,12 +8,12 @@ mod decision;
 mod reasons;
 pub use decision::{
     PreparedCedarInputsV1, PreparedCommerceBundleV1, ProvenanceReviewErrorV1,
-    ResolvedCommerceReviewsV1, build_cedar_request_v1, bundle_digest_v1, decision_digest_v1,
-    encode_decision_v1, prepare_bundle_v1, request_binding_digest_v1,
-    resolve_review_requirements_v1, validate_action_eligibility_v1, validate_budget_constraints_v1,
-    validate_evidence_snapshot_v1, validate_monetary_constraints_v1,
-    validate_order_window_and_discount_v1, validate_provenance_and_reviews_v1,
-    validate_request_bindings_v1, validate_review_artifacts_v1,
+    ResolvedCommerceReviewRoutesV1, ResolvedCommerceReviewsV1, build_cedar_request_v1,
+    bundle_digest_v1, decision_digest_v1, encode_decision_v1, prepare_bundle_v1,
+    request_binding_digest_v1, resolve_review_requirements_v1, resolve_review_routes_v1,
+    validate_action_eligibility_v1, validate_budget_constraints_v1, validate_evidence_snapshot_v1,
+    validate_monetary_constraints_v1, validate_order_window_and_discount_v1,
+    validate_provenance_and_reviews_v1, validate_request_bindings_v1, validate_review_artifacts_v1,
 };
 pub use reasons::ReasonV1;
 

@@ -894,6 +894,212 @@ pub fn resolve_review_requirements_v1(
     })
 }
 
+/// Pure review routing and deadline prerequisites; never an authorization.
+///
+/// Routed predicate causes remain available even after a valid Grant satisfies
+/// the route. Missing kinds and the deadline describe only a potential review
+/// requirement. The final evaluator must still enforce enablement, all other hard
+/// checks, terminal provenance and error-free Cedar permission before Escalate or
+/// Allow. This value is not bound authority for a later, changed snapshot.
+///
+/// Safe external callers cannot manufacture or erase this classification:
+/// ```compile_fail
+/// use dgr_core::commerce::ResolvedCommerceReviewRoutesV1;
+/// let _ = ResolvedCommerceReviewRoutesV1 {
+///     review_ids: vec![], required_kinds: vec![], routed_causes: vec![], escalation: None,
+/// };
+/// ```
+/// ```compile_fail
+/// use dgr_core::commerce::ResolvedCommerceReviewRoutesV1;
+/// fn erase(value: &mut ResolvedCommerceReviewRoutesV1) { value.routed_causes.clear(); }
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedCommerceReviewRoutesV1 {
+    review_ids: Vec<String>,
+    required_kinds: Vec<ReviewKindV1>,
+    routed_causes: Vec<ReasonV1>,
+    escalation: Option<EscalationRequirementV1>,
+}
+
+impl ResolvedCommerceReviewRoutesV1 {
+    /// Raw-UTF-8-sorted IDs actually satisfying an effective requirement.
+    pub fn review_ids(&self) -> &[String] {
+        &self.review_ids
+    }
+
+    /// Distinct, sorted missing kinds; not an Escalate verdict.
+    pub fn required_kinds(&self) -> &[ReviewKindV1] {
+        &self.required_kinds
+    }
+
+    /// Raw window/conflict causes accepted by an explicitly configured route.
+    /// These are retained for audit even when a valid Grant satisfies that route.
+    pub fn routed_causes(&self) -> &[ReasonV1] {
+        &self.routed_causes
+    }
+
+    /// Immutable deadline for unresolved kinds, or None when all are satisfied.
+    /// This is neither a persisted request nor permission to notify or execute.
+    pub fn escalation(&self) -> Option<&EscalationRequirementV1> {
+        self.escalation.as_ref()
+    }
+}
+
+/// Resolve only explicit window/conflict routes plus configured review needs.
+///
+/// All supplied artifacts are validated, including unused facts and pending
+/// requests. Only E_ORDER_WINDOW/E_DISCOUNT_CONFLICT may enter their corresponding
+/// configured route. Other raw predicate faults remain errors; a Grant cannot
+/// repair them, Invalid/Consumed provenance, or any supplied artifact defect.
+/// A route does not require or use a Grant unless its predicate actually fails.
+/// When both effective Grant and missing-provenance Attestation needs apply,
+/// reviewers must differ, even when require_monetary_review is false.
+///
+/// A valid Grant satisfies an explicitly enabled, triggered route on this
+/// snapshot; the raw cause is retained in routed_causes, not erased from audit.
+/// Requirements are recomputed from current inputs. Missing kinds get a new
+/// checked now+timeout deadline only if no request is supplied. A valid supplied
+/// request retains its exact id, creation time and shorter-or-equal expiry.
+/// Expired supplied requests reject even after all facts arrive. Preparation
+/// guarantees positive review limits on enabled review configurations; disabled
+/// entries retain explicit defence-in-depth checks here.
+///
+/// Does not enforce action enabled, evaluate other hard predicates or invoke
+/// Cedar. Success is not Allow; a computed escalation is not Escalate. The caller
+/// must finish all remaining checks. No authentication, durable admission,
+/// consumption, notification or deadline-reset prevention is implemented here.
+/// The later proxy must prevent deletion/replacement of stored pending requests.
+pub fn resolve_review_routes_v1(
+    request: &CommerceRequestV1,
+    context: &DecisionContextV1,
+    bundle: &PreparedCommerceBundleV1,
+) -> Result<ResolvedCommerceReviewRoutesV1, ProvenanceReviewErrorV1> {
+    if let Err(reason) = validated_request_digest_v1(request, context) {
+        return Err(ProvenanceReviewErrorV1 {
+            provenance: context.evidence.provenance,
+            causes: vec![reason],
+        });
+    }
+    let (mut review_ids, mut required_kinds, mut causes) =
+        match resolve_review_requirements_v1(request, context, bundle) {
+            Ok(resolved) => (resolved.review_ids, resolved.required_kinds, Vec::new()),
+            Err(error) => (Vec::new(), Vec::new(), error.causes),
+        };
+    let Some((_, settings)) = bundle
+        .settings
+        .iter()
+        .find(|(action, _)| *action == request.action)
+    else {
+        return Err(ProvenanceReviewErrorV1 {
+            provenance: context.evidence.provenance,
+            causes: vec![ReasonV1::E_INTERNAL_EVALUATION],
+        });
+    };
+    let mut routed_causes = Vec::new();
+    for reason in validate_order_window_and_discount_v1(request, context, bundle)
+        .err()
+        .unwrap_or_default()
+    {
+        let route = match reason {
+            ReasonV1::E_ORDER_WINDOW => Some(ReviewRouteV1::OrderWindow),
+            ReasonV1::E_DISCOUNT_CONFLICT => Some(ReviewRouteV1::DiscountConflict),
+            _ => None,
+        };
+        if route.is_some_and(|route| settings.review_routes.contains(&route)) {
+            routed_causes.push(reason);
+        } else {
+            causes.push(reason);
+        }
+    }
+    let route_requires_grant = !routed_causes.is_empty();
+    let requires_attestation = settings.require_provenance
+        && settings.attestation_enabled
+        && context.evidence.provenance == ProvenanceStateV1::Missing;
+    if (settings.require_monetary_review || route_requires_grant)
+        && requires_attestation
+        && let (Some(grant), Some(attestation)) =
+            (&context.review.grant, &context.review.attestation)
+        && grant.reviewer_id == attestation.reviewer_id
+    {
+        causes.push(ReasonV1::E_REVIEWER_SEPARATION);
+    }
+    // If another defect blocks resolution, retain raw routed predicates in the
+    // error diagnostics too. A configured route cannot hide a simultaneous fault.
+    if !causes.is_empty() {
+        causes.extend_from_slice(&routed_causes);
+    }
+    causes.sort_unstable_by_key(|reason| reason.rank());
+    causes.dedup();
+    if !causes.is_empty() {
+        return Err(ProvenanceReviewErrorV1 {
+            provenance: context.evidence.provenance,
+            causes,
+        });
+    }
+    if route_requires_grant {
+        match &context.review.grant {
+            Some(grant) => review_ids.push(grant.id.clone()),
+            None => required_kinds.push(ReviewKindV1::Grant),
+        }
+    }
+    review_ids.sort();
+    review_ids.dedup();
+    required_kinds.sort();
+    required_kinds.dedup();
+    let escalation = if required_kinds.is_empty() {
+        None
+    } else {
+        Some(
+            review_deadline_v1(context, settings, &required_kinds).map_err(|reason| {
+                ProvenanceReviewErrorV1 {
+                    provenance: context.evidence.provenance,
+                    causes: vec![reason],
+                }
+            })?,
+        )
+    };
+    Ok(ResolvedCommerceReviewRoutesV1 {
+        review_ids,
+        required_kinds,
+        routed_causes,
+        escalation,
+    })
+}
+
+// Called only after every supplied fact/request has passed validity checks.
+fn review_deadline_v1(
+    context: &DecisionContextV1,
+    settings: &CommerceActionSettingsV1,
+    required_kinds: &[ReviewKindV1],
+) -> EncodingResult<EscalationRequirementV1> {
+    let timeout = settings
+        .review_request_timeout_ms
+        .filter(|timeout| *timeout > 0)
+        .ok_or(ReasonV1::E_POLICY_UNCONFIGURED)?;
+    let (requested_at_ms, expires_at_ms, review_request_id) = match &context.review_request {
+        Some(pending) => (
+            pending.created_at_ms,
+            pending.expires_at_ms,
+            Some(pending.id.clone()),
+        ),
+        None => (
+            context.now_ms,
+            context
+                .now_ms
+                .checked_add(timeout)
+                .filter(|expires| *expires <= i64::MAX as u64)
+                .ok_or(INVALID)?,
+            None,
+        ),
+    };
+    Ok(EscalationRequirementV1 {
+        requested_at_ms,
+        expires_at_ms,
+        review_request_id,
+        required_kinds: required_kinds.to_vec(),
+    })
+}
+
 struct Encoder(Vec<u8>);
 impl Encoder {
     fn string(&mut self, s: &str) -> EncodingResult {
