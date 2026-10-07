@@ -4109,6 +4109,617 @@ fn requirements_disabled_and_review_routes_do_not_override_requirements() {
     requirements_assert(&r, &missing, &b, &[], &[ReviewKindV1::Grant]);
 }
 
+fn routing_fixture(
+    action: CommerceActionV1,
+    edit: impl Fn(&mut CommerceActionSettingsV1),
+) -> (
+    CommerceRequestV1,
+    DecisionContextV1,
+    PreparedCommerceBundleV1,
+) {
+    let (mut r, mut c, b) = requirements_fixture(edit);
+    r.action = action;
+    c.review.grant = None;
+    c.review.attestation = None;
+    c.review_request = None;
+    c.evidence.order_age_seconds = Some(100);
+    c.evidence.discount_conflict = Some(false);
+    c.evidence.provenance_binding_digest = None;
+    (r, c, b)
+}
+
+fn routing_fact(r: &CommerceRequestV1, c: &DecisionContextV1, kind: ReviewKindV1) -> ReviewFactV1 {
+    ReviewFactV1 {
+        id: if kind == ReviewKindV1::Grant {
+            "grant"
+        } else {
+            "attestation"
+        }
+        .into(),
+        reviewer_id: if kind == ReviewKindV1::Grant {
+            "grant-reviewer"
+        } else {
+            "attest-reviewer"
+        }
+        .into(),
+        authorized: true,
+        issued_at_ms: 0,
+        expires_at_ms: 1000,
+        binding_digest: request_binding_digest_v1(r).unwrap(),
+        policy_digest: c.policy_digest,
+        consumed: false,
+        kind,
+    }
+}
+
+fn routing_pending(r: &CommerceRequestV1, c: &DecisionContextV1) -> ReviewRequestV1 {
+    ReviewRequestV1 {
+        id: "pending".into(),
+        created_at_ms: 10,
+        expires_at_ms: 200,
+        binding_digest: request_binding_digest_v1(r).unwrap(),
+        policy_digest: c.policy_digest,
+    }
+}
+
+fn routing_causes(
+    r: &CommerceRequestV1,
+    c: &DecisionContextV1,
+    b: &PreparedCommerceBundleV1,
+    expected: &[ReasonV1],
+) {
+    let error = resolve_review_routes_v1(r, c, b).unwrap_err();
+    assert_eq!(error.causes(), expected);
+    assert_eq!(error.provenance(), c.evidence.provenance);
+}
+
+#[test]
+fn routing_order_window_default_deny_even_with_valid_grant() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::RefundCreate, |_| {});
+    c.evidence.order_age_seconds = Some(1001);
+    routing_causes(&r, &c, &b, &[ReasonV1::E_ORDER_WINDOW]);
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    routing_causes(&r, &c, &b, &[ReasonV1::E_ORDER_WINDOW]);
+}
+
+#[test]
+fn routing_discount_default_deny_even_with_valid_grant() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::DiscountCreate, |_| {});
+    c.evidence.discount_conflict = Some(true);
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    routing_causes(&r, &c, &b, &[ReasonV1::E_DISCOUNT_CONFLICT]);
+}
+
+#[test]
+fn routing_order_window_requires_grant_only_when_triggered() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::RefundCreate, |s| {
+        s.review_routes = vec![ReviewRouteV1::OrderWindow]
+    });
+    let pass = resolve_review_routes_v1(&r, &c, &b).unwrap();
+    assert!(pass.required_kinds().is_empty());
+    assert!(pass.routed_causes().is_empty());
+    assert!(pass.escalation().is_none());
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    assert!(
+        resolve_review_routes_v1(&r, &c, &b)
+            .unwrap()
+            .review_ids()
+            .is_empty()
+    );
+    c.review.grant = None;
+    c.evidence.order_age_seconds = Some(1001);
+    let result = resolve_review_routes_v1(&r, &c, &b).unwrap();
+    assert_eq!(result.required_kinds(), &[ReviewKindV1::Grant]);
+    assert_eq!(result.routed_causes(), &[ReasonV1::E_ORDER_WINDOW]);
+}
+
+#[test]
+fn routing_discount_requires_grant_only_when_triggered() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::DiscountCreate, |s| {
+        s.review_routes = vec![ReviewRouteV1::DiscountConflict]
+    });
+    assert!(
+        resolve_review_routes_v1(&r, &c, &b)
+            .unwrap()
+            .required_kinds()
+            .is_empty()
+    );
+    c.evidence.discount_conflict = Some(true);
+    let result = resolve_review_routes_v1(&r, &c, &b).unwrap();
+    assert_eq!(result.required_kinds(), &[ReviewKindV1::Grant]);
+    assert_eq!(result.routed_causes(), &[ReasonV1::E_DISCOUNT_CONFLICT]);
+}
+
+#[test]
+fn routing_wrong_route_cannot_repair_window_or_conflict() {
+    for action in [
+        CommerceActionV1::RefundCreate,
+        CommerceActionV1::DiscountCreate,
+    ] {
+        let wrong = if action == CommerceActionV1::RefundCreate {
+            ReviewRouteV1::DiscountConflict
+        } else {
+            ReviewRouteV1::OrderWindow
+        };
+        let (r, mut c, b) = routing_fixture(action, |s| s.review_routes = vec![wrong]);
+        let reason = if action == CommerceActionV1::RefundCreate {
+            c.evidence.order_age_seconds = Some(1001);
+            ReasonV1::E_ORDER_WINDOW
+        } else {
+            c.evidence.discount_conflict = Some(true);
+            ReasonV1::E_DISCOUNT_CONFLICT
+        };
+        c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+        routing_causes(&r, &c, &b, &[reason]);
+    }
+}
+
+#[test]
+fn routing_valid_grant_satisfies_route_and_preserves_raw_causes() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::DiscountCreate, |s| {
+        s.review_routes = vec![ReviewRouteV1::OrderWindow, ReviewRouteV1::DiscountConflict]
+    });
+    c.evidence.order_age_seconds = Some(1001);
+    c.evidence.discount_conflict = Some(true);
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    let before = c.clone();
+    let result = resolve_review_routes_v1(&r, &c, &b).unwrap();
+    assert_eq!(result.review_ids(), &["grant"]);
+    assert!(result.required_kinds().is_empty());
+    assert!(result.escalation().is_none());
+    assert_eq!(
+        result.routed_causes(),
+        &[ReasonV1::E_ORDER_WINDOW, ReasonV1::E_DISCOUNT_CONFLICT]
+    );
+    assert_eq!(c, before);
+    assert_eq!(
+        validate_order_window_and_discount_v1(&r, &c, &b),
+        Err(vec![
+            ReasonV1::E_ORDER_WINDOW,
+            ReasonV1::E_DISCOUNT_CONFLICT
+        ])
+    );
+}
+
+#[test]
+fn routing_multiple_routes_and_flag_need_only_one_grant() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::DiscountCreate, |s| {
+        s.require_monetary_review = true;
+        s.review_routes = vec![ReviewRouteV1::OrderWindow, ReviewRouteV1::DiscountConflict];
+    });
+    c.evidence.order_age_seconds = Some(1001);
+    c.evidence.discount_conflict = Some(true);
+    let missing = resolve_review_routes_v1(&r, &c, &b).unwrap();
+    assert_eq!(missing.required_kinds(), &[ReviewKindV1::Grant]);
+    assert_eq!(
+        missing.escalation().unwrap().required_kinds,
+        vec![ReviewKindV1::Grant]
+    );
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    assert_eq!(
+        resolve_review_routes_v1(&r, &c, &b).unwrap().review_ids(),
+        &["grant"]
+    );
+}
+
+#[test]
+fn routing_missing_field_is_not_a_review_route() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::DiscountCreate, |s| {
+        s.review_routes = vec![ReviewRouteV1::OrderWindow, ReviewRouteV1::DiscountConflict]
+    });
+    c.evidence.order_age_seconds = None;
+    c.evidence.discount_conflict = None;
+    routing_causes(&r, &c, &b, &[ReasonV1::E_MISSING_EVIDENCE]);
+}
+
+#[test]
+fn routing_simultaneous_blocking_fault_retains_routed_diagnostic() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::DiscountCreate, |s| {
+        s.review_routes = vec![ReviewRouteV1::OrderWindow]
+    });
+    c.evidence.order_age_seconds = Some(1001);
+    c.evidence.discount_conflict = None;
+    routing_causes(
+        &r,
+        &c,
+        &b,
+        &[ReasonV1::E_MISSING_EVIDENCE, ReasonV1::E_ORDER_WINDOW],
+    );
+}
+
+#[test]
+fn routing_optional_invalid_fact_is_not_a_missing_requirement() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::RefundCreate, |s| {
+        s.review_routes = vec![ReviewRouteV1::OrderWindow]
+    });
+    c.evidence.order_age_seconds = Some(1001);
+    c.review.attestation = Some(routing_fact(&r, &c, ReviewKindV1::Attestation));
+    c.review.attestation.as_mut().unwrap().authorized = false;
+    routing_causes(
+        &r,
+        &c,
+        &b,
+        &[ReasonV1::E_ORDER_WINDOW, ReasonV1::E_APPROVAL_INVALID],
+    );
+}
+
+#[test]
+fn routing_invalid_or_consumed_provenance_remains_terminal() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::RefundCreate, |s| {
+        s.review_routes = vec![ReviewRouteV1::OrderWindow]
+    });
+    c.evidence.order_age_seconds = Some(1001);
+    c.evidence.provenance_binding_digest = Some(request_binding_digest_v1(&r).unwrap());
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    for (state, reason) in [
+        (
+            ProvenanceStateV1::Invalid,
+            ReasonV1::E_PROVENANCE_UNVERIFIABLE,
+        ),
+        (ProvenanceStateV1::Consumed, ReasonV1::E_REPLAY),
+    ] {
+        c.evidence.provenance = state;
+        let err = resolve_review_routes_v1(&r, &c, &b).unwrap_err();
+        assert!(err.requires_terminal_deny());
+        assert!(err.causes().contains(&reason));
+        assert!(err.causes().contains(&ReasonV1::E_ORDER_WINDOW));
+        assert_eq!(err.provenance(), state);
+    }
+}
+
+#[test]
+fn routing_effective_grant_and_attestation_separate_without_money_flag() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::RefundCreate, |s| {
+        s.require_provenance = true;
+        s.attestation_enabled = true;
+        s.review_routes = vec![ReviewRouteV1::OrderWindow];
+    });
+    c.evidence.order_age_seconds = Some(1001);
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    c.review.attestation = Some(routing_fact(&r, &c, ReviewKindV1::Attestation));
+    let success = resolve_review_routes_v1(&r, &c, &b).unwrap();
+    assert_eq!(success.review_ids(), &["attestation", "grant"]);
+    c.review.attestation.as_mut().unwrap().reviewer_id =
+        c.review.grant.as_ref().unwrap().reviewer_id.clone();
+    routing_causes(
+        &r,
+        &c,
+        &b,
+        &[ReasonV1::E_ORDER_WINDOW, ReasonV1::E_REVIEWER_SEPARATION],
+    );
+}
+
+#[test]
+fn routing_optional_same_reviewer_is_not_separation_requirement() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::RefundCreate, |s| {
+        s.review_routes = vec![ReviewRouteV1::OrderWindow]
+    });
+    c.evidence.order_age_seconds = Some(1001);
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    c.review.attestation = Some(routing_fact(&r, &c, ReviewKindV1::Attestation));
+    c.review.attestation.as_mut().unwrap().reviewer_id =
+        c.review.grant.as_ref().unwrap().reviewer_id.clone();
+    assert_eq!(
+        resolve_review_routes_v1(&r, &c, &b).unwrap().review_ids(),
+        &["grant"]
+    );
+}
+
+#[test]
+fn routing_duplicate_artifact_ids_reject_before_canonicalization() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::RefundCreate, |s| {
+        s.review_routes = vec![ReviewRouteV1::OrderWindow]
+    });
+    c.evidence.order_age_seconds = Some(1001);
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    c.review.attestation = Some(routing_fact(&r, &c, ReviewKindV1::Attestation));
+    c.review.attestation.as_mut().unwrap().id = "grant".into();
+    routing_causes(
+        &r,
+        &c,
+        &b,
+        &[ReasonV1::E_MALFORMED_REQUEST, ReasonV1::E_ORDER_WINDOW],
+    );
+}
+
+#[test]
+fn routing_both_missing_kinds_and_used_ids_are_canonical() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::RefundCreate, |s| {
+        s.require_provenance = true;
+        s.attestation_enabled = true;
+        s.review_routes = vec![ReviewRouteV1::OrderWindow];
+    });
+    c.evidence.order_age_seconds = Some(1001);
+    let result = resolve_review_routes_v1(&r, &c, &b).unwrap();
+    assert_eq!(
+        result.required_kinds(),
+        &[ReviewKindV1::Grant, ReviewKindV1::Attestation]
+    );
+    assert_eq!(
+        result.escalation().unwrap().required_kinds,
+        vec![ReviewKindV1::Grant, ReviewKindV1::Attestation]
+    );
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    c.review.attestation = Some(routing_fact(&r, &c, ReviewKindV1::Attestation));
+    c.review.grant.as_mut().unwrap().id = "é".into();
+    c.review.attestation.as_mut().unwrap().id = "Z".into();
+    assert_eq!(
+        resolve_review_routes_v1(&r, &c, &b).unwrap().review_ids(),
+        &["Z", "é"]
+    );
+    // Attestation is collected by the inner resolver before a route-only Grant.
+    // Reverse the ID assignment so that collection order cannot satisfy sorting.
+    c.review.grant.as_mut().unwrap().id = "Z".into();
+    c.review.attestation.as_mut().unwrap().id = "é".into();
+    assert_eq!(
+        resolve_review_routes_v1(&r, &c, &b).unwrap().review_ids(),
+        &["Z", "é"]
+    );
+}
+
+#[test]
+fn routing_new_deadline_is_exact_and_does_not_modify_context() {
+    let (r, c, b) = routing_fixture(CommerceActionV1::CustomerEmailSend, |s| {
+        s.require_monetary_review = true
+    });
+    let original = c.clone();
+    let result = resolve_review_routes_v1(&r, &c, &b).unwrap();
+    assert_eq!(
+        result.escalation(),
+        Some(&EscalationRequirementV1 {
+            requested_at_ms: 50,
+            expires_at_ms: 1050,
+            review_request_id: None,
+            required_kinds: vec![ReviewKindV1::Grant]
+        })
+    );
+    assert_eq!(c, original);
+}
+
+#[test]
+fn routing_existing_shorter_deadline_and_id_never_extend() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::CustomerEmailSend, |s| {
+        s.require_monetary_review = true
+    });
+    c.review_request = Some(routing_pending(&r, &c));
+    for now in [10, 50, 199] {
+        c.now_ms = now;
+        let result = resolve_review_routes_v1(&r, &c, &b).unwrap();
+        let e = result.escalation().unwrap();
+        assert_eq!((e.requested_at_ms, e.expires_at_ms), (10, 200));
+        assert_eq!(e.review_request_id.as_deref(), Some("pending"));
+    }
+}
+
+#[test]
+fn routing_expired_pending_denies_even_when_grant_fulfilled() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::CustomerEmailSend, |s| {
+        s.require_monetary_review = true
+    });
+    c.review_request = Some(routing_pending(&r, &c));
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    c.now_ms = 199;
+    assert!(
+        resolve_review_routes_v1(&r, &c, &b)
+            .unwrap()
+            .escalation()
+            .is_none()
+    );
+    for now in [200, 201] {
+        c.now_ms = now;
+        routing_causes(&r, &c, &b, &[ReasonV1::E_APPROVAL_EXPIRED]);
+    }
+}
+
+#[test]
+fn routing_pending_binding_policy_and_interval_are_validated() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::CustomerEmailSend, |s| {
+        s.require_monetary_review = true
+    });
+    c.review_request = Some(routing_pending(&r, &c));
+    for field in 0..5 {
+        let mut changed = c.clone();
+        let p = changed.review_request.as_mut().unwrap();
+        let reason = match field {
+            0 => {
+                p.binding_digest[0] ^= 1;
+                ReasonV1::E_BINDING_MISMATCH
+            }
+            1 => {
+                p.policy_digest[0] ^= 1;
+                ReasonV1::E_BINDING_MISMATCH
+            }
+            2 => {
+                p.created_at_ms = 51;
+                ReasonV1::E_MALFORMED_REQUEST
+            }
+            3 => {
+                p.expires_at_ms = p.created_at_ms;
+                ReasonV1::E_MALFORMED_REQUEST
+            }
+            _ => {
+                p.expires_at_ms = 1011;
+                ReasonV1::E_APPROVAL_INVALID
+            }
+        };
+        routing_causes(&r, &changed, &b, &[reason]);
+    }
+}
+
+#[test]
+fn routing_absent_and_zero_timeout_are_unconfigured_defence_in_depth() {
+    for timeout in [None, Some(0)] {
+        let (r, c, b) = routing_fixture(CommerceActionV1::CustomerEmailSend, |s| {
+            s.enabled = false;
+            s.require_monetary_review = true;
+            s.review_request_timeout_ms = timeout;
+        });
+        routing_causes(&r, &c, &b, &[ReasonV1::E_POLICY_UNCONFIGURED]);
+    }
+}
+
+#[test]
+fn routing_new_deadline_signed_domain_is_inclusive_not_wrapping() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::CustomerEmailSend, |s| {
+        s.require_monetary_review = true;
+        s.review_request_timeout_ms = Some(1);
+    });
+    c.now_ms = i64::MAX as u64 - 1;
+    assert_eq!(
+        resolve_review_routes_v1(&r, &c, &b)
+            .unwrap()
+            .escalation()
+            .unwrap()
+            .expires_at_ms,
+        i64::MAX as u64
+    );
+    c.now_ms = i64::MAX as u64;
+    routing_causes(&r, &c, &b, &[ReasonV1::E_MALFORMED_REQUEST]);
+}
+
+#[test]
+fn routing_unrepresentable_time_short_circuits_without_subtraction() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::CustomerEmailSend, |s| {
+        s.require_monetary_review = true
+    });
+    c.now_ms = u64::MAX;
+    c.evidence.provenance = ProvenanceStateV1::Invalid;
+    let error = resolve_review_routes_v1(&r, &c, &b).unwrap_err();
+    assert_eq!(error.causes(), &[ReasonV1::E_MALFORMED_REQUEST]);
+    assert!(error.requires_terminal_deny());
+}
+
+#[test]
+fn routing_fulfilled_requirements_and_unused_pending_have_no_escalation() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::CustomerEmailSend, |_| {});
+    c.review_request = Some(routing_pending(&r, &c));
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    let result = resolve_review_routes_v1(&r, &c, &b).unwrap();
+    assert!(result.review_ids().is_empty());
+    assert!(result.required_kinds().is_empty());
+    assert!(result.escalation().is_none());
+    c.now_ms = 200;
+    routing_causes(&r, &c, &b, &[ReasonV1::E_APPROVAL_EXPIRED]);
+}
+
+#[test]
+fn routing_review_success_is_not_enablement_or_hard_predicate_permission() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::OrderCancel, |s| s.enabled = false);
+    c.evidence.cancellation_eligible = Some(false);
+    assert!(resolve_review_routes_v1(&r, &c, &b).is_ok());
+    assert_eq!(
+        validate_action_eligibility_v1(&r, &c),
+        Err(ReasonV1::E_CONSTRAINT_VIOLATION)
+    );
+}
+
+#[test]
+fn routing_invalid_grant_cannot_satisfy_enabled_route() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::RefundCreate, |s| {
+        s.review_routes = vec![ReviewRouteV1::OrderWindow];
+    });
+    c.evidence.order_age_seconds = Some(1001);
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    for defect in 0..4 {
+        let mut changed = c.clone();
+        let grant = changed.review.grant.as_mut().unwrap();
+        let expected = match defect {
+            0 => {
+                grant.authorized = false;
+                vec![ReasonV1::E_ORDER_WINDOW, ReasonV1::E_APPROVAL_INVALID]
+            }
+            1 => {
+                grant.consumed = true;
+                vec![ReasonV1::E_REPLAY, ReasonV1::E_ORDER_WINDOW]
+            }
+            2 => {
+                grant.expires_at_ms = changed.now_ms;
+                vec![ReasonV1::E_ORDER_WINDOW, ReasonV1::E_APPROVAL_EXPIRED]
+            }
+            _ => {
+                grant.binding_digest[0] ^= 1;
+                vec![ReasonV1::E_BINDING_MISMATCH, ReasonV1::E_ORDER_WINDOW]
+            }
+        };
+        routing_causes(&r, &changed, &b, &expected);
+    }
+}
+
+#[test]
+fn routing_predicate_changes_recompute_used_grant_on_same_snapshot_contract() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::RefundCreate, |s| {
+        s.review_routes = vec![ReviewRouteV1::OrderWindow];
+    });
+    c.evidence.order_age_seconds = Some(1001);
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    assert_eq!(
+        resolve_review_routes_v1(&r, &c, &b).unwrap().review_ids(),
+        &["grant"]
+    );
+    c.evidence.order_age_seconds = Some(1000);
+    let resolved = resolve_review_routes_v1(&r, &c, &b).unwrap();
+    assert!(resolved.review_ids().is_empty());
+    assert!(resolved.routed_causes().is_empty());
+}
+
+#[test]
+fn routing_settings_are_selected_for_requested_action() {
+    let mut source = preparation_source();
+    source.schema_text = NATIVE_SCHEMA.into();
+    for (action, s) in &mut source.action_settings {
+        s.require_provenance = false;
+        s.attestation_enabled = false;
+        s.require_monetary_review = false;
+        s.review_routes = if *action == CommerceActionV1::DiscountCreate {
+            vec![ReviewRouteV1::DiscountConflict]
+        } else {
+            vec![]
+        };
+    }
+    recommit(&mut source);
+    let b = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+    let (mut r, mut c) = bound_frame(&b);
+    r.action = CommerceActionV1::DiscountCreate;
+    c.now_ms = 50;
+    c.review.grant = None;
+    c.review.attestation = None;
+    c.review_request = None;
+    c.evidence.provenance = ProvenanceStateV1::Missing;
+    c.evidence.provenance_binding_digest = None;
+    c.evidence.order_age_seconds = Some(100);
+    c.evidence.discount_conflict = Some(true);
+    let result = resolve_review_routes_v1(&r, &c, &b).unwrap();
+    assert_eq!(result.required_kinds(), &[ReviewKindV1::Grant]);
+    assert_eq!(result.routed_causes(), &[ReasonV1::E_DISCOUNT_CONFLICT]);
+}
+
+#[test]
+fn routing_simultaneous_error_causes_are_sorted_and_deduplicated() {
+    let (r, mut c, b) = routing_fixture(CommerceActionV1::RefundCreate, |s| {
+        s.require_provenance = true;
+        s.attestation_enabled = true;
+        s.require_monetary_review = true;
+        s.review_routes = vec![ReviewRouteV1::OrderWindow];
+    });
+    c.evidence.order_age_seconds = Some(1001);
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    c.review.attestation = Some(routing_fact(&r, &c, ReviewKindV1::Attestation));
+    c.review.grant.as_mut().unwrap().authorized = false;
+    let a = c.review.attestation.as_mut().unwrap();
+    a.authorized = false;
+    a.reviewer_id = "grant-reviewer".into();
+    routing_causes(
+        &r,
+        &c,
+        &b,
+        &[
+            ReasonV1::E_ORDER_WINDOW,
+            ReasonV1::E_REVIEWER_SEPARATION,
+            ReasonV1::E_APPROVAL_INVALID,
+        ],
+    );
+}
+
 #[test]
 fn requirements_success_is_not_other_predicates_or_permission() {
     let (r, mut c, b) = requirements_fixture(|_| {});
