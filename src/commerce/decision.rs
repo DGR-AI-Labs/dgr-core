@@ -2898,3 +2898,259 @@ pub fn validate_email_bindings_v1(
         Err(causes)
     }
 }
+
+/// Perform only the prepared bundle's native Cedar base-permission check.
+///
+/// Representation, all supplied request/artifact bindings, email policy flavor
+/// and action enablement are checked before native construction or Authorizer.
+/// Disabled actions return E_POLICY_UNCONFIGURED with no Cedar policy verdict.
+/// A performed Cedar Deny contributes E_POLICY_FORBID. Any evaluator diagnostic
+/// error or caught unwind contributes E_INTERNAL_EVALUATION, even on Cedar Allow;
+/// if Cedar also returned Deny, retain that established base-denial diagnostic.
+/// Causes are registry-ordered, distinct, and never invented for skipped work.
+/// Abort, allocation failure, signals and hard deadlines are not catchable promises.
+///
+/// Ok means error-free Cedar Allow only. It does not validate current email bytes,
+/// evidence freshness, terminal provenance, review validity, hard action/monetary/
+/// budget/window predicates, required review routes, or final constraints/digest.
+/// The email marker is catalog identity, not proof of current-payload validation.
+/// Complete composition must enforce those checks before Allow or Escalate.
+/// No fact is authenticated, artifact consumed or provider effect performed here.
+pub fn evaluate_permissions_v1(
+    request: &CommerceRequestV1,
+    context: &DecisionContextV1,
+    bundle: &PreparedCommerceBundleV1,
+) -> Result<(), Vec<ReasonV1>> {
+    validated_request_digest_v1(request, context).map_err(|reason| vec![reason])?;
+    validate_request_bindings_v1(request, context, bundle).map_err(|reason| vec![reason])?;
+    let settings = bundle
+        .settings
+        .iter()
+        .find(|(action, _)| *action == request.action)
+        .map(|(_, settings)| settings)
+        .ok_or_else(|| vec![ReasonV1::E_INTERNAL_EVALUATION])?;
+    if !settings.enabled {
+        return Err(vec![ReasonV1::E_POLICY_UNCONFIGURED]);
+    }
+    let inputs = build_cedar_request_v1(request, context, bundle).map_err(|reason| vec![reason])?;
+    let response = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        #[cfg(test)]
+        {
+            PERMISSIONS_TRACE.with(|trace| trace.borrow_mut().push("authorizer"));
+            PERMISSIONS_PANIC.with(|fault| {
+                if fault.replace(false) {
+                    panic!("test-only Cedar boundary unwind");
+                }
+            });
+        }
+        cedar_policy::Authorizer::new().is_authorized(
+            inputs.request(),
+            bundle.policies(),
+            inputs.entities(),
+        )
+    }))
+    .map_err(|_| vec![ReasonV1::E_INTERNAL_EVALUATION])?;
+    let mut causes = Vec::new();
+    if response.diagnostics().errors().next().is_some() {
+        causes.push(ReasonV1::E_INTERNAL_EVALUATION);
+    }
+    if response.decision() == cedar_policy::Decision::Deny {
+        causes.push(ReasonV1::E_POLICY_FORBID);
+    }
+    if causes.is_empty() {
+        Ok(())
+    } else {
+        Err(causes)
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    static PERMISSIONS_TRACE: std::cell::RefCell<Vec<&'static str>> = const { std::cell::RefCell::new(Vec::new()) };
+    static PERMISSIONS_PANIC: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+mod permissions_tests {
+    use super::*;
+    fn permissions_test_fixture(
+        enabled: bool,
+    ) -> (
+        CommerceRequestV1,
+        DecisionContextV1,
+        PreparedCommerceBundleV1,
+    ) {
+        let attributes =
+            serde_json::json!({"profileId":{"type":"String"},"shopId":{"type":"String"}});
+        let context = serde_json::json!({"type":"Record","attributes":{"profileId":{"type":"String"},"shopId":{"type":"String"},"actionEnabled":{"type":"Boolean"}}});
+        let actions = [
+            (CommerceActionV1::RefundCreate, "commerce.refund.create"),
+            (
+                CommerceActionV1::OrderAddressUpdate,
+                "commerce.order.address_update",
+            ),
+            (CommerceActionV1::OrderCancel, "commerce.order.cancel"),
+            (CommerceActionV1::DiscountCreate, "commerce.discount.create"),
+            (
+                CommerceActionV1::CustomerEmailSend,
+                "comms.customer_email.send",
+            ),
+        ];
+        let mut schema_actions = serde_json::Map::new();
+        for (_, name) in actions {
+            schema_actions.insert(name.into(),serde_json::json!({"appliesTo":{"principalTypes":["Principal"],"resourceTypes":["Resource"],"context":context}}));
+        }
+        let mut source=CommerceBundleSourceV1 {
+            schema_text: serde_json::json!({"HermesCommerce":{"entityTypes":{"Principal":{"shape":{"type":"Record","attributes":attributes}},"Resource":{"shape":{"type":"Record","attributes":attributes}}},"actions":schema_actions}}).to_string(),
+            permissions_text:"permit(principal, action, resource);".into(),
+            action_settings:actions.into_iter().map(|(action,_)|(action,CommerceActionSettingsV1 {enabled,currencies:vec!["USD".into()],required_evidence:vec![],amount_ceiling_minor:Some(5),count_ceiling:Some(5),value_ceiling_minor:Some(5),budget_window_ms:Some(100),order_age_limit_seconds:Some(100),require_provenance:false,attestation_enabled:false,require_monetary_review:false,review_request_timeout_ms:None,grant_max_lifetime_ms:None,attestation_max_lifetime_ms:None,reviewer_role_policy_id:None,review_routes:vec![]})).collect(),
+            registry_digest:[7;32],declared_digest:[0;32],
+        };
+        source.declared_digest = bundle_digest_v1(&source).unwrap();
+        let b = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+        let r = CommerceRequestV1 {
+            profile_id: "p".into(),
+            shop_id: "s".into(),
+            subject_id: "u".into(),
+            operation_id: "op".into(),
+            resource_id: "r".into(),
+            action: CommerceActionV1::OrderCancel,
+            amount_minor: None,
+            currency: None,
+            payload_digest: [0; 32],
+            payload_length: 0,
+        };
+        let c = DecisionContextV1 {
+            authenticated_subject: "u".into(),
+            authenticated_profile: "p".into(),
+            authenticated_shop: "s".into(),
+            now_ms: 1,
+            evidence: CommerceEvidenceV1 {
+                source_revision: "v".into(),
+                fetched_at_ms: 0,
+                evidence_digest: [0; 32],
+                captured_minor: None,
+                prior_refunds_minor: None,
+                order_age_seconds: None,
+                line_items_eligible: None,
+                any_fulfillment: None,
+                cancellation_eligible: None,
+                discount_conflict: None,
+                derived_recipient_digest: None,
+                approved_template_digest: None,
+                recipient_count: None,
+                provenance: ProvenanceStateV1::Missing,
+                provenance_binding_digest: None,
+            },
+            budget: CommerceBudgetV1 {
+                profile_id: "p".into(),
+                shop_id: "s".into(),
+                subject_id: "u".into(),
+                action: r.action,
+                currency: None,
+                window_start_ms: 0,
+                window_length_ms: 100,
+                count_used: 0,
+                value_used_minor: 0,
+                revision: "v".into(),
+            },
+            review: CommerceReviewV1 {
+                grant: None,
+                attestation: None,
+            },
+            review_request: None,
+            approved_evidence_revision: None,
+            policy_digest: *b.digest(),
+            registry_digest: [7; 32],
+        };
+        PERMISSIONS_TRACE.with(|t| t.borrow_mut().clear());
+        (r, c, b)
+    }
+    fn calls(expected: usize) {
+        PERMISSIONS_TRACE.with(|t| assert_eq!(t.borrow().len(), expected));
+    }
+    #[test]
+    fn permissions_reached_native_authorizer() {
+        let (r, c, b) = permissions_test_fixture(true);
+        assert_eq!(evaluate_permissions_v1(&r, &c, &b), Ok(()));
+        calls(1);
+    }
+    #[test]
+    fn permissions_disabled_zero_authorizer() {
+        let (r, c, b) = permissions_test_fixture(false);
+        assert_eq!(
+            evaluate_permissions_v1(&r, &c, &b),
+            Err(vec![ReasonV1::E_POLICY_UNCONFIGURED])
+        );
+        calls(0);
+    }
+    #[test]
+    fn permissions_malformed_zero_authorizer() {
+        let (mut r, c, b) = permissions_test_fixture(true);
+        r.subject_id.clear();
+        assert_eq!(evaluate_permissions_v1(&r, &c, &b), Err(vec![INVALID]));
+        calls(0);
+    }
+    #[test]
+    fn permissions_binding_zero_authorizer() {
+        let (r, mut c, b) = permissions_test_fixture(true);
+        c.authenticated_subject = "other".into();
+        assert_eq!(
+            evaluate_permissions_v1(&r, &c, &b),
+            Err(vec![ReasonV1::E_BINDING_MISMATCH])
+        );
+        calls(0);
+    }
+    #[test]
+    fn permissions_plain_email_zero_authorizer() {
+        let (mut r, c, b) = permissions_test_fixture(true);
+        r.action = CommerceActionV1::CustomerEmailSend;
+        assert_eq!(
+            evaluate_permissions_v1(&r, &c, &b),
+            Err(vec![ReasonV1::E_POLICY_UNCONFIGURED])
+        );
+        calls(0);
+    }
+    #[test]
+    fn permissions_construction_error_zero_authorizer() {
+        let (r, c, mut b) = permissions_test_fixture(true);
+        b.schema = Schema::from_json_value(serde_json::json!({})).unwrap();
+        assert_eq!(
+            evaluate_permissions_v1(&r, &c, &b),
+            Err(vec![ReasonV1::E_INTERNAL_EVALUATION])
+        );
+        calls(0);
+    }
+    #[test]
+    fn permissions_caught_unwind_is_not_permission() {
+        let (r, c, b) = permissions_test_fixture(true);
+        PERMISSIONS_PANIC.with(|f| f.set(true));
+        assert_eq!(
+            evaluate_permissions_v1(&r, &c, &b),
+            Err(vec![ReasonV1::E_INTERNAL_EVALUATION])
+        );
+        calls(1);
+        assert_eq!(evaluate_permissions_v1(&r, &c, &b), Ok(()));
+        calls(2);
+    }
+    #[test]
+    fn permissions_supplied_artifact_binding_zero_authorizer() {
+        let (r, mut c, b) = permissions_test_fixture(true);
+        c.evidence.provenance_binding_digest = Some([42; 32]);
+        assert_eq!(
+            evaluate_permissions_v1(&r, &c, &b),
+            Err(vec![ReasonV1::E_BINDING_MISMATCH])
+        );
+        calls(0);
+    }
+    #[test]
+    fn permissions_missing_settings_defence_zero_authorizer() {
+        let (r, c, mut b) = permissions_test_fixture(true);
+        b.settings.retain(|(a, _)| *a != r.action);
+        assert_eq!(
+            evaluate_permissions_v1(&r, &c, &b),
+            Err(vec![ReasonV1::E_INTERNAL_EVALUATION])
+        );
+        calls(0);
+    }
+}
