@@ -180,6 +180,9 @@ pub fn validate_action_eligibility_v1(
 /// A structural Provenance field can still be Missing; require_provenance and
 /// final provenance resolution remain separate. Applicable hard eligibility and
 /// monetary inputs are mandatory even when omitted from required_evidence.
+/// Despite its historical name, require_monetary_review requires a Grant on
+/// every selected action class when true, including nonmonetary actions; it
+/// does not add amount/currency requirements to those actions.
 /// These classifiers do not enforce enabled; the final evaluator must do so.
 ///
 /// This classifies supplied facts even for disabled settings; action enablement
@@ -750,6 +753,145 @@ pub fn validate_provenance_and_reviews_v1(
             causes,
         })
     }
+}
+
+/// Validated review usage and still-missing kinds; this is never permission.
+///
+/// IDs include only facts used for configured monetary approval or required
+/// missing-provenance attestation. Valid optional facts are omitted, not ignored:
+/// every supplied artifact is validated before this value can be constructed.
+/// Missing kinds are potential remediable requirements, not an Escalate verdict.
+/// Other hard predicates, enabled configuration, Cedar permission, review-route
+/// policy and immutable deadline construction must still pass in the evaluator.
+/// No provenance state is upgraded, no artifact is consumed and no audit is stored.
+///
+/// Safe external callers cannot manufacture usage or erase missing requirements:
+/// ```compile_fail
+/// use dgr_core::commerce::ResolvedCommerceReviewsV1;
+/// let _ = ResolvedCommerceReviewsV1 { review_ids: vec![], required_kinds: vec![] };
+/// ```
+/// ```compile_fail
+/// use dgr_core::commerce::ResolvedCommerceReviewsV1;
+/// fn erase(value: &mut ResolvedCommerceReviewsV1) { value.required_kinds.clear(); }
+/// ```
+/// ```compile_fail
+/// use dgr_core::commerce::ResolvedCommerceReviewsV1;
+/// fn fabricate(value: &mut ResolvedCommerceReviewsV1) { value.review_ids.push("fake".into()); }
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedCommerceReviewsV1 {
+    review_ids: Vec<String>,
+    required_kinds: Vec<ReviewKindV1>,
+}
+
+impl ResolvedCommerceReviewsV1 {
+    /// Raw-UTF-8-sorted IDs actually used, excluding valid optional facts.
+    pub fn review_ids(&self) -> &[String] {
+        &self.review_ids
+    }
+
+    /// Sorted missing kinds; an empty slice does not mean authorization.
+    pub fn required_kinds(&self) -> &[ReviewKindV1] {
+        &self.required_kinds
+    }
+}
+
+/// Resolve configured review requirements after validating all supplied artifacts.
+///
+/// The explicit require_monetary_review flag requires a Grant on any selected
+/// action, not only on monetary classes. Required Missing provenance needs an
+/// Attestation only when attestation_enabled; otherwise it contributes
+/// E_PROVENANCE_UNVERIFIABLE. Trusted provenance needs no attestation. Invalid or
+/// Consumed provenance remains terminal even if optional or a valid fact exists.
+/// An attestation does not replace a separately required grant or vice versa.
+/// Conflicting supplied grant/attestation IDs are E_MALFORMED_REQUEST, even when
+/// optional. They are never silently repaired by sorting or deduplication.
+///
+/// All supplied facts, including unused ones and any pending request, must pass
+/// bindings, kind, authorization, consumption, lifetime, expiry and applicable
+/// reviewer-separation checks. A defective fact returns actual causes, not a
+/// manufactured missing-kind requirement. Representation failure short-circuits;
+/// other independently established causes are sorted and deduplicated. A missing
+/// action-settings entry instead returns E_INTERNAL_EVALUATION alone, replacing
+/// earlier causes. Preparation guarantees all action entries, so this branch is
+/// defence in depth and unreachable through a valid prepared bundle.
+///
+/// Ok reports used IDs and missing kinds only. Err is not review-remediable through
+/// this result, even when requires_terminal_deny() is false: that method identifies
+/// terminal provenance specifically, not all terminal defects or route eligibility.
+/// Review-route resolution, timeout configuration for new requests, enabled refusal,
+/// hard predicates and Cedar remain separate. Success never constructs an Allow,
+/// an Escalate, or execution authority. No trusted ingress, I/O or effects occur.
+pub fn resolve_review_requirements_v1(
+    request: &CommerceRequestV1,
+    context: &DecisionContextV1,
+    bundle: &PreparedCommerceBundleV1,
+) -> Result<ResolvedCommerceReviewsV1, ProvenanceReviewErrorV1> {
+    if let Err(reason) = validated_request_digest_v1(request, context) {
+        return Err(ProvenanceReviewErrorV1 {
+            provenance: context.evidence.provenance,
+            causes: vec![reason],
+        });
+    }
+    let mut causes = validate_provenance_and_reviews_v1(request, context, bundle)
+        .err()
+        .map(|error| error.causes)
+        .unwrap_or_default();
+    if let (Some(grant), Some(attestation)) = (&context.review.grant, &context.review.attestation)
+        && grant.id == attestation.id
+    {
+        causes.push(INVALID);
+    }
+    let Some((_, settings)) = bundle
+        .settings
+        .iter()
+        .find(|(action, _)| *action == request.action)
+    else {
+        return Err(ProvenanceReviewErrorV1 {
+            provenance: context.evidence.provenance,
+            causes: vec![ReasonV1::E_INTERNAL_EVALUATION],
+        });
+    };
+    let missing_provenance =
+        settings.require_provenance && context.evidence.provenance == ProvenanceStateV1::Missing;
+    if missing_provenance && !settings.attestation_enabled {
+        causes.push(ReasonV1::E_PROVENANCE_UNVERIFIABLE);
+    }
+    causes.sort_unstable_by_key(|reason| reason.rank());
+    causes.dedup();
+    if !causes.is_empty() {
+        return Err(ProvenanceReviewErrorV1 {
+            provenance: context.evidence.provenance,
+            causes,
+        });
+    }
+    let mut review_ids = Vec::new();
+    let mut required_kinds = Vec::new();
+    for (required, kind, fact) in [
+        (
+            settings.require_monetary_review,
+            ReviewKindV1::Grant,
+            &context.review.grant,
+        ),
+        (
+            missing_provenance && settings.attestation_enabled,
+            ReviewKindV1::Attestation,
+            &context.review.attestation,
+        ),
+    ] {
+        if required {
+            match fact {
+                Some(fact) => review_ids.push(fact.id.clone()),
+                None => required_kinds.push(kind),
+            }
+        }
+    }
+    review_ids.sort();
+    required_kinds.sort();
+    Ok(ResolvedCommerceReviewsV1 {
+        review_ids,
+        required_kinds,
+    })
 }
 
 struct Encoder(Vec<u8>);

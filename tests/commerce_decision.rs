@@ -3672,3 +3672,451 @@ fn window_full_unsigned_age_is_not_a_malformed_timestamp() {
     c.evidence.order_age_seconds = Some(u64::MAX);
     window_check(&r, &c, &b, &[]);
 }
+
+fn requirements_fixture(
+    edit: impl Fn(&mut CommerceActionSettingsV1),
+) -> (
+    CommerceRequestV1,
+    DecisionContextV1,
+    PreparedCommerceBundleV1,
+) {
+    let (request, mut context, bundle) = review_fixture(|s| {
+        s.require_provenance = false;
+        s.attestation_enabled = false;
+        s.require_monetary_review = false;
+        s.review_routes.clear();
+        s.grant_max_lifetime_ms = Some(1000);
+        s.attestation_max_lifetime_ms = Some(1000);
+        s.review_request_timeout_ms = Some(1000);
+        s.reviewer_role_policy_id = Some("reviewers".into());
+        edit(s);
+    });
+    context.evidence.provenance = ProvenanceStateV1::Missing;
+    (request, context, bundle)
+}
+
+fn requirements_assert(
+    request: &CommerceRequestV1,
+    context: &DecisionContextV1,
+    bundle: &PreparedCommerceBundleV1,
+    used: &[&str],
+    missing: &[ReviewKindV1],
+) {
+    let resolution = resolve_review_requirements_v1(request, context, bundle).unwrap();
+    let ids: Vec<_> = resolution.review_ids().iter().map(String::as_str).collect();
+    assert_eq!(ids, used);
+    assert_eq!(resolution.required_kinds(), missing);
+}
+
+#[test]
+fn requirements_optional_valid_facts_are_not_used() {
+    let (r, c, b) = requirements_fixture(|_| {});
+    requirements_assert(&r, &c, &b, &[], &[]);
+    let mut absent = c.clone();
+    absent.review.grant = None;
+    absent.review.attestation = None;
+    absent.review_request = None;
+    requirements_assert(&r, &absent, &b, &[], &[]);
+}
+
+#[test]
+fn requirements_grant_does_not_satisfy_attestation() {
+    let (r, mut c, b) = requirements_fixture(|s| {
+        s.require_provenance = true;
+        s.attestation_enabled = true;
+    });
+    requirements_assert(&r, &c, &b, &["attestation"], &[]);
+    c.review.attestation = None;
+    requirements_assert(&r, &c, &b, &[], &[ReviewKindV1::Attestation]);
+}
+
+#[test]
+fn requirements_attestation_does_not_satisfy_grant() {
+    let (r, mut c, b) = requirements_fixture(|s| s.require_monetary_review = true);
+    requirements_assert(&r, &c, &b, &["review"], &[]);
+    c.review.grant = None;
+    requirements_assert(&r, &c, &b, &[], &[ReviewKindV1::Grant]);
+}
+
+#[test]
+fn requirements_both_missing_kinds_are_sorted_not_permission() {
+    let (r, mut c, b) = requirements_fixture(|s| {
+        s.require_provenance = true;
+        s.attestation_enabled = true;
+        s.require_monetary_review = true;
+    });
+    c.review.grant = None;
+    c.review.attestation = None;
+    requirements_assert(
+        &r,
+        &c,
+        &b,
+        &[],
+        &[ReviewKindV1::Grant, ReviewKindV1::Attestation],
+    );
+}
+
+#[test]
+fn requirements_used_ids_are_sorted_by_raw_utf8() {
+    let (r, mut c, b) = requirements_fixture(|s| {
+        s.require_provenance = true;
+        s.attestation_enabled = true;
+        s.require_monetary_review = true;
+    });
+    for (grant, attestation, expected) in [
+        ("z", "a", ["a", "z"]),
+        ("é", "Z", ["Z", "é"]),
+        ("e\u{301}", "é", ["e\u{301}", "é"]),
+    ] {
+        c.review.grant.as_mut().unwrap().id = grant.into();
+        c.review.attestation.as_mut().unwrap().id = attestation.into();
+        requirements_assert(&r, &c, &b, &expected, &[]);
+    }
+}
+
+#[test]
+fn requirements_one_satisfied_and_one_missing_stays_separate() {
+    let (r, mut c, b) = requirements_fixture(|s| {
+        s.require_provenance = true;
+        s.attestation_enabled = true;
+        s.require_monetary_review = true;
+    });
+    let attestation = c.review.attestation.take();
+    requirements_assert(&r, &c, &b, &["review"], &[ReviewKindV1::Attestation]);
+    c.review.attestation = attestation;
+    c.review.grant = None;
+    requirements_assert(&r, &c, &b, &["attestation"], &[ReviewKindV1::Grant]);
+}
+
+#[test]
+fn requirements_missing_provenance_without_attestation_route_is_rejected() {
+    let (r, c, b) = requirements_fixture(|s| s.require_provenance = true);
+    let error = resolve_review_requirements_v1(&r, &c, &b).unwrap_err();
+    assert_eq!(error.provenance(), ProvenanceStateV1::Missing);
+    assert_eq!(error.causes(), &[ReasonV1::E_PROVENANCE_UNVERIFIABLE]);
+    assert!(!error.requires_terminal_deny()); // This method classifies provenance only.
+}
+
+#[test]
+fn requirements_trusted_provenance_needs_no_attestation() {
+    let (r, mut c, b) = requirements_fixture(|s| {
+        s.require_provenance = true;
+        s.attestation_enabled = true;
+    });
+    c.evidence.provenance = ProvenanceStateV1::TrustedBoundUnused;
+    requirements_assert(&r, &c, &b, &[], &[]);
+    c.review.attestation = None;
+    requirements_assert(&r, &c, &b, &[], &[]);
+}
+
+#[test]
+fn requirements_attestation_enablement_alone_is_not_a_requirement() {
+    let (r, mut c, b) = requirements_fixture(|s| s.attestation_enabled = true);
+    requirements_assert(&r, &c, &b, &[], &[]);
+    c.review.attestation = None;
+    requirements_assert(&r, &c, &b, &[], &[]);
+}
+
+macro_rules! requirements_grant_flag_case {
+    ($name:ident, $action:expr) => {
+        #[test]
+        fn $name() {
+            let (mut r, mut c, b) = requirements_fixture(|s| s.require_monetary_review = true);
+            r.action = $action;
+            let binding = request_binding_digest_v1(&r).unwrap();
+            c.evidence.provenance_binding_digest = Some(binding);
+            for fact in [&mut c.review.grant, &mut c.review.attestation]
+                .into_iter()
+                .flatten()
+            {
+                fact.binding_digest = binding;
+            }
+            c.review_request.as_mut().unwrap().binding_digest = binding;
+            requirements_assert(&r, &c, &b, &["review"], &[]);
+            c.review.grant = None;
+            requirements_assert(&r, &c, &b, &[], &[ReviewKindV1::Grant]);
+        }
+    };
+}
+requirements_grant_flag_case!(
+    requirements_refund_explicit_grant_flag,
+    CommerceActionV1::RefundCreate
+);
+requirements_grant_flag_case!(
+    requirements_address_explicit_grant_flag,
+    CommerceActionV1::OrderAddressUpdate
+);
+requirements_grant_flag_case!(
+    requirements_cancel_explicit_grant_flag,
+    CommerceActionV1::OrderCancel
+);
+requirements_grant_flag_case!(
+    requirements_discount_explicit_grant_flag,
+    CommerceActionV1::DiscountCreate
+);
+requirements_grant_flag_case!(
+    requirements_email_explicit_grant_flag,
+    CommerceActionV1::CustomerEmailSend
+);
+
+#[test]
+fn requirements_same_reviewer_only_denies_when_both_requirements_apply() {
+    let (r, mut c, b) = requirements_fixture(|s| {
+        s.require_provenance = true;
+        s.attestation_enabled = true;
+        s.require_monetary_review = true;
+    });
+    c.review.attestation.as_mut().unwrap().reviewer_id = "reviewer".into();
+    assert_eq!(
+        resolve_review_requirements_v1(&r, &c, &b)
+            .unwrap_err()
+            .causes(),
+        &[ReasonV1::E_REVIEWER_SEPARATION]
+    );
+    c.evidence.provenance = ProvenanceStateV1::TrustedBoundUnused;
+    requirements_assert(&r, &c, &b, &["review"], &[]);
+}
+
+#[test]
+fn requirements_duplicate_optional_ids_are_malformed_not_repaired() {
+    let (r, mut c, b) = requirements_fixture(|_| {});
+    c.review.attestation.as_mut().unwrap().id = c.review.grant.as_ref().unwrap().id.clone();
+    assert_eq!(
+        resolve_review_requirements_v1(&r, &c, &b)
+            .unwrap_err()
+            .causes(),
+        &[ReasonV1::E_MALFORMED_REQUEST]
+    );
+}
+
+#[test]
+fn requirements_duplicate_required_ids_are_malformed_not_deduped() {
+    let (r, mut c, b) = requirements_fixture(|s| {
+        s.require_provenance = true;
+        s.attestation_enabled = true;
+        s.require_monetary_review = true;
+    });
+    c.review.attestation.as_mut().unwrap().id = "review".into();
+    assert_eq!(
+        resolve_review_requirements_v1(&r, &c, &b)
+            .unwrap_err()
+            .causes(),
+        &[ReasonV1::E_MALFORMED_REQUEST]
+    );
+}
+
+fn requirements_defective_fact(grant: bool) {
+    let (r, c, b) = requirements_fixture(|_| {}); // Optional, but every fact still validates.
+    for case in 0..7 {
+        let mut changed = c.clone();
+        let fact = if grant {
+            changed.review.grant.as_mut().unwrap()
+        } else {
+            changed.review.attestation.as_mut().unwrap()
+        };
+        let expected = match case {
+            0 => {
+                fact.authorized = false;
+                ReasonV1::E_APPROVAL_INVALID
+            }
+            1 => {
+                fact.expires_at_ms = c.now_ms;
+                ReasonV1::E_APPROVAL_EXPIRED
+            }
+            2 => {
+                fact.consumed = true;
+                ReasonV1::E_REPLAY
+            }
+            3 => {
+                fact.binding_digest[0] ^= 1;
+                ReasonV1::E_BINDING_MISMATCH
+            }
+            4 => {
+                fact.policy_digest[0] ^= 1;
+                ReasonV1::E_BINDING_MISMATCH
+            }
+            5 => {
+                fact.kind = if grant {
+                    ReviewKindV1::Attestation
+                } else {
+                    ReviewKindV1::Grant
+                };
+                ReasonV1::E_MALFORMED_REQUEST
+            }
+            _ => {
+                fact.issued_at_ms = c.now_ms + 1;
+                ReasonV1::E_MALFORMED_REQUEST
+            }
+        };
+        assert_eq!(
+            resolve_review_requirements_v1(&r, &changed, &b)
+                .unwrap_err()
+                .causes(),
+            &[expected],
+            "grant={grant}, case={case}"
+        );
+    }
+}
+
+#[test]
+fn requirements_invalid_optional_grant_is_never_absence() {
+    requirements_defective_fact(true);
+}
+#[test]
+fn requirements_invalid_optional_attestation_is_never_absence() {
+    requirements_defective_fact(false);
+}
+
+#[test]
+fn requirements_invalid_required_fact_does_not_manufacture_missing_kind() {
+    let (r, mut c, b) = requirements_fixture(|s| s.require_monetary_review = true);
+    c.review.grant.as_mut().unwrap().authorized = false;
+    assert_eq!(
+        resolve_review_requirements_v1(&r, &c, &b)
+            .unwrap_err()
+            .causes(),
+        &[ReasonV1::E_APPROVAL_INVALID]
+    );
+}
+
+#[test]
+fn requirements_pending_expiry_denies_even_after_valid_reviews() {
+    let (r, mut c, b) = requirements_fixture(|s| s.require_monetary_review = true);
+    requirements_assert(&r, &c, &b, &["review"], &[]);
+    c.review_request.as_mut().unwrap().expires_at_ms = c.now_ms;
+    assert_eq!(
+        resolve_review_requirements_v1(&r, &c, &b)
+            .unwrap_err()
+            .causes(),
+        &[ReasonV1::E_APPROVAL_EXPIRED]
+    );
+}
+
+#[test]
+fn requirements_invalid_and_consumed_provenance_retain_terminal_veto() {
+    let (r, c, b) = requirements_fixture(|s| {
+        s.require_provenance = true;
+        s.attestation_enabled = true;
+    });
+    for (state, reason) in [
+        (
+            ProvenanceStateV1::Invalid,
+            ReasonV1::E_PROVENANCE_UNVERIFIABLE,
+        ),
+        (ProvenanceStateV1::Consumed, ReasonV1::E_REPLAY),
+    ] {
+        let mut changed = c.clone();
+        changed.evidence.provenance = state;
+        let error = resolve_review_requirements_v1(&r, &changed, &b).unwrap_err();
+        assert!(error.requires_terminal_deny());
+        assert_eq!(error.provenance(), state);
+        assert_eq!(error.causes(), &[reason]);
+    }
+}
+
+#[test]
+fn requirements_attestation_does_not_upgrade_or_mutate_provenance() {
+    let (r, c, b) = requirements_fixture(|s| {
+        s.require_provenance = true;
+        s.attestation_enabled = true;
+    });
+    let before = c.clone();
+    requirements_assert(&r, &c, &b, &["attestation"], &[]);
+    assert_eq!(c, before);
+    assert_eq!(
+        validate_provenance_and_reviews_v1(&r, &c, &b),
+        Ok(ProvenanceStateV1::Missing)
+    );
+}
+
+#[test]
+fn requirements_independent_causes_are_sorted_and_deduplicated() {
+    let (r, mut c, b) = requirements_fixture(|s| {
+        s.require_provenance = true;
+        s.require_monetary_review = true;
+    });
+    c.review.attestation.as_mut().unwrap().id = "review".into();
+    c.review.grant.as_mut().unwrap().kind = ReviewKindV1::Attestation;
+    c.review.grant.as_mut().unwrap().authorized = false;
+    c.review.attestation.as_mut().unwrap().authorized = false;
+    assert_eq!(
+        resolve_review_requirements_v1(&r, &c, &b)
+            .unwrap_err()
+            .causes(),
+        &[
+            ReasonV1::E_MALFORMED_REQUEST,
+            ReasonV1::E_PROVENANCE_UNVERIFIABLE,
+            ReasonV1::E_APPROVAL_INVALID
+        ]
+    );
+}
+
+#[test]
+fn requirements_representation_short_circuits_with_state_retained() {
+    let (r, c, b) = requirements_fixture(|s| s.require_provenance = true);
+    for state in [ProvenanceStateV1::Invalid, ProvenanceStateV1::Missing] {
+        let mut changed = c.clone();
+        changed.now_ms = u64::MAX;
+        changed.evidence.provenance = state;
+        changed.review.grant.as_mut().unwrap().authorized = false;
+        let error = resolve_review_requirements_v1(&r, &changed, &b).unwrap_err();
+        assert_eq!(error.causes(), &[ReasonV1::E_MALFORMED_REQUEST]);
+        assert_eq!(error.provenance(), state);
+        assert_eq!(
+            error.requires_terminal_deny(),
+            state == ProvenanceStateV1::Invalid
+        );
+    }
+}
+
+#[test]
+fn requirements_settings_selection_is_per_action() {
+    let mut source = preparation_source();
+    source.schema_text = NATIVE_SCHEMA.into();
+    for (action, settings) in &mut source.action_settings {
+        settings.grant_max_lifetime_ms = Some(1000);
+        settings.attestation_max_lifetime_ms = Some(1000);
+        settings.review_request_timeout_ms = Some(1000);
+        settings.require_provenance = false;
+        settings.attestation_enabled = false;
+        settings.review_routes.clear();
+        settings.require_monetary_review = *action == CommerceActionV1::OrderCancel;
+    }
+    recommit(&mut source);
+    let b = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+    let (mut r, mut c) = bound_frame(&b);
+    c.review.attestation = None;
+    c.now_ms = 50;
+    requirements_assert(&r, &c, &b, &[], &[]);
+    r.action = CommerceActionV1::OrderCancel;
+    let binding = request_binding_digest_v1(&r).unwrap();
+    c.evidence.provenance_binding_digest = Some(binding);
+    c.review.grant.as_mut().unwrap().binding_digest = binding;
+    c.review_request.as_mut().unwrap().binding_digest = binding;
+    requirements_assert(&r, &c, &b, &["review"], &[]);
+}
+
+#[test]
+fn requirements_disabled_and_review_routes_do_not_override_requirements() {
+    let (r, c, b) = requirements_fixture(|s| {
+        s.enabled = false;
+        s.require_monetary_review = true;
+        s.review_routes = vec![ReviewRouteV1::OrderWindow, ReviewRouteV1::DiscountConflict];
+    });
+    requirements_assert(&r, &c, &b, &["review"], &[]);
+    let mut missing = c.clone();
+    missing.review.grant = None;
+    requirements_assert(&r, &missing, &b, &[], &[ReviewKindV1::Grant]);
+}
+
+#[test]
+fn requirements_success_is_not_other_predicates_or_permission() {
+    let (r, mut c, b) = requirements_fixture(|_| {});
+    c.evidence.line_items_eligible = Some(false);
+    c.evidence.fetched_at_ms = c.now_ms + 1;
+    c.evidence.source_revision = "changed".into();
+    c.approved_evidence_revision = Some("previous".into());
+    requirements_assert(&r, &c, &b, &[], &[]);
+    assert!(validate_action_eligibility_v1(&r, &c).is_err());
+    assert!(validate_evidence_snapshot_v1(&r, &c, &b).is_err());
+}

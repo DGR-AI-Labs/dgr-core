@@ -8,11 +8,12 @@ mod decision;
 mod reasons;
 pub use decision::{
     PreparedCedarInputsV1, PreparedCommerceBundleV1, ProvenanceReviewErrorV1,
-    build_cedar_request_v1, bundle_digest_v1, decision_digest_v1, encode_decision_v1,
-    prepare_bundle_v1, request_binding_digest_v1, validate_action_eligibility_v1,
-    validate_budget_constraints_v1, validate_evidence_snapshot_v1,
-    validate_monetary_constraints_v1, validate_order_window_and_discount_v1,
-    validate_provenance_and_reviews_v1, validate_request_bindings_v1, validate_review_artifacts_v1,
+    ResolvedCommerceReviewsV1, build_cedar_request_v1, bundle_digest_v1, decision_digest_v1,
+    encode_decision_v1, prepare_bundle_v1, request_binding_digest_v1,
+    resolve_review_requirements_v1, validate_action_eligibility_v1, validate_budget_constraints_v1,
+    validate_evidence_snapshot_v1, validate_monetary_constraints_v1,
+    validate_order_window_and_discount_v1, validate_provenance_and_reviews_v1,
+    validate_request_bindings_v1, validate_review_artifacts_v1,
 };
 pub use reasons::ReasonV1;
 
@@ -255,6 +256,9 @@ pub struct CommerceActionSettingsV1 {
     pub order_age_limit_seconds: Option<u64>,
     pub require_provenance: bool,
     pub attestation_enabled: bool,
+    /// Requires a Grant for this action when true, including nonmonetary actions.
+    /// The historical field name does not restrict applicability to monetary classes.
+    /// This flag alone never adds amount/currency requirements or grants permission.
     pub require_monetary_review: bool,
     pub review_request_timeout_ms: Option<u64>,
     pub grant_max_lifetime_ms: Option<u64>,
