@@ -4447,6 +4447,14 @@ fn routing_both_missing_kinds_and_used_ids_are_canonical() {
         resolve_review_routes_v1(&r, &c, &b).unwrap().review_ids(),
         &["Z", "é"]
     );
+    // Attestation is collected by the inner resolver before a route-only Grant.
+    // Reverse the ID assignment so that collection order cannot satisfy sorting.
+    c.review.grant.as_mut().unwrap().id = "Z".into();
+    c.review.attestation.as_mut().unwrap().id = "é".into();
+    assert_eq!(
+        resolve_review_routes_v1(&r, &c, &b).unwrap().review_ids(),
+        &["Z", "é"]
+    );
 }
 
 #[test]
