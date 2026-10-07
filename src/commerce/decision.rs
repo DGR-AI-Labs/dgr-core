@@ -2767,7 +2767,7 @@ fn checked_email_payload_v1(
     source: &EmailPayloadSourceV1,
 ) -> EncodingResult<CheckedEmailPayloadV1> {
     if source.bytes.is_empty() {
-        return Err(ReasonV1::E_MISSING_EVIDENCE);
+        return Err(INVALID);
     }
     if source.bytes.len() > 65536 {
         return Err(INVALID);
@@ -2818,7 +2818,8 @@ fn checked_email_payload_v1(
 
 /// Check exact internal-fixture payload, recipient and approved rendered content.
 /// This classifies supplied values only; success is not permission or provider
-/// compatibility. Draft identity is whole-payload-only. An eventual draft lookup
+/// compatibility. None is absent input; supplied empty bytes are malformed.
+/// Draft identity is whole-payload-only. An eventual draft lookup
 /// must compare selected artifact content; a digest/signature is no replacement.
 ///
 /// The prepared annex's effective view is mandatory, but even this marker cannot
@@ -2829,7 +2830,7 @@ pub fn validate_email_bindings_v1(
     request: &CommerceRequestV1,
     context: &DecisionContextV1,
     policy: &PreparedEmailPolicyV1,
-    source: &EmailPayloadSourceV1,
+    source: Option<&EmailPayloadSourceV1>,
 ) -> Result<(), Vec<ReasonV1>> {
     if let Err(reason) = validated_request_digest_v1(request, context) {
         return Err(vec![reason]);
@@ -2841,6 +2842,12 @@ pub fn validate_email_bindings_v1(
         .err()
         .into_iter()
         .collect::<Vec<_>>();
+    let Some(source) = source else {
+        causes.push(ReasonV1::E_MISSING_EVIDENCE);
+        causes.sort_unstable_by_key(|r| r.rank());
+        causes.dedup();
+        return Err(causes);
+    };
     let payload = match checked_email_payload_v1(request, source) {
         Ok(payload) => payload,
         Err(reason) => {

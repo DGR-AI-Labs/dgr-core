@@ -4847,7 +4847,7 @@ fn email_assert(
     expected: &[ReasonV1],
 ) {
     assert_eq!(
-        validate_email_bindings_v1(r, c, p, payload),
+        validate_email_bindings_v1(r, c, p, Some(payload)),
         if expected.is_empty() {
             Ok(())
         } else {
@@ -5413,7 +5413,7 @@ fn email_binding_whole_payload_bound_and_missing() {
         &c,
         &p,
         &EmailPayloadSourceV1 { bytes: vec![] },
-        &[ReasonV1::E_MISSING_EVIDENCE],
+        &[ReasonV1::E_MALFORMED_REQUEST],
     );
     let original = serde_json::to_vec(&email_payload()).unwrap();
     for length in [65535, 65536, 65537] {
@@ -5712,7 +5712,7 @@ fn email_binding_identifier_and_recipient_byte_boundaries() {
             let mut body = email_payload();
             body[field] = value.into();
             let payload = email_commit_payload(&mut r, &body);
-            let causes = validate_email_bindings_v1(&r, &c, &p, &payload)
+            let causes = validate_email_bindings_v1(&r, &c, &p, Some(&payload))
                 .err()
                 .unwrap_or_default();
             assert!(
@@ -5955,4 +5955,18 @@ fn email_binding_content_golden_and_no_normalization() {
             email_template_digest_v1(&b).unwrap()
         );
     }
+}
+
+#[test]
+fn email_binding_absent_input_is_not_supplied_malformed_input() {
+    let (r, c, p, _) = email_fixture();
+    assert_eq!(
+        validate_email_bindings_v1(&r, &c, &p, None),
+        Err(vec![ReasonV1::E_MISSING_EVIDENCE])
+    );
+    let supplied = EmailPayloadSourceV1 { bytes: vec![] };
+    assert_eq!(
+        validate_email_bindings_v1(&r, &c, &p, Some(&supplied)),
+        Err(vec![ReasonV1::E_MALFORMED_REQUEST])
+    );
 }
