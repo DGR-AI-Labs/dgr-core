@@ -7,13 +7,15 @@
 mod decision;
 mod reasons;
 pub use decision::{
-    PreparedCedarInputsV1, PreparedCommerceBundleV1, ProvenanceReviewErrorV1,
-    ResolvedCommerceReviewRoutesV1, ResolvedCommerceReviewsV1, build_cedar_request_v1,
-    bundle_digest_v1, decision_digest_v1, encode_decision_v1, prepare_bundle_v1,
-    request_binding_digest_v1, resolve_review_requirements_v1, resolve_review_routes_v1,
-    validate_action_eligibility_v1, validate_budget_constraints_v1, validate_evidence_snapshot_v1,
-    validate_monetary_constraints_v1, validate_order_window_and_discount_v1,
-    validate_provenance_and_reviews_v1, validate_request_bindings_v1, validate_review_artifacts_v1,
+    PreparedCedarInputsV1, PreparedCommerceBundleV1, PreparedEmailPolicyV1,
+    ProvenanceReviewErrorV1, ResolvedCommerceReviewRoutesV1, ResolvedCommerceReviewsV1,
+    build_cedar_request_v1, bundle_digest_v1, decision_digest_v1, email_policy_digest_v1,
+    email_template_digest_v1, encode_decision_v1, prepare_bundle_v1, prepare_email_policy_v1,
+    recipient_digest_v1, request_binding_digest_v1, resolve_review_requirements_v1,
+    resolve_review_routes_v1, validate_action_eligibility_v1, validate_budget_constraints_v1,
+    validate_email_bindings_v1, validate_evidence_snapshot_v1, validate_monetary_constraints_v1,
+    validate_order_window_and_discount_v1, validate_provenance_and_reviews_v1,
+    validate_request_bindings_v1, validate_review_artifacts_v1,
 };
 pub use reasons::ReasonV1;
 
@@ -276,4 +278,28 @@ pub struct CommerceBundleSourceV1 {
     pub action_settings: Vec<(CommerceActionV1, CommerceActionSettingsV1)>,
     pub registry_digest: [u8; 32],
     pub declared_digest: [u8; 32],
+}
+
+/// Exact original internal-fixture payload, not a caller-supplied projection.
+/// This is not provider-wire format or evidence of trusted acquisition.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EmailPayloadSourceV1 {
+    pub bytes: Vec<u8>,
+}
+
+/// One explicitly approved rendered version. Content is committed verbatim,
+/// including Unicode and control characters; provider compatibility is separate.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EmailTemplateV1 {
+    pub template_id: String,
+    pub subject: String,
+    pub body: String,
+}
+
+/// Untrusted declarations for a profile/shop-scoped, policy-bound email annex.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EmailTemplatePolicySourceV1 {
+    pub profile_id: String,
+    pub shop_id: String,
+    pub templates: Vec<EmailTemplateV1>,
 }

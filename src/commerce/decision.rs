@@ -112,6 +112,7 @@ pub fn validate_request_bindings_v1(
     }) {
         return Err(ReasonV1::E_BINDING_MISMATCH);
     }
+    validate_email_policy_flavor_v1(request, bundle)?;
     Ok(())
 }
 
@@ -197,11 +198,19 @@ pub fn validate_monetary_constraints_v1(
     if let Err(reason) = validated_request_digest_v1(request, context) {
         return Err(vec![reason]);
     }
+    let mut causes = validate_email_policy_flavor_v1(request, bundle)
+        .err()
+        .into_iter()
+        .collect::<Vec<_>>();
     if !matches!(
         request.action,
         CommerceActionV1::RefundCreate | CommerceActionV1::DiscountCreate
     ) {
-        return Ok(());
+        return if causes.is_empty() {
+            Ok(())
+        } else {
+            Err(causes)
+        };
     }
     let Some((_, settings)) = bundle
         .settings
@@ -212,7 +221,6 @@ pub fn validate_monetary_constraints_v1(
     };
     let amount = request.amount_minor;
     let currency = request.currency.as_deref();
-    let mut causes = Vec::new();
     if amount.is_none() || currency.is_none() {
         causes.push(ReasonV1::E_UNDERSPECIFIED_ACTION);
     }
@@ -300,7 +308,10 @@ pub fn validate_budget_constraints_v1(
         request.action,
         CommerceActionV1::RefundCreate | CommerceActionV1::DiscountCreate
     );
-    let mut causes = Vec::new();
+    let mut causes = validate_email_policy_flavor_v1(request, bundle)
+        .err()
+        .into_iter()
+        .collect::<Vec<_>>();
     if budget.profile_id != request.profile_id
         || budget.shop_id != request.shop_id
         || budget.subject_id != request.subject_id
@@ -415,7 +426,10 @@ pub fn validate_order_window_and_discount_v1(
     else {
         return Err(vec![ReasonV1::E_INTERNAL_EVALUATION]);
     };
-    let mut causes = Vec::new();
+    let mut causes = validate_email_policy_flavor_v1(request, bundle)
+        .err()
+        .into_iter()
+        .collect::<Vec<_>>();
     let age = context.evidence.order_age_seconds;
     let limit = settings.order_age_limit_seconds;
     let refund = request.action == CommerceActionV1::RefundCreate;
@@ -482,7 +496,10 @@ pub fn validate_evidence_snapshot_v1(
         return Err(vec![ReasonV1::E_INTERNAL_EVALUATION]);
     };
     let evidence = &context.evidence;
-    let mut causes = Vec::new();
+    let mut causes = validate_email_policy_flavor_v1(request, bundle)
+        .err()
+        .into_iter()
+        .collect::<Vec<_>>();
     // Check the future boundary before subtracting unsigned timestamps.
     let age = context.now_ms.checked_sub(evidence.fetched_at_ms);
     if age.is_none() {
@@ -763,6 +780,8 @@ pub fn validate_provenance_and_reviews_v1(
 /// Missing kinds are potential remediable requirements, not an Escalate verdict.
 /// Other hard predicates, enabled configuration, Cedar permission, review-route
 /// policy and immutable deadline construction must still pass in the evaluator.
+/// A supplied pending deadline is taken verbatim only after upstream artifact
+/// validation bounds its duration; that guarantee is composed, not local.
 /// No provenance state is upgraded, no artifact is consumed and no audit is stored.
 ///
 /// Safe external callers cannot manufacture usage or erase missing requirements:
@@ -1495,13 +1514,14 @@ const SOURCE_LIMIT: usize = 128 * 1024;
 /// use dgr_core::commerce::PreparedCommerceBundleV1;
 /// let bundle = PreparedCommerceBundleV1 { };
 /// ```
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct PreparedCommerceBundleV1 {
     schema: Schema,
     policies: PolicySet,
     settings: Vec<(CommerceActionV1, CommerceActionSettingsV1)>,
     digest: [u8; 32],
     registry_digest: [u8; 32],
+    email_flavor: EmailPolicyFlavorV1,
 }
 
 impl PreparedCommerceBundleV1 {
@@ -1568,6 +1588,7 @@ pub fn prepare_bundle_v1(
         settings,
         digest,
         registry_digest: source.registry_digest,
+        email_flavor: EmailPolicyFlavorV1::Base,
     })
 }
 
@@ -2418,6 +2439,7 @@ pub fn build_cedar_request_v1(
     {
         return Err(ReasonV1::E_BINDING_MISMATCH);
     }
+    validate_email_policy_flavor_v1(request, bundle)?;
     let settings = bundle
         .settings
         .iter()
@@ -2545,5 +2567,334 @@ mod terminal_error_tests {
         };
         assert!(!missing.causes[0].permits_outcome(CommerceOutcomeV1::Escalate));
         assert!(!missing.requires_terminal_deny());
+    }
+}
+
+#[derive(Clone, Debug)]
+enum EmailPolicyFlavorV1 {
+    Base,
+    EmailAnnex { profile_id: String, shop_id: String },
+}
+
+// This guard proves catalog identity/scope only, never current payload validation.
+// All request consumers are inventoried; delegated callers have individual controls.
+fn validate_email_policy_flavor_v1(
+    request: &CommerceRequestV1,
+    bundle: &PreparedCommerceBundleV1,
+) -> EncodingResult {
+    match &bundle.email_flavor {
+        EmailPolicyFlavorV1::Base if request.action == CommerceActionV1::CustomerEmailSend => {
+            Err(ReasonV1::E_POLICY_UNCONFIGURED)
+        }
+        EmailPolicyFlavorV1::EmailAnnex {
+            profile_id,
+            shop_id,
+        } if profile_id != &request.profile_id || shop_id != &request.shop_id => {
+            Err(ReasonV1::E_BINDING_MISMATCH)
+        }
+        _ => Ok(()),
+    }
+}
+
+impl Encoder {
+    // Deliberately distinct from the existing 128-byte identifier primitive.
+    fn recipient_string_v1(&mut self, value: &str) -> EncodingResult {
+        if value.is_empty() || value.len() > 1024 || value.chars().any(char::is_control) {
+            return Err(INVALID);
+        }
+        self.email_content_string_v1(value)
+    }
+    // Valid UTF-8 content, including LF/CR/TAB/NUL, is committed without repair.
+    fn email_content_string_v1(&mut self, value: &str) -> EncodingResult {
+        if value.is_empty() || value.len() > 1024 {
+            return Err(INVALID);
+        }
+        self.0
+            .extend_from_slice(&(value.len() as u32).to_be_bytes());
+        self.0.extend_from_slice(value.as_bytes());
+        Ok(())
+    }
+}
+
+/// Bounded recipient-domain commitment, not address validation or permission.
+pub fn recipient_digest_v1(
+    request: &CommerceRequestV1,
+    recipient: &str,
+    recipient_count: u32,
+) -> EncodingResult<[u8; 32]> {
+    let mut e = Encoder(b"DGR-HERMES-RECIPIENT-V1\0".to_vec());
+    for id in [&request.profile_id, &request.shop_id, &request.resource_id] {
+        e.string(id)?;
+    }
+    e.recipient_string_v1(recipient)?;
+    e.number(u64::from(recipient_count))?;
+    Ok(Sha256::digest(e.0).into())
+}
+
+/// Commit exact rendered template bytes. Provider-incompatible content must
+/// later be rejected, never rewritten under this identity.
+pub fn email_template_digest_v1(template: &EmailTemplateV1) -> EncodingResult<[u8; 32]> {
+    let mut e = Encoder(b"DGR-HERMES-EMAIL-TEMPLATE-V1\0".to_vec());
+    e.string(&template.template_id)?;
+    e.email_content_string_v1(&template.subject)?;
+    e.email_content_string_v1(&template.body)?;
+    Ok(Sha256::digest(e.0).into())
+}
+
+fn canonical_email_catalog_v1(
+    source: &EmailTemplatePolicySourceV1,
+) -> BundleResult<Vec<(String, [u8; 32])>> {
+    if source.templates.len() > 64 {
+        return Err(STRUCTURE);
+    }
+    if source.templates.is_empty() {
+        return Err(SETTINGS);
+    }
+    let mut bounds = Encoder(Vec::new());
+    bounds.string(&source.profile_id).map_err(|_| SETTINGS)?;
+    bounds.string(&source.shop_id).map_err(|_| SETTINGS)?;
+    let mut catalog = source
+        .templates
+        .iter()
+        .map(|template| {
+            email_template_digest_v1(template)
+                .map(|digest| (template.template_id.clone(), digest))
+                .map_err(|_| SETTINGS)
+        })
+        .collect::<BundleResult<Vec<_>>>()?;
+    catalog.sort();
+    if catalog.windows(2).any(|pair| pair[0] == pair[1]) {
+        return Err(SETTINGS);
+    }
+    Ok(catalog)
+}
+
+/// A new annex identity; this never substitutes for the historical V1 bundle frame.
+pub fn email_policy_digest_v1(
+    base_bundle_digest: &[u8; 32],
+    source: &EmailTemplatePolicySourceV1,
+) -> BundleResult<[u8; 32]> {
+    let catalog = canonical_email_catalog_v1(source)?;
+    let mut e = Encoder(b"DGR-HERMES-EMAIL-POLICY-V1\0".to_vec());
+    e.digest(base_bundle_digest).map_err(|_| SETTINGS)?;
+    e.string(&source.profile_id).map_err(|_| SETTINGS)?;
+    e.string(&source.shop_id).map_err(|_| SETTINGS)?;
+    e.number(catalog.len() as u64).map_err(|_| SETTINGS)?;
+    for (id, digest) in catalog {
+        e.string(&id).map_err(|_| SETTINGS)?;
+        e.digest(&digest).map_err(|_| SETTINGS)?;
+    }
+    Ok(Sha256::digest(e.0).into())
+}
+
+/// Immutable policy-bound catalog and effective bundle view. The original core
+/// bundle is retained privately, never exposed as an alternate email route.
+/// A marker proves annex presence, not current-payload validation or permission.
+/// No Authorizer, provider operation or artifact authentication occurs here.
+/// ```compile_fail
+/// use dgr_core::commerce::PreparedEmailPolicyV1;
+/// let _ = PreparedEmailPolicyV1 {};
+/// ```
+/// ```compile_fail
+/// use dgr_core::commerce::PreparedEmailPolicyV1;
+/// fn change(p: &mut PreparedEmailPolicyV1) { p.effective.digest = [0; 32]; }
+/// ```
+/// ```compile_fail
+/// use dgr_core::commerce::PreparedCommerceBundleV1;
+/// fn erase(p: &mut PreparedCommerceBundleV1) { p.email_flavor = Default::default(); }
+/// ```
+/// ```compile_fail
+/// use dgr_core::commerce::PreparedEmailPolicyV1;
+/// fn change(p: &PreparedEmailPolicyV1) { p.bundle().digest()[0] = 0; }
+/// ```
+#[derive(Debug)]
+pub struct PreparedEmailPolicyV1 {
+    base: PreparedCommerceBundleV1,
+    effective: PreparedCommerceBundleV1,
+    catalog: Vec<(String, [u8; 32])>,
+}
+impl PreparedEmailPolicyV1 {
+    pub fn bundle(&self) -> &PreparedCommerceBundleV1 {
+        &self.effective
+    }
+    pub fn base_digest(&self) -> &[u8; 32] {
+        &self.base.digest
+    }
+    pub fn digest(&self) -> &[u8; 32] {
+        &self.effective.digest
+    }
+}
+
+/// Prepare an annex over a Base bundle only. Catalog changes require rebinding
+/// context and every supplied provenance/review/pending artifact to the new root.
+/// No mutable catalog, base-bundle accessor or arbitrary digest setter is exposed.
+pub fn prepare_email_policy_v1(
+    core_bundle: PreparedCommerceBundleV1,
+    source: &EmailTemplatePolicySourceV1,
+) -> BundleResult<PreparedEmailPolicyV1> {
+    if !matches!(core_bundle.email_flavor, EmailPolicyFlavorV1::Base) {
+        return Err(SETTINGS);
+    }
+    let catalog = canonical_email_catalog_v1(source)?;
+    let digest = email_policy_digest_v1(&core_bundle.digest, source)?;
+    let effective = PreparedCommerceBundleV1 {
+        schema: core_bundle.schema.clone(),
+        policies: core_bundle.policies.clone(),
+        settings: core_bundle.settings.clone(),
+        registry_digest: core_bundle.registry_digest,
+        digest,
+        email_flavor: EmailPolicyFlavorV1::EmailAnnex {
+            profile_id: source.profile_id.clone(),
+            shop_id: source.shop_id.clone(),
+        },
+    };
+    Ok(PreparedEmailPolicyV1 {
+        base: core_bundle,
+        effective,
+        catalog,
+    })
+}
+
+// This projection has no external constructor/deserializer or mutation surface.
+struct CheckedEmailPayloadV1 {
+    order_id: String,
+    recipient: String,
+    template: EmailTemplateV1,
+    recipient_count: u32,
+}
+fn checked_email_payload_v1(
+    request: &CommerceRequestV1,
+    source: &EmailPayloadSourceV1,
+) -> EncodingResult<CheckedEmailPayloadV1> {
+    if source.bytes.is_empty() {
+        return Err(INVALID);
+    }
+    if source.bytes.len() > 65536 {
+        return Err(INVALID);
+    }
+    // Original bytes, not parsed/reserialized JSON, are the request commitment.
+    if usize::try_from(request.payload_length).map_err(|_| INVALID)? != source.bytes.len()
+        || <[u8; 32]>::from(Sha256::digest(&source.bytes)) != request.payload_digest
+    {
+        return Err(ReasonV1::E_BINDING_MISMATCH);
+    }
+    let UniqueJson(value) =
+        serde_json::from_slice::<UniqueJson>(&source.bytes).map_err(|_| INVALID)?;
+    let fields = value.as_object().ok_or(INVALID)?;
+    let keys = [
+        "order_id",
+        "recipient",
+        "template_id",
+        "draft_id",
+        "subject",
+        "body",
+        "recipient_count",
+    ];
+    if fields.len() != keys.len() || keys.iter().any(|key| !fields.contains_key(*key)) {
+        return Err(INVALID);
+    }
+    let string = |key: &str| fields[key].as_str().ok_or(INVALID);
+    let order_id = string("order_id")?.to_owned();
+    let recipient = string("recipient")?.to_owned();
+    let template = EmailTemplateV1 {
+        template_id: string("template_id")?.to_owned(),
+        subject: string("subject")?.to_owned(),
+        body: string("body")?.to_owned(),
+    };
+    let recipient_count =
+        u32::try_from(fields["recipient_count"].as_u64().ok_or(INVALID)?).map_err(|_| INVALID)?;
+    let mut e = Encoder(Vec::new());
+    e.string(&order_id)?;
+    e.string(string("draft_id")?)?;
+    e.recipient_string_v1(&recipient)?;
+    email_template_digest_v1(&template)?;
+    Ok(CheckedEmailPayloadV1 {
+        order_id,
+        recipient,
+        template,
+        recipient_count,
+    })
+}
+
+/// Check exact internal-fixture payload, recipient and approved rendered content.
+/// This classifies supplied values only; success is not permission or provider
+/// compatibility. None is absent input; supplied empty bytes are malformed.
+/// Draft identity is whole-payload-only. An eventual draft lookup
+/// must compare selected artifact content; a digest/signature is no replacement.
+///
+/// The prepared annex's effective view is mandatory, but even this marker cannot
+/// replace this validator in future composition (EMAIL-COMPOSITION-01).
+/// Malformed representation short-circuits. Otherwise binding and semantic
+/// diagnostics are registry-ordered/deduplicated; supplied bad data is not repaired.
+pub fn validate_email_bindings_v1(
+    request: &CommerceRequestV1,
+    context: &DecisionContextV1,
+    policy: &PreparedEmailPolicyV1,
+    source: Option<&EmailPayloadSourceV1>,
+) -> Result<(), Vec<ReasonV1>> {
+    if let Err(reason) = validated_request_digest_v1(request, context) {
+        return Err(vec![reason]);
+    }
+    if request.action != CommerceActionV1::CustomerEmailSend {
+        return Err(vec![INVALID]);
+    }
+    let mut causes = validate_request_bindings_v1(request, context, policy.bundle())
+        .err()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let Some(source) = source else {
+        causes.push(ReasonV1::E_MISSING_EVIDENCE);
+        causes.sort_unstable_by_key(|r| r.rank());
+        causes.dedup();
+        return Err(causes);
+    };
+    let payload = match checked_email_payload_v1(request, source) {
+        Ok(payload) => payload,
+        Err(reason) => {
+            if reason == INVALID {
+                return Err(vec![reason]);
+            }
+            causes.push(reason);
+            causes.sort_unstable_by_key(|r| r.rank());
+            causes.dedup();
+            return Err(causes);
+        }
+    };
+    if payload.order_id != request.resource_id {
+        causes.push(ReasonV1::E_BINDING_MISMATCH);
+    }
+    if context.evidence.recipient_count.is_none() {
+        causes.push(ReasonV1::E_MISSING_EVIDENCE);
+    } else if context.evidence.recipient_count != Some(payload.recipient_count) {
+        causes.push(ReasonV1::E_EVIDENCE_CONFLICT);
+    }
+    if payload.recipient_count != 1 {
+        causes.push(ReasonV1::E_CONSTRAINT_VIOLATION);
+    }
+    let recipient = recipient_digest_v1(request, &payload.recipient, payload.recipient_count)
+        .map_err(|r| vec![r])?;
+    let template = email_template_digest_v1(&payload.template).map_err(|r| vec![r])?;
+    for (supplied, expected) in [
+        (context.evidence.derived_recipient_digest, recipient),
+        (context.evidence.approved_template_digest, template),
+    ] {
+        match supplied {
+            None => causes.push(ReasonV1::E_MISSING_EVIDENCE),
+            Some(digest) if digest != expected => causes.push(ReasonV1::E_BINDING_MISMATCH),
+            Some(_) => (),
+        }
+    }
+    if !policy
+        .catalog
+        .contains(&(payload.template.template_id, template))
+    {
+        causes.push(ReasonV1::E_CONSTRAINT_VIOLATION);
+    }
+    causes.sort_unstable_by_key(|r| r.rank());
+    causes.dedup();
+    if causes.is_empty() {
+        Ok(())
+    } else {
+        Err(causes)
     }
 }
