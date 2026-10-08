@@ -2908,6 +2908,8 @@ pub fn validate_email_bindings_v1(
 /// error or caught unwind contributes E_INTERNAL_EVALUATION, even on Cedar Allow;
 /// if Cedar also returned Deny, retain that established base-denial diagnostic.
 /// Causes are registry-ordered, distinct, and never invented for skipped work.
+/// Established causes survive a later caught unwind. An entry unwind establishes
+/// only an internal failure, never a counterfactual policy refusal.
 /// Abort, allocation failure, signals and hard deadlines are not catchable promises.
 ///
 /// Ok means error-free Cedar Allow only. It does not validate current email bytes,
@@ -2933,7 +2935,10 @@ pub fn evaluate_permissions_v1(
         return Err(vec![ReasonV1::E_POLICY_UNCONFIGURED]);
     }
     let inputs = build_cedar_request_v1(request, context, bundle).map_err(|reason| vec![reason])?;
-    let response = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    // Retain only causes established before a later caught unwind.
+    // An entry unwind cannot establish a native policy refusal.
+    let mut causes = Vec::new();
+    let evaluation = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         #[cfg(test)]
         {
             PERMISSIONS_TRACE.with(|trace| trace.borrow_mut().push("authorizer"));
@@ -2943,20 +2948,34 @@ pub fn evaluate_permissions_v1(
                 }
             });
         }
-        cedar_policy::Authorizer::new().is_authorized(
+        let response = cedar_policy::Authorizer::new().is_authorized(
             inputs.request(),
             bundle.policies(),
             inputs.entities(),
-        )
-    }))
-    .map_err(|_| vec![ReasonV1::E_INTERNAL_EVALUATION])?;
-    let mut causes = Vec::new();
-    if response.diagnostics().errors().next().is_some() {
+        );
+        if response.decision() == cedar_policy::Decision::Deny {
+            causes.push(ReasonV1::E_POLICY_FORBID);
+            #[cfg(test)]
+            {
+                PERMISSIONS_AFTER_FORBID_TRACE.with(|trace| {
+                    trace.borrow_mut().push("native-deny-established");
+                });
+                PERMISSIONS_AFTER_FORBID_PANIC.with(|fault| {
+                    if fault.replace(false) {
+                        panic!("test-only unwind after established native Deny");
+                    }
+                });
+            }
+        }
+        if response.diagnostics().errors().next().is_some() {
+            causes.push(ReasonV1::E_INTERNAL_EVALUATION);
+        }
+    }));
+    if evaluation.is_err() {
         causes.push(ReasonV1::E_INTERNAL_EVALUATION);
     }
-    if response.decision() == cedar_policy::Decision::Deny {
-        causes.push(ReasonV1::E_POLICY_FORBID);
-    }
+    causes.sort_unstable_by_key(|reason| reason.rank());
+    causes.dedup();
     if causes.is_empty() {
         Ok(())
     } else {
@@ -3118,6 +3137,8 @@ pub fn evaluate_commerce_v1(
 thread_local! {
     static PERMISSIONS_TRACE: std::cell::RefCell<Vec<&'static str>> = const { std::cell::RefCell::new(Vec::new()) };
     static PERMISSIONS_PANIC: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static PERMISSIONS_AFTER_FORBID_TRACE: std::cell::RefCell<Vec<&'static str>> = const { std::cell::RefCell::new(Vec::new()) };
+    static PERMISSIONS_AFTER_FORBID_PANIC: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 #[cfg(test)]
@@ -3125,6 +3146,16 @@ mod permissions_tests {
     use super::*;
     fn permissions_test_fixture(
         enabled: bool,
+    ) -> (
+        CommerceRequestV1,
+        DecisionContextV1,
+        PreparedCommerceBundleV1,
+    ) {
+        permissions_test_fixture_with_policy(enabled, "permit(principal, action, resource);")
+    }
+    fn permissions_test_fixture_with_policy(
+        enabled: bool,
+        permissions_text: &str,
     ) -> (
         CommerceRequestV1,
         DecisionContextV1,
@@ -3152,7 +3183,7 @@ mod permissions_tests {
         }
         let mut source=CommerceBundleSourceV1 {
             schema_text: serde_json::json!({"HermesCommerce":{"entityTypes":{"Principal":{"shape":{"type":"Record","attributes":attributes}},"Resource":{"shape":{"type":"Record","attributes":attributes}}},"actions":schema_actions}}).to_string(),
-            permissions_text:"permit(principal, action, resource);".into(),
+            permissions_text:permissions_text.into(),
             action_settings:actions.into_iter().map(|(action,_)|(action,CommerceActionSettingsV1 {enabled,currencies:vec!["USD".into()],required_evidence:vec![],amount_ceiling_minor:Some(5),count_ceiling:Some(5),value_ceiling_minor:Some(5),budget_window_ms:Some(100),order_age_limit_seconds:Some(100),require_provenance:false,attestation_enabled:false,require_monetary_review:false,review_request_timeout_ms:None,grant_max_lifetime_ms:None,attestation_max_lifetime_ms:None,reviewer_role_policy_id:None,review_routes:vec![]})).collect(),
             registry_digest:[7;32],declared_digest:[0;32],
         };
@@ -3214,6 +3245,9 @@ mod permissions_tests {
             registry_digest: [7; 32],
         };
         PERMISSIONS_TRACE.with(|t| t.borrow_mut().clear());
+        PERMISSIONS_AFTER_FORBID_TRACE.with(|t| t.borrow_mut().clear());
+        PERMISSIONS_PANIC.with(|f| f.set(false));
+        PERMISSIONS_AFTER_FORBID_PANIC.with(|f| f.set(false));
         (r, c, b)
     }
     fn calls(expected: usize) {
@@ -3278,6 +3312,84 @@ mod permissions_tests {
         let (r, c, b) = permissions_test_fixture(true);
         assert_eq!(evaluate_permissions_v1(&r, &c, &b), Ok(()));
         calls(1);
+    }
+    #[test]
+    fn permissions_after_forbid_real_deny_without_fault() {
+        let (r, c, b) =
+            permissions_test_fixture_with_policy(true, "forbid(principal, action, resource);");
+        assert_eq!(
+            evaluate_permissions_v1(&r, &c, &b),
+            Err(vec![ReasonV1::E_POLICY_FORBID])
+        );
+        calls(1);
+        PERMISSIONS_AFTER_FORBID_TRACE
+            .with(|t| assert_eq!(*t.borrow(), ["native-deny-established"]));
+    }
+    #[test]
+    fn permissions_after_forbid_unwind_retains_established_cause() {
+        let (r, c, b) =
+            permissions_test_fixture_with_policy(true, "forbid(principal, action, resource);");
+        PERMISSIONS_AFTER_FORBID_PANIC.with(|f| f.set(true));
+        assert_eq!(
+            evaluate_permissions_v1(&r, &c, &b),
+            Err(vec![
+                ReasonV1::E_INTERNAL_EVALUATION,
+                ReasonV1::E_POLICY_FORBID
+            ])
+        );
+        calls(1);
+        PERMISSIONS_AFTER_FORBID_TRACE
+            .with(|t| assert_eq!(*t.borrow(), ["native-deny-established"]));
+        PERMISSIONS_AFTER_FORBID_PANIC.with(|f| assert!(!f.get()));
+        assert_eq!(
+            evaluate_permissions_v1(&r, &c, &b),
+            Err(vec![ReasonV1::E_POLICY_FORBID])
+        );
+        calls(2);
+    }
+    #[test]
+    fn permissions_after_forbid_hook_cannot_fire_on_allow() {
+        let (r, c, b) = permissions_test_fixture(true);
+        PERMISSIONS_AFTER_FORBID_PANIC.with(|f| f.set(true));
+        assert_eq!(evaluate_permissions_v1(&r, &c, &b), Ok(()));
+        calls(1);
+        PERMISSIONS_AFTER_FORBID_TRACE.with(|t| assert!(t.borrow().is_empty()));
+        PERMISSIONS_AFTER_FORBID_PANIC.with(|f| assert!(f.replace(false)));
+    }
+    #[test]
+    fn permissions_after_forbid_entry_unwind_has_no_policy_cause() {
+        let (r, c, b) =
+            permissions_test_fixture_with_policy(true, "forbid(principal, action, resource);");
+        PERMISSIONS_PANIC.with(|f| f.set(true));
+        PERMISSIONS_AFTER_FORBID_PANIC.with(|f| f.set(true));
+        assert_eq!(
+            evaluate_permissions_v1(&r, &c, &b),
+            Err(vec![ReasonV1::E_INTERNAL_EVALUATION])
+        );
+        calls(1);
+        PERMISSIONS_AFTER_FORBID_TRACE.with(|t| assert!(t.borrow().is_empty()));
+        PERMISSIONS_AFTER_FORBID_PANIC.with(|f| assert!(f.replace(false)));
+    }
+    #[test]
+    fn permissions_after_forbid_composition_preserves_primary_and_diagnostic() {
+        let (r, mut c, b) =
+            permissions_test_fixture_with_policy(true, "forbid(principal, action, resource);");
+        c.evidence.cancellation_eligible = Some(true);
+        c.evidence.order_age_seconds = Some(1);
+        PERMISSIONS_AFTER_FORBID_PANIC.with(|f| f.set(true));
+        let decision = evaluate_commerce_v1(&r, &c, &CommercePolicyInputV1::Base(&b)).unwrap();
+        assert_eq!(decision.outcome, CommerceOutcomeV1::Deny);
+        assert_eq!(decision.primary_reason, ReasonV1::E_INTERNAL_EVALUATION);
+        assert_eq!(decision.diagnostics, [ReasonV1::E_POLICY_FORBID]);
+        assert!(decision.constraints.is_none());
+        assert!(decision.escalation.is_none());
+        assert_eq!(
+            decision.decision_digest,
+            decision_digest_v1(&r, &c, b.digest(), &decision).unwrap()
+        );
+        calls(1);
+        PERMISSIONS_AFTER_FORBID_TRACE
+            .with(|t| assert_eq!(*t.borrow(), ["native-deny-established"]));
     }
     #[test]
     fn permissions_disabled_zero_authorizer() {

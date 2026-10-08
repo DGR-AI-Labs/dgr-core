@@ -5884,6 +5884,9 @@ fn email_guard_candidate_inventory_and_unclassified_alias_wrapper() {
         "evaluate_commerce_v1",
         // cfg(test)-only fixture constructor; no caller request or runtime entry.
         "permissions_test_fixture",
+        // Same cfg(test) constructor with a caller-selected policy string; builds
+        // a newly hashed/prepared synthetic bundle, not a runtime request path.
+        "permissions_test_fixture_with_policy",
     ]
     .into_iter()
     .map(str::to_owned)
