@@ -2964,6 +2964,156 @@ pub fn evaluate_permissions_v1(
     }
 }
 
+/// Compose a complete pure commerce decision from the prepared prerequisites.
+///
+/// Unencodable request/context returns an error without a decision or V1 digest.
+/// Representable defects produce a canonical Deny. All supplied artifacts are
+/// validated, including optional unused ones. Invalid/Consumed provenance is a
+/// terminal veto independent of registry outcome allowances. Configured reviews
+/// can repair only their named requirement, never a hard failure or Cedar Deny.
+///
+/// Current email bytes must pass the annex validator; a flavor marker alone is
+/// insufficient. Base email is refused even when passed a marked effective bundle.
+/// Native permission is reached only after representation, binding and enablement
+/// checks; other independently established failures remain diagnostics. Raw routed
+/// predicates are re-added when another hard check fails. All causes are sorted
+/// and deduplicated before primary selection. Disabled refusal is not policy Deny.
+///
+/// Allow constraints bind the exact request, effective policy, evidence revision,
+/// used review IDs and evaluation time. Monetary amount is the approved request
+/// amount, never the remaining configured budget. Escalate preserves a supplied
+/// deadline and has no constraints. The digest commits the complete typed inputs
+/// and body, including valid unused facts, without committing itself recursively.
+///
+/// This does not authenticate supplied facts, reserve budget, consume artifacts,
+/// admit/store review requests, issue capabilities, dispatch or report provider
+/// success. A pure Allow is never an execution capability. Clock/evidence ingress,
+/// durable non-bypassability and publication/release remain separate obligations.
+pub fn evaluate_commerce_v1(
+    request: &CommerceRequestV1,
+    context: &DecisionContextV1,
+    policy: &CommercePolicyInputV1<'_>,
+) -> Result<CommerceDecisionV1, ReasonV1> {
+    validated_request_digest_v1(request, context)?;
+    let bundle = match policy {
+        CommercePolicyInputV1::Base(bundle) => *bundle,
+        CommercePolicyInputV1::Email { policy, .. } => policy.bundle(),
+    };
+    let mut causes = Vec::new();
+    if let Err(reason) = validate_request_bindings_v1(request, context, bundle) {
+        causes.push(reason);
+    }
+    if request.action == CommerceActionV1::CustomerEmailSend {
+        match policy {
+            CommercePolicyInputV1::Base(_) => causes.push(ReasonV1::E_POLICY_UNCONFIGURED),
+            CommercePolicyInputV1::Email { policy, payload } => {
+                if let Err(errors) = validate_email_bindings_v1(request, context, policy, *payload)
+                {
+                    causes.extend(errors);
+                }
+            }
+        }
+    }
+    for result in [
+        validate_evidence_snapshot_v1(request, context, bundle),
+        validate_action_eligibility_v1(request, context).map_err(|reason| vec![reason]),
+        validate_monetary_constraints_v1(request, context, bundle),
+        validate_budget_constraints_v1(request, context, bundle),
+    ] {
+        if let Err(errors) = result {
+            causes.extend(errors);
+        }
+    }
+    // Routing composes supplied-review validity and terminal provenance checks.
+    // Keep the state veto independent of which cause happens to rank first.
+    let mut terminal = false;
+    let routes = match resolve_review_routes_v1(request, context, bundle) {
+        Ok(routes) => Some(routes),
+        Err(error) => {
+            terminal = error.requires_terminal_deny();
+            causes.extend_from_slice(error.causes());
+            None
+        }
+    };
+    // A Base input is never an email acceptance path, even with a marked bundle.
+    // Do not invoke Cedar on that input merely to manufacture a policy diagnosis.
+    if !(request.action == CommerceActionV1::CustomerEmailSend
+        && matches!(policy, CommercePolicyInputV1::Base(_)))
+        && let Err(errors) = evaluate_permissions_v1(request, context, bundle)
+    {
+        causes.extend(errors);
+    }
+    let mut escalation = None;
+    let mut constraints = None;
+    let outcome = if !causes.is_empty() || terminal {
+        if let Some(routes) = &routes {
+            causes.extend_from_slice(routes.routed_causes());
+        }
+        CommerceOutcomeV1::Deny
+    } else if let Some(routes) = &routes {
+        if let Some(requirement) = routes.escalation() {
+            causes.extend_from_slice(routes.routed_causes());
+            for kind in routes.required_kinds() {
+                causes.push(match kind {
+                    ReviewKindV1::Grant => ReasonV1::E_APPROVAL_REQUIRED,
+                    ReviewKindV1::Attestation => ReasonV1::E_PROVENANCE_UNVERIFIABLE,
+                });
+            }
+            escalation = Some(requirement.clone());
+            CommerceOutcomeV1::Escalate
+        } else {
+            let monetary = matches!(
+                request.action,
+                CommerceActionV1::RefundCreate | CommerceActionV1::DiscountCreate
+            );
+            constraints = Some(CommerceConstraintsV1 {
+                profile_id: request.profile_id.clone(),
+                shop_id: request.shop_id.clone(),
+                subject_id: request.subject_id.clone(),
+                operation_id: request.operation_id.clone(),
+                resource_id: request.resource_id.clone(),
+                action: request.action,
+                payload_digest: request.payload_digest,
+                amount_ceiling_minor: if monetary { request.amount_minor } else { None },
+                currency: if monetary {
+                    request.currency.clone()
+                } else {
+                    None
+                },
+                evidence_revision: context.evidence.source_revision.clone(),
+                policy_digest: bundle.digest,
+                registry_digest: bundle.registry_digest,
+                review_ids: routes.review_ids().to_vec(),
+                evaluation_time_ms: context.now_ms,
+            });
+            CommerceOutcomeV1::Allow
+        }
+    } else {
+        // An unavailable review classification cannot become an implicit Allow.
+        causes.push(ReasonV1::E_INTERNAL_EVALUATION);
+        CommerceOutcomeV1::Deny
+    };
+    causes.sort_unstable_by_key(|reason| reason.rank());
+    causes.dedup();
+    let primary_reason = causes
+        .first()
+        .copied()
+        .unwrap_or(ReasonV1::OK_POLICY_PERMIT);
+    let mut decision = CommerceDecisionV1 {
+        outcome,
+        primary_reason,
+        diagnostics: causes.into_iter().skip(1).collect(),
+        constraints,
+        escalation,
+        decision_digest: [0; 32],
+        policy_digest: bundle.digest,
+        registry_digest: bundle.registry_digest,
+        evidence_digest: context.evidence.evidence_digest,
+    };
+    decision.decision_digest = decision_digest_v1(request, context, &bundle.digest, &decision)?;
+    Ok(decision)
+}
+
 #[cfg(test)]
 thread_local! {
     static PERMISSIONS_TRACE: std::cell::RefCell<Vec<&'static str>> = const { std::cell::RefCell::new(Vec::new()) };
@@ -3068,6 +3218,60 @@ mod permissions_tests {
     }
     fn calls(expected: usize) {
         PERMISSIONS_TRACE.with(|t| assert_eq!(t.borrow().len(), expected));
+    }
+    #[test]
+    fn composition_reached_authorizer_positive_and_caught_unwind() {
+        let (r, mut c, b) = permissions_test_fixture(true);
+        c.evidence.cancellation_eligible = Some(true);
+        c.evidence.order_age_seconds = Some(1);
+        assert_eq!(
+            evaluate_commerce_v1(&r, &c, &CommercePolicyInputV1::Base(&b))
+                .unwrap()
+                .outcome,
+            CommerceOutcomeV1::Allow
+        );
+        calls(1);
+        PERMISSIONS_TRACE.with(|t| t.borrow_mut().clear());
+        PERMISSIONS_PANIC.with(|fault| fault.set(true));
+        let d = evaluate_commerce_v1(&r, &c, &CommercePolicyInputV1::Base(&b)).unwrap();
+        assert_eq!(d.outcome, CommerceOutcomeV1::Deny);
+        assert_eq!(d.primary_reason, ReasonV1::E_INTERNAL_EVALUATION);
+        calls(1);
+    }
+    #[test]
+    fn composition_binding_refusal_zero_authorizer() {
+        let (r, mut c, b) = permissions_test_fixture(true);
+        c.evidence.cancellation_eligible = Some(true);
+        c.authenticated_subject = "other".into();
+        assert_eq!(
+            evaluate_commerce_v1(&r, &c, &CommercePolicyInputV1::Base(&b))
+                .unwrap()
+                .outcome,
+            CommerceOutcomeV1::Deny
+        );
+        calls(0);
+    }
+    #[test]
+    fn composition_disabled_refusal_zero_authorizer() {
+        let (r, mut c, b) = permissions_test_fixture(false);
+        c.evidence.cancellation_eligible = Some(true);
+        assert_eq!(
+            evaluate_commerce_v1(&r, &c, &CommercePolicyInputV1::Base(&b))
+                .unwrap()
+                .outcome,
+            CommerceOutcomeV1::Deny
+        );
+        calls(0);
+    }
+    #[test]
+    fn composition_unencodable_refusal_zero_authorizer() {
+        let (mut r, c, b) = permissions_test_fixture(true);
+        r.subject_id.clear();
+        assert_eq!(
+            evaluate_commerce_v1(&r, &c, &CommercePolicyInputV1::Base(&b)),
+            Err(INVALID)
+        );
+        calls(0);
     }
     #[test]
     fn permissions_reached_native_authorizer() {

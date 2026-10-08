@@ -12,8 +12,8 @@ pub use decision::{
     PreparedCedarInputsV1, PreparedCommerceBundleV1, PreparedEmailPolicyV1,
     ProvenanceReviewErrorV1, ResolvedCommerceReviewRoutesV1, ResolvedCommerceReviewsV1,
     build_cedar_request_v1, bundle_digest_v1, decision_digest_v1, email_policy_digest_v1,
-    email_template_digest_v1, encode_decision_v1, evaluate_permissions_v1, prepare_bundle_v1,
-    prepare_email_policy_v1, recipient_digest_v1, request_binding_digest_v1,
+    email_template_digest_v1, encode_decision_v1, evaluate_commerce_v1, evaluate_permissions_v1,
+    prepare_bundle_v1, prepare_email_policy_v1, recipient_digest_v1, request_binding_digest_v1,
     resolve_review_requirements_v1, resolve_review_routes_v1, validate_action_eligibility_v1,
     validate_budget_constraints_v1, validate_email_bindings_v1, validate_evidence_snapshot_v1,
     validate_monetary_constraints_v1, validate_order_window_and_discount_v1,
@@ -304,4 +304,17 @@ pub struct EmailTemplatePolicySourceV1 {
     pub profile_id: String,
     pub shop_id: String,
     pub templates: Vec<EmailTemplateV1>,
+}
+
+/// Select the immutable policy and, for email, the current original payload.
+/// A plain bundle cannot authorize email, including an effective bundle obtained
+/// from an annex getter: the evaluator must also validate current payload bytes.
+/// This value supplies pure inputs, not trusted acquisition or an execution token.
+#[derive(Clone, Copy, Debug)]
+pub enum CommercePolicyInputV1<'a> {
+    Base(&'a PreparedCommerceBundleV1),
+    Email {
+        policy: &'a PreparedEmailPolicyV1,
+        payload: Option<&'a EmailPayloadSourceV1>,
+    },
 }
