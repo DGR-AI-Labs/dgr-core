@@ -5827,7 +5827,11 @@ fn email_binding_policy_identity_all_operands_and_catalog_order() {
 fn email_discovered_consumers(source: &str, indirect_types: &[&str]) -> Vec<String> {
     // Handle simple, explicitly shaped aliases/wrappers; this is not general
     // name resolution, macro expansion or a compiler call graph.
-    let mut bundle_types = vec!["PreparedCommerceBundleV1", "PreparedEmailPolicyV1"];
+    let mut bundle_types = vec![
+        "PreparedCommerceBundleV1",
+        "PreparedEmailPolicyV1",
+        "CommercePolicyInputV1",
+    ];
     bundle_types.extend_from_slice(indirect_types);
     for alias in source.split("type ").skip(1) {
         if let Some((name, rest)) = alias.split_once('=') {
@@ -5877,6 +5881,7 @@ fn email_guard_candidate_inventory_and_unclassified_alias_wrapper() {
         "build_cedar_entities_v1",
         "validate_email_bindings_v1",
         "evaluate_permissions_v1",
+        "evaluate_commerce_v1",
         // cfg(test)-only fixture constructor; no caller request or runtime entry.
         "permissions_test_fixture",
     ]
@@ -6211,4 +6216,794 @@ fn permissions_enablement_is_selected_for_requested_action() {
         evaluate_permissions_v1(&r, &c, &b),
         Err(vec![ReasonV1::E_POLICY_UNCONFIGURED])
     );
+}
+
+// Expected bodies below are authored from the contract, never captured evaluator output.
+fn composition_fixture(
+    action: CommerceActionV1,
+    policy: &str,
+    edit: impl Fn(&mut CommerceActionSettingsV1),
+) -> (
+    CommerceRequestV1,
+    DecisionContextV1,
+    PreparedCommerceBundleV1,
+) {
+    let mut source = preparation_source();
+    source.schema_text = NATIVE_SCHEMA.into();
+    source.permissions_text = policy.into();
+    for (_, s) in &mut source.action_settings {
+        s.require_provenance = false;
+        s.attestation_enabled = false;
+        edit(s);
+    }
+    recommit(&mut source);
+    let b = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+    let (mut r, mut c, _) = frame();
+    r.action = action;
+    let monetary = matches!(
+        action,
+        CommerceActionV1::RefundCreate | CommerceActionV1::DiscountCreate
+    );
+    r.amount_minor = monetary.then_some(100);
+    r.currency = monetary.then(|| "USD".into());
+    c.now_ms = 50;
+    c.evidence.fetched_at_ms = 50;
+    c.evidence.captured_minor = Some(1000);
+    c.evidence.prior_refunds_minor = Some(0);
+    c.evidence.order_age_seconds = Some(100);
+    c.evidence.line_items_eligible = Some(true);
+    c.evidence.any_fulfillment = Some(false);
+    c.evidence.cancellation_eligible = Some(true);
+    c.evidence.discount_conflict = Some(false);
+    c.evidence.recipient_count = Some(1);
+    c.budget.action = action;
+    c.budget.currency = r.currency.clone();
+    c.budget.window_length_ms = 60000;
+    email_rebind_policy(&r, &mut c, &b);
+    (r, c, b)
+}
+fn composition_email_fixture() -> (
+    CommerceRequestV1,
+    DecisionContextV1,
+    PreparedEmailPolicyV1,
+    EmailPayloadSourceV1,
+) {
+    let (mut r, mut c, b) = composition_fixture(
+        CommerceActionV1::CustomerEmailSend,
+        "permit(principal, action, resource);",
+        |_| {},
+    );
+    let p = prepare_email_policy_v1(b, &email_catalog("a", "a")).unwrap();
+    let payload = email_commit_payload(&mut r, &email_payload());
+    c.evidence.derived_recipient_digest =
+        Some(recipient_digest_v1(&r, "customer@example.test", 1).unwrap());
+    c.evidence.approved_template_digest =
+        Some(email_template_digest_v1(&email_template()).unwrap());
+    email_rebind_policy(&r, &mut c, p.bundle());
+    (r, c, p, payload)
+}
+fn composition_expected(
+    r: &CommerceRequestV1,
+    c: &DecisionContextV1,
+    b: &PreparedCommerceBundleV1,
+    outcome: CommerceOutcomeV1,
+    reasons: &[ReasonV1],
+    ids: &[&str],
+    escalation: Option<EscalationRequirementV1>,
+) -> CommerceDecisionV1 {
+    let monetary = matches!(
+        r.action,
+        CommerceActionV1::RefundCreate | CommerceActionV1::DiscountCreate
+    );
+    let constraints = (outcome == CommerceOutcomeV1::Allow).then(|| CommerceConstraintsV1 {
+        profile_id: r.profile_id.clone(),
+        shop_id: r.shop_id.clone(),
+        subject_id: r.subject_id.clone(),
+        operation_id: r.operation_id.clone(),
+        resource_id: r.resource_id.clone(),
+        action: r.action,
+        payload_digest: r.payload_digest,
+        amount_ceiling_minor: if monetary { r.amount_minor } else { None },
+        currency: if monetary { r.currency.clone() } else { None },
+        evidence_revision: c.evidence.source_revision.clone(),
+        policy_digest: *b.digest(),
+        registry_digest: *b.registry_digest(),
+        review_ids: ids.iter().map(|id| (*id).into()).collect(),
+        evaluation_time_ms: c.now_ms,
+    });
+    let mut expected = CommerceDecisionV1 {
+        outcome,
+        primary_reason: reasons
+            .first()
+            .copied()
+            .unwrap_or(ReasonV1::OK_POLICY_PERMIT),
+        diagnostics: reasons.iter().skip(1).copied().collect(),
+        constraints,
+        escalation,
+        decision_digest: [0; 32],
+        policy_digest: *b.digest(),
+        registry_digest: *b.registry_digest(),
+        evidence_digest: c.evidence.evidence_digest,
+    };
+    // This independently constructs the body; shared encoding checks digest wiring,
+    // not independent cryptographic derivation. Existing fixed vectors anchor encoding.
+    expected.decision_digest = decision_digest_v1(r, c, b.digest(), &expected).unwrap();
+    expected
+}
+fn composition_assert(
+    r: &CommerceRequestV1,
+    c: &DecisionContextV1,
+    b: &PreparedCommerceBundleV1,
+    outcome: CommerceOutcomeV1,
+    reasons: &[ReasonV1],
+    ids: &[&str],
+    escalation: Option<EscalationRequirementV1>,
+) {
+    let expected = composition_expected(r, c, b, outcome, reasons, ids, escalation);
+    assert_eq!(
+        evaluate_commerce_v1(r, c, &CommercePolicyInputV1::Base(b)),
+        Ok(expected)
+    );
+}
+macro_rules! composition_positive {
+    ($name:ident,$action:ident) => {
+        #[test]
+        fn $name() {
+            let (r, c, b) = composition_fixture(
+                CommerceActionV1::$action,
+                "permit(principal, action, resource);",
+                |_| {},
+            );
+            composition_assert(&r, &c, &b, CommerceOutcomeV1::Allow, &[], &[], None);
+        }
+    };
+}
+composition_positive!(composition_refund_allow, RefundCreate);
+composition_positive!(composition_address_allow, OrderAddressUpdate);
+composition_positive!(composition_cancel_allow, OrderCancel);
+composition_positive!(composition_discount_allow, DiscountCreate);
+#[test]
+fn composition_email_allow() {
+    let (r, c, p, payload) = composition_email_fixture();
+    let expected =
+        composition_expected(&r, &c, p.bundle(), CommerceOutcomeV1::Allow, &[], &[], None);
+    assert_eq!(
+        evaluate_commerce_v1(
+            &r,
+            &c,
+            &CommercePolicyInputV1::Email {
+                policy: &p,
+                payload: Some(&payload)
+            }
+        ),
+        Ok(expected)
+    );
+}
+#[test]
+fn composition_representation_error_has_no_decision() {
+    let (r, c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "permit(principal, action, resource);",
+        |_| {},
+    );
+    let mut bad = r.clone();
+    bad.currency = Some("usd".into());
+    assert_eq!(
+        evaluate_commerce_v1(&bad, &c, &CommercePolicyInputV1::Base(&b)),
+        Err(ReasonV1::E_MALFORMED_REQUEST)
+    );
+    let mut bad = c;
+    bad.now_ms = u64::MAX;
+    assert_eq!(
+        evaluate_commerce_v1(&r, &bad, &CommercePolicyInputV1::Base(&b)),
+        Err(ReasonV1::E_MALFORMED_REQUEST)
+    );
+}
+#[test]
+fn composition_disabled_is_not_policy_deny() {
+    let (r, c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "forbid(principal, action, resource);",
+        |s| s.enabled = false,
+    );
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_POLICY_UNCONFIGURED],
+        &[],
+        None,
+    );
+}
+#[test]
+fn composition_identity_binding_denies() {
+    let (r, mut c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "permit(principal, action, resource);",
+        |_| {},
+    );
+    c.authenticated_subject = "other".into();
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_BINDING_MISMATCH],
+        &[],
+        None,
+    );
+}
+#[test]
+fn composition_evidence_freshness_denies() {
+    let (r, mut c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "permit(principal, action, resource);",
+        |_| {},
+    );
+    c.now_ms = 1051;
+    c.evidence.fetched_at_ms = 50;
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_MISSING_EVIDENCE],
+        &[],
+        None,
+    );
+}
+#[test]
+fn composition_action_eligibility_denies() {
+    let (r, mut c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "permit(principal, action, resource);",
+        |_| {},
+    );
+    c.evidence.line_items_eligible = Some(false);
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_CONSTRAINT_VIOLATION],
+        &[],
+        None,
+    );
+}
+#[test]
+fn composition_monetary_denies() {
+    let (mut r, mut c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "permit(principal, action, resource);",
+        |_| {},
+    );
+    r.amount_minor = Some(1001);
+    email_rebind_policy(&r, &mut c, &b);
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_AMOUNT_LIMIT],
+        &[],
+        None,
+    );
+}
+#[test]
+fn composition_budget_denies() {
+    let (r, mut c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "permit(principal, action, resource);",
+        |_| {},
+    );
+    c.budget.count_used = 3;
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_COUNT_LIMIT],
+        &[],
+        None,
+    );
+}
+#[test]
+fn composition_cedar_denies() {
+    let (r, c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "forbid(principal, action, resource);",
+        |_| {},
+    );
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_POLICY_FORBID],
+        &[],
+        None,
+    );
+}
+#[test]
+fn composition_cedar_errors_override_established_policy_deny() {
+    let (r, mut c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "permit(principal, action, resource) when { (9223372036854775807 + 1) == 0 };",
+        |_| {},
+    );
+    c.evidence.line_items_eligible = Some(false);
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Deny,
+        &[
+            ReasonV1::E_INTERNAL_EVALUATION,
+            ReasonV1::E_POLICY_FORBID,
+            ReasonV1::E_CONSTRAINT_VIOLATION,
+        ],
+        &[],
+        None,
+    );
+}
+#[test]
+fn composition_missing_provenance_escalates_only_enabled_attestation() {
+    let (r, c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "permit(principal, action, resource);",
+        |s| {
+            s.require_provenance = true;
+            s.attestation_enabled = true;
+        },
+    );
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Escalate,
+        &[ReasonV1::E_PROVENANCE_UNVERIFIABLE],
+        &[],
+        Some(EscalationRequirementV1 {
+            requested_at_ms: 50,
+            expires_at_ms: 1050,
+            review_request_id: None,
+            required_kinds: vec![ReviewKindV1::Attestation],
+        }),
+    );
+    let (r, c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "permit(principal, action, resource);",
+        |s| s.require_provenance = true,
+    );
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_PROVENANCE_UNVERIFIABLE],
+        &[],
+        None,
+    );
+}
+#[test]
+fn composition_invalid_bound_provenance_is_terminal() {
+    let (r, mut c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "permit(principal, action, resource);",
+        |s| {
+            s.require_provenance = true;
+            s.attestation_enabled = true;
+        },
+    );
+    c.evidence.provenance = ProvenanceStateV1::Invalid;
+    c.evidence.provenance_binding_digest = Some(request_binding_digest_v1(&r).unwrap());
+    c.review.attestation = Some(routing_fact(&r, &c, ReviewKindV1::Attestation));
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_PROVENANCE_UNVERIFIABLE],
+        &[],
+        None,
+    );
+}
+#[test]
+fn composition_consumed_provenance_is_terminal() {
+    let (r, mut c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "permit(principal, action, resource);",
+        |_| {},
+    );
+    c.evidence.provenance = ProvenanceStateV1::Consumed;
+    c.evidence.provenance_binding_digest = Some(request_binding_digest_v1(&r).unwrap());
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_REPLAY],
+        &[],
+        None,
+    );
+}
+#[test]
+fn composition_unused_invalid_review_stays_terminal() {
+    let (r, mut c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "permit(principal, action, resource);",
+        |_| {},
+    );
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    c.review.grant.as_mut().unwrap().authorized = false;
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_APPROVAL_INVALID],
+        &[],
+        None,
+    );
+}
+#[test]
+fn composition_used_reviews_only_and_exact_requested_amount() {
+    let (r, mut c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "permit(principal, action, resource);",
+        |s| {
+            s.require_provenance = true;
+            s.attestation_enabled = true;
+            s.require_monetary_review = true;
+        },
+    );
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    c.review.attestation = Some(routing_fact(&r, &c, ReviewKindV1::Attestation));
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Allow,
+        &[],
+        &["attestation", "grant"],
+        None,
+    );
+    c.review.attestation.as_mut().unwrap().reviewer_id = "grant-reviewer".into();
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_REVIEWER_SEPARATION],
+        &[],
+        None,
+    );
+}
+#[test]
+fn composition_unused_valid_review_omitted_but_digest_commits_it() {
+    let (r, mut c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "permit(principal, action, resource);",
+        |_| {},
+    );
+    let first = evaluate_commerce_v1(&r, &c, &CommercePolicyInputV1::Base(&b)).unwrap();
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    composition_assert(&r, &c, &b, CommerceOutcomeV1::Allow, &[], &[], None);
+    let next = evaluate_commerce_v1(&r, &c, &CommercePolicyInputV1::Base(&b)).unwrap();
+    assert_ne!(first.decision_digest, next.decision_digest);
+    assert_eq!(first.constraints, next.constraints);
+}
+#[test]
+fn composition_order_route_requires_then_uses_valid_grant() {
+    let (r, mut c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "permit(principal, action, resource);",
+        |s| s.review_routes = vec![ReviewRouteV1::OrderWindow],
+    );
+    c.evidence.order_age_seconds = Some(1001);
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Escalate,
+        &[ReasonV1::E_ORDER_WINDOW, ReasonV1::E_APPROVAL_REQUIRED],
+        &[],
+        Some(EscalationRequirementV1 {
+            requested_at_ms: 50,
+            expires_at_ms: 1050,
+            review_request_id: None,
+            required_kinds: vec![ReviewKindV1::Grant],
+        }),
+    );
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    composition_assert(&r, &c, &b, CommerceOutcomeV1::Allow, &[], &["grant"], None);
+}
+#[test]
+fn composition_unconfigured_window_is_deny() {
+    let (r, mut c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "permit(principal, action, resource);",
+        |_| {},
+    );
+    c.evidence.order_age_seconds = Some(1001);
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_ORDER_WINDOW],
+        &[],
+        None,
+    );
+}
+#[test]
+fn composition_hard_fault_reinstates_satisfied_route_cause() {
+    let (r, mut c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "permit(principal, action, resource);",
+        |s| s.review_routes = vec![ReviewRouteV1::OrderWindow],
+    );
+    c.evidence.order_age_seconds = Some(1001);
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    c.budget.count_used = 3;
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_COUNT_LIMIT, ReasonV1::E_ORDER_WINDOW],
+        &[],
+        None,
+    );
+}
+#[test]
+fn composition_cedar_denial_cannot_escalate() {
+    let (r, mut c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "forbid(principal, action, resource);",
+        |s| s.review_routes = vec![ReviewRouteV1::OrderWindow],
+    );
+    c.evidence.order_age_seconds = Some(1001);
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_POLICY_FORBID, ReasonV1::E_ORDER_WINDOW],
+        &[],
+        None,
+    );
+}
+#[test]
+fn composition_pending_deadline_retained_then_expires_with_facts() {
+    let (r, mut c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "permit(principal, action, resource);",
+        |s| s.require_monetary_review = true,
+    );
+    c.review_request = Some(routing_pending(&r, &c));
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Escalate,
+        &[ReasonV1::E_APPROVAL_REQUIRED],
+        &[],
+        Some(EscalationRequirementV1 {
+            requested_at_ms: 10,
+            expires_at_ms: 200,
+            review_request_id: Some("pending".into()),
+            required_kinds: vec![ReviewKindV1::Grant],
+        }),
+    );
+    c.now_ms = 199;
+    c.review.grant = Some(routing_fact(&r, &c, ReviewKindV1::Grant));
+    composition_assert(&r, &c, &b, CommerceOutcomeV1::Allow, &[], &["grant"], None);
+    c.now_ms = 200;
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_APPROVAL_EXPIRED],
+        &[],
+        None,
+    );
+}
+#[test]
+fn composition_multifault_primary_complete_deduplicated_diagnostics() {
+    let (r, mut c, b) = composition_fixture(
+        CommerceActionV1::RefundCreate,
+        "forbid(principal, action, resource);",
+        |_| {},
+    );
+    c.evidence.captured_minor = None;
+    c.evidence.prior_refunds_minor = None;
+    c.evidence.line_items_eligible = Some(false);
+    c.budget.count_used = 3;
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Deny,
+        &[
+            ReasonV1::E_MISSING_EVIDENCE,
+            ReasonV1::E_POLICY_FORBID,
+            ReasonV1::E_COUNT_LIMIT,
+            ReasonV1::E_CONSTRAINT_VIOLATION,
+        ],
+        &[],
+        None,
+    );
+}
+#[test]
+fn composition_email_wrong_recipient_and_unapproved_content() {
+    let (mut r, mut c, p, _) = composition_email_fixture();
+    let mut value = email_payload();
+    value["recipient"] = "other@example.test".into();
+    let payload = email_commit_payload(&mut r, &value);
+    email_rebind_policy(&r, &mut c, p.bundle());
+    let expected = composition_expected(
+        &r,
+        &c,
+        p.bundle(),
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_BINDING_MISMATCH],
+        &[],
+        None,
+    );
+    assert_eq!(
+        evaluate_commerce_v1(
+            &r,
+            &c,
+            &CommercePolicyInputV1::Email {
+                policy: &p,
+                payload: Some(&payload)
+            }
+        ),
+        Ok(expected)
+    );
+    value = email_payload();
+    value["body"] = "Unapproved body".into();
+    let payload = email_commit_payload(&mut r, &value);
+    email_rebind_policy(&r, &mut c, p.bundle());
+    c.evidence.approved_template_digest = Some(
+        email_template_digest_v1(&EmailTemplateV1 {
+            body: "Unapproved body".into(),
+            ..email_template()
+        })
+        .unwrap(),
+    );
+    let expected = composition_expected(
+        &r,
+        &c,
+        p.bundle(),
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_CONSTRAINT_VIOLATION],
+        &[],
+        None,
+    );
+    assert_eq!(
+        evaluate_commerce_v1(
+            &r,
+            &c,
+            &CommercePolicyInputV1::Email {
+                policy: &p,
+                payload: Some(&payload)
+            }
+        ),
+        Ok(expected)
+    );
+}
+#[test]
+fn composition_email_absent_payload_and_marker_escape_refused() {
+    let (r, c, p, _) = composition_email_fixture();
+    let expected = composition_expected(
+        &r,
+        &c,
+        p.bundle(),
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_MISSING_EVIDENCE],
+        &[],
+        None,
+    );
+    assert_eq!(
+        evaluate_commerce_v1(
+            &r,
+            &c,
+            &CommercePolicyInputV1::Email {
+                policy: &p,
+                payload: None
+            }
+        ),
+        Ok(expected)
+    );
+    let expected = composition_expected(
+        &r,
+        &c,
+        p.bundle(),
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_POLICY_UNCONFIGURED],
+        &[],
+        None,
+    );
+    assert_eq!(
+        evaluate_commerce_v1(&r, &c, &CommercePolicyInputV1::Base(p.bundle())),
+        Ok(expected)
+    );
+}
+#[test]
+#[allow(non_snake_case)] // Stable email correspondence slot identifiers.
+fn email_guard__evaluate_commerce_v1__base_email_refused() {
+    let (r, c, b) = composition_fixture(
+        CommerceActionV1::CustomerEmailSend,
+        "permit(principal, action, resource);",
+        |_| {},
+    );
+    composition_assert(
+        &r,
+        &c,
+        &b,
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_POLICY_UNCONFIGURED],
+        &[],
+        None,
+    );
+}
+#[test]
+#[allow(non_snake_case)] // Stable email correspondence slot identifiers.
+fn email_guard__evaluate_commerce_v1__annex_email_accepted() {
+    composition_email_allow();
+}
+#[test]
+#[allow(non_snake_case)] // Stable email correspondence slot identifiers.
+fn email_guard__evaluate_commerce_v1__base_other_action_accepted() {
+    composition_cancel_allow();
+}
+#[test]
+#[allow(non_snake_case)] // Stable email correspondence slot identifiers.
+fn email_guard__evaluate_commerce_v1__annex_scope_rejected() {
+    let (r, mut c, _, payload) = composition_email_fixture();
+    let (_, _, base) = composition_fixture(
+        CommerceActionV1::CustomerEmailSend,
+        "permit(principal, action, resource);",
+        |_| {},
+    );
+    let p = prepare_email_policy_v1(base, &email_catalog("other", "a")).unwrap();
+    email_rebind_policy(&r, &mut c, p.bundle());
+    let expected = composition_expected(
+        &r,
+        &c,
+        p.bundle(),
+        CommerceOutcomeV1::Deny,
+        &[ReasonV1::E_BINDING_MISMATCH],
+        &[],
+        None,
+    );
+    assert_eq!(
+        evaluate_commerce_v1(
+            &r,
+            &c,
+            &CommercePolicyInputV1::Email {
+                policy: &p,
+                payload: Some(&payload)
+            }
+        ),
+        Ok(expected)
+    );
+}
+
+#[test]
+fn composition_time_identity_not_narrowed_or_reset() {
+    let (r, mut c, b) = composition_fixture(
+        CommerceActionV1::OrderCancel,
+        "permit(principal, action, resource);",
+        |_| {},
+    );
+    c.now_ms = 65537;
+    c.evidence.fetched_at_ms = 65537;
+    c.budget.window_start_ms = 65000;
+    composition_assert(&r, &c, &b, CommerceOutcomeV1::Allow, &[], &[], None);
 }
