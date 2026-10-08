@@ -5876,6 +5876,9 @@ fn email_guard_candidate_inventory_and_unclassified_alias_wrapper() {
         "validate_email_policy_flavor_v1",
         "build_cedar_entities_v1",
         "validate_email_bindings_v1",
+        "evaluate_permissions_v1",
+        // cfg(test)-only fixture constructor; no caller request or runtime entry.
+        "permissions_test_fixture",
     ]
     .into_iter()
     .map(str::to_owned)
@@ -5968,5 +5971,244 @@ fn email_binding_absent_input_is_not_supplied_malformed_input() {
     assert_eq!(
         validate_email_bindings_v1(&r, &c, &p, Some(&supplied)),
         Err(vec![ReasonV1::E_MALFORMED_REQUEST])
+    );
+}
+
+fn permissions_fixture(
+    policy: &str,
+    enabled: bool,
+) -> (
+    CommerceRequestV1,
+    DecisionContextV1,
+    PreparedCommerceBundleV1,
+) {
+    let mut source = preparation_source();
+    source.schema_text = NATIVE_SCHEMA.into();
+    source.permissions_text = policy.into();
+    for (_, settings) in &mut source.action_settings {
+        settings.enabled = enabled;
+    }
+    recommit(&mut source);
+    let bundle = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+    let (request, context) = bound_frame(&bundle);
+    (request, context, bundle)
+}
+
+macro_rules! permissions_action {
+    ($name:ident, $action:ident) => {
+        #[test]
+        fn $name() {
+            let (mut r, mut c, b) =
+                permissions_fixture("permit(principal, action, resource);", true);
+            r.action = CommerceActionV1::$action;
+            let b = email_migration_bundle(b, r.action);
+            email_rebind_policy(&r, &mut c, &b);
+            assert_eq!(evaluate_permissions_v1(&r, &c, &b), Ok(()));
+        }
+    };
+}
+permissions_action!(permissions_refund_error_free_permit, RefundCreate);
+permissions_action!(permissions_address_error_free_permit, OrderAddressUpdate);
+permissions_action!(permissions_cancel_error_free_permit, OrderCancel);
+permissions_action!(permissions_discount_error_free_permit, DiscountCreate);
+permissions_action!(permissions_email_annex_error_free_permit, CustomerEmailSend);
+
+#[test]
+fn permissions_no_matching_permit() {
+    let (r, c, b) =
+        permissions_fixture("permit(principal, action, resource) when { false };", true);
+    assert_eq!(
+        evaluate_permissions_v1(&r, &c, &b),
+        Err(vec![ReasonV1::E_POLICY_FORBID])
+    );
+}
+#[test]
+fn permissions_empty_policy_set() {
+    let (r, c, b) = permissions_fixture("", true);
+    assert_eq!(
+        evaluate_permissions_v1(&r, &c, &b),
+        Err(vec![ReasonV1::E_POLICY_FORBID])
+    );
+}
+#[test]
+fn permissions_forbid_overrides_matching_permit() {
+    let (r, c, b) = permissions_fixture(
+        "permit(principal, action, resource); forbid(principal, action, resource);",
+        true,
+    );
+    assert_eq!(
+        evaluate_permissions_v1(&r, &c, &b),
+        Err(vec![ReasonV1::E_POLICY_FORBID])
+    );
+}
+#[test]
+fn permissions_error_free_allow_does_not_hide_error() {
+    let (r, c, b) = permissions_fixture(
+        "permit(principal, action, resource); permit(principal, action, resource) when { 9223372036854775807 + 1 == 0 };",
+        true,
+    );
+    let inputs = build_cedar_request_v1(&r, &c, &b).unwrap();
+    let raw = cedar_policy::Authorizer::new().is_authorized(
+        inputs.request(),
+        b.policies(),
+        inputs.entities(),
+    );
+    assert_eq!(raw.decision(), cedar_policy::Decision::Allow);
+    assert_eq!(raw.diagnostics().errors().count(), 1);
+    assert_eq!(
+        evaluate_permissions_v1(&r, &c, &b),
+        Err(vec![ReasonV1::E_INTERNAL_EVALUATION])
+    );
+}
+#[test]
+fn permissions_error_and_actual_deny_are_both_retained() {
+    let (r, c, b) = permissions_fixture(
+        "forbid(principal, action, resource); permit(principal, action, resource) when { 9223372036854775807 + 1 == 0 };",
+        true,
+    );
+    assert_eq!(
+        evaluate_permissions_v1(&r, &c, &b),
+        Err(vec![
+            ReasonV1::E_INTERNAL_EVALUATION,
+            ReasonV1::E_POLICY_FORBID
+        ])
+    );
+}
+#[test]
+fn permissions_error_without_valid_permit_is_not_allow() {
+    let (r, c, b) = permissions_fixture(
+        "permit(principal, action, resource) when { 9223372036854775807 + 1 == 0 };",
+        true,
+    );
+    assert_eq!(
+        evaluate_permissions_v1(&r, &c, &b),
+        Err(vec![
+            ReasonV1::E_INTERNAL_EVALUATION,
+            ReasonV1::E_POLICY_FORBID
+        ])
+    );
+}
+#[test]
+fn permissions_multiple_errors_are_one_registry_cause() {
+    let (r, c, b) = permissions_fixture(
+        "permit(principal, action, resource); permit(principal, action, resource) when { 9223372036854775807 + 1 == 0 }; forbid(principal, action, resource) when { 9223372036854775807 + 1 == 0 };",
+        true,
+    );
+    assert_eq!(
+        evaluate_permissions_v1(&r, &c, &b),
+        Err(vec![ReasonV1::E_INTERNAL_EVALUATION])
+    );
+}
+#[test]
+fn permissions_disabled_refusal_is_not_counterfactual_policy_deny() {
+    let (r, c, b) = permissions_fixture("forbid(principal, action, resource);", false);
+    assert_eq!(
+        evaluate_permissions_v1(&r, &c, &b),
+        Err(vec![ReasonV1::E_POLICY_UNCONFIGURED])
+    );
+}
+#[test]
+fn permissions_representation_refusal_precedes_binding_and_configuration() {
+    let (mut r, mut c, b) = permissions_fixture("permit(principal, action, resource);", false);
+    r.subject_id.clear();
+    c.authenticated_shop = "different".into();
+    assert_eq!(
+        evaluate_permissions_v1(&r, &c, &b),
+        Err(vec![ReasonV1::E_MALFORMED_REQUEST])
+    );
+}
+#[test]
+fn permissions_binding_refusal_precedes_disabled_setting() {
+    let (r, mut c, b) = permissions_fixture("permit(principal, action, resource);", false);
+    c.authenticated_subject = "different".into();
+    assert_eq!(
+        evaluate_permissions_v1(&r, &c, &b),
+        Err(vec![ReasonV1::E_BINDING_MISMATCH])
+    );
+}
+#[test]
+fn permissions_valid_optional_artifacts_are_bound_before_cedar() {
+    let (r, c, b) = permissions_fixture("permit(principal, action, resource);", true);
+    for field in 0..4 {
+        let mut changed = c.clone();
+        match field {
+            0 => changed.evidence.provenance_binding_digest = Some([42; 32]),
+            1 => changed.review.grant.as_mut().unwrap().binding_digest[0] ^= 1,
+            2 => changed.review.attestation.as_mut().unwrap().policy_digest[0] ^= 1,
+            _ => changed.review_request.as_mut().unwrap().binding_digest[0] ^= 1,
+        }
+        assert_eq!(
+            evaluate_permissions_v1(&r, &changed, &b),
+            Err(vec![ReasonV1::E_BINDING_MISMATCH]),
+            "artifact {field}"
+        );
+    }
+}
+#[test]
+fn permissions_success_is_not_commerce_or_email_acceptance() {
+    let (r, mut c, b) = permissions_fixture("permit(principal, action, resource);", true);
+    c.evidence.provenance = ProvenanceStateV1::Invalid;
+    c.evidence.line_items_eligible = Some(false);
+    c.review.grant.as_mut().unwrap().authorized = false;
+    c.budget.count_used = i64::MAX;
+    assert_eq!(evaluate_permissions_v1(&r, &c, &b), Ok(()));
+    assert!(validate_action_eligibility_v1(&r, &c).is_err());
+    assert!(validate_provenance_and_reviews_v1(&r, &c, &b).is_err());
+    assert!(validate_budget_constraints_v1(&r, &c, &b).is_err());
+    let (r, mut c, p, payload) = email_fixture();
+    c.evidence.derived_recipient_digest = Some([42; 32]);
+    assert_eq!(evaluate_permissions_v1(&r, &c, p.bundle()), Ok(()));
+    assert!(validate_email_bindings_v1(&r, &c, &p, Some(&payload)).is_err());
+}
+
+#[test]
+#[allow(non_snake_case)] // Adopted per-consumer slot naming convention.
+fn email_guard__evaluate_permissions_v1__base_email_refused() {
+    let (r, c, b) = email_guard_fixture(false, CommerceActionV1::CustomerEmailSend, false);
+    assert_eq!(
+        evaluate_permissions_v1(&r, &c, &b),
+        Err(vec![ReasonV1::E_POLICY_UNCONFIGURED])
+    );
+}
+#[test]
+#[allow(non_snake_case)]
+fn email_guard__evaluate_permissions_v1__annex_email_accepted() {
+    let (r, c, b) = email_guard_fixture(true, CommerceActionV1::CustomerEmailSend, false);
+    assert_eq!(evaluate_permissions_v1(&r, &c, &b), Ok(()));
+}
+#[test]
+#[allow(non_snake_case)]
+fn email_guard__evaluate_permissions_v1__base_other_action_accepted() {
+    let (r, c, b) = email_guard_fixture(false, CommerceActionV1::OrderCancel, false);
+    assert_eq!(evaluate_permissions_v1(&r, &c, &b), Ok(()));
+}
+#[test]
+#[allow(non_snake_case)]
+fn email_guard__evaluate_permissions_v1__annex_scope_rejected() {
+    let (r, c, b) = email_guard_fixture(true, CommerceActionV1::CustomerEmailSend, true);
+    assert_eq!(
+        evaluate_permissions_v1(&r, &c, &b),
+        Err(vec![ReasonV1::E_BINDING_MISMATCH])
+    );
+}
+
+#[test]
+fn permissions_enablement_is_selected_for_requested_action() {
+    let mut source = preparation_source();
+    source.schema_text = NATIVE_SCHEMA.into();
+    for (action, settings) in &mut source.action_settings {
+        settings.enabled = *action == CommerceActionV1::OrderCancel;
+    }
+    recommit(&mut source);
+    let b = prepare_bundle_v1(&source, &[7; 32]).unwrap();
+    let (mut r, mut c) = bound_frame(&b);
+    r.action = CommerceActionV1::OrderCancel;
+    email_rebind_policy(&r, &mut c, &b);
+    assert_eq!(evaluate_permissions_v1(&r, &c, &b), Ok(()));
+    r.action = CommerceActionV1::RefundCreate;
+    email_rebind_policy(&r, &mut c, &b);
+    assert_eq!(
+        evaluate_permissions_v1(&r, &c, &b),
+        Err(vec![ReasonV1::E_POLICY_UNCONFIGURED])
     );
 }

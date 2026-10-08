@@ -1,8 +1,10 @@
-//! Pure commerce data, canonical encoding and extension-free bundle preparation.
+//! Pure commerce data, encoding, preparation and native Cedar base permission.
 //!
-//! These values do not authenticate a caller, evaluate policy or authorize a
-//! provider operation. A digest commits bytes; it is not an execution capability.
-//! The commerce API is intentionally separate from the legacy enforcement API.
+//! Data and preparation do not authenticate a caller or authorize a provider.
+//! `evaluate_permissions_v1` checks Cedar base permission only; its success is
+//! neither a complete commerce decision nor current-email-payload acceptance.
+//! A digest commits bytes; it is not an execution capability. The commerce API
+//! remains separate from the legacy enforcement API.
 
 mod decision;
 mod reasons;
@@ -10,12 +12,12 @@ pub use decision::{
     PreparedCedarInputsV1, PreparedCommerceBundleV1, PreparedEmailPolicyV1,
     ProvenanceReviewErrorV1, ResolvedCommerceReviewRoutesV1, ResolvedCommerceReviewsV1,
     build_cedar_request_v1, bundle_digest_v1, decision_digest_v1, email_policy_digest_v1,
-    email_template_digest_v1, encode_decision_v1, prepare_bundle_v1, prepare_email_policy_v1,
-    recipient_digest_v1, request_binding_digest_v1, resolve_review_requirements_v1,
-    resolve_review_routes_v1, validate_action_eligibility_v1, validate_budget_constraints_v1,
-    validate_email_bindings_v1, validate_evidence_snapshot_v1, validate_monetary_constraints_v1,
-    validate_order_window_and_discount_v1, validate_provenance_and_reviews_v1,
-    validate_request_bindings_v1, validate_review_artifacts_v1,
+    email_template_digest_v1, encode_decision_v1, evaluate_permissions_v1, prepare_bundle_v1,
+    prepare_email_policy_v1, recipient_digest_v1, request_binding_digest_v1,
+    resolve_review_requirements_v1, resolve_review_routes_v1, validate_action_eligibility_v1,
+    validate_budget_constraints_v1, validate_email_bindings_v1, validate_evidence_snapshot_v1,
+    validate_monetary_constraints_v1, validate_order_window_and_discount_v1,
+    validate_provenance_and_reviews_v1, validate_request_bindings_v1, validate_review_artifacts_v1,
 };
 pub use reasons::ReasonV1;
 
